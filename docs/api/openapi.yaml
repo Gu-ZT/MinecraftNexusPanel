@@ -1,0 +1,1403 @@
+openapi: 3.1.0
+info:
+  title: Minecraft Nexus Panel (MCNP) API
+  version: 0.1.0-draft
+  summary: Panel API for Web, Desktop, and Mobile clients
+  license:
+    name: License not yet selected
+  description: |
+    Draft v1 contract. Browser clients use a secure session cookie plus CSRF
+    token for writes. Native clients use bearer access tokens and rotating
+    refresh tokens.
+servers:
+  - url: /api/v1
+    description: Current Panel
+tags:
+  - name: System
+    description: Panel health, version, and capabilities
+  - name: Auth
+    description: User and device session lifecycle
+  - name: Realtime
+    description: WebSocket connection bootstrap
+  - name: Cores
+    description: Remote Core registration and connectivity
+  - name: Instances
+    description: Minecraft instance configuration and lifecycle
+  - name: Files
+    description: Sandboxed instance file operations
+  - name: Tasks
+    description: Long-running operation status and cancellation
+security:
+  - cookieAuth: [ ]
+  - bearerAuth: [ ]
+paths:
+  /health/live:
+    get:
+      tags: [ System ]
+      operationId: getLiveness
+      summary: Check process liveness
+      security: [ ]
+      responses:
+        '200':
+          description: Panel process is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /health/ready:
+    get:
+      tags: [ System ]
+      operationId: getReadiness
+      summary: Check service readiness
+      security: [ ]
+      responses:
+        '200':
+          description: Panel can accept traffic
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /system/info:
+    get:
+      tags: [ System ]
+      operationId: getSystemInfo
+      summary: Get Panel version and capabilities
+      responses:
+        '200':
+          description: Panel version and API capabilities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemInfo'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /auth/login:
+    post:
+      tags: [ Auth ]
+      operationId: login
+      summary: Create a browser or native session
+      security: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login succeeded
+          headers:
+            Set-Cookie:
+              description: Browser session cookie when clientType is BROWSER
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /auth/refresh:
+    post:
+      tags: [ Auth ]
+      operationId: refreshSession
+      summary: Rotate session credentials
+      description: |
+        Native clients send refreshToken in the body. Browser clients use the
+        secure session cookie and include X-CSRF-Token.
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - { }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: Session credentials were rotated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionTokens'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /auth/logout:
+    post:
+      tags: [ Auth ]
+      operationId: logout
+      summary: Revoke the current session
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      responses:
+        '204':
+          description: Session revoked
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /auth/me:
+    get:
+      tags: [ Auth ]
+      operationId: getCurrentUser
+      summary: Get the current user and permissions
+      responses:
+        '200':
+          description: Current user and effective permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /ws/tickets:
+    post:
+      tags: [ Realtime ]
+      operationId: createWebSocketTicket
+      summary: Create a single-use WebSocket ticket
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      responses:
+        '201':
+          description: Single-use ticket valid for 30 seconds
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebSocketTicket'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /cores:
+    get:
+      tags: [ Cores ]
+      operationId: listCores
+      summary: List visible Core nodes
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/CoreStatus'
+      responses:
+        '200':
+          description: Cores visible to the current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CorePage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [ Cores ]
+      operationId: createCore
+      summary: Register a Core node
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CoreCreate'
+      responses:
+        '201':
+          description: Core registered; secret is never returned
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Core'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /cores/{coreId}:
+    parameters:
+      - $ref: '#/components/parameters/CoreId'
+    get:
+      tags: [ Cores ]
+      operationId: getCore
+      summary: Get a Core node
+      responses:
+        '200':
+          description: Core details
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Core'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [ Cores ]
+      operationId: updateCore
+      summary: Update a Core registration
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/CoreUpdate'
+      responses:
+        '200':
+          description: Updated Core
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Core'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+    delete:
+      tags: [ Cores ]
+      operationId: deleteCore
+      summary: Remove a Core registration
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: Core registration removed; remote data is untouched
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+  /cores/{coreId}/actions/test:
+    post:
+      tags: [ Cores ]
+      operationId: testCoreConnection
+      summary: Test Core connectivity and credentials
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ success, latencyMs ]
+                properties:
+                  success:
+                    type: boolean
+                  latencyMs:
+                    type: integer
+                    minimum: 0
+                  protocolVersion:
+                    type: string
+        '502':
+          $ref: '#/components/responses/CoreFailure'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /cores/{coreId}/instances:
+    parameters:
+      - $ref: '#/components/parameters/CoreId'
+    get:
+      tags: [ Instances ]
+      operationId: listInstances
+      summary: List instances on a Core
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: state
+          in: query
+          schema:
+            $ref: '#/components/schemas/InstanceState'
+      responses:
+        '200':
+          description: Instances visible to the current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstancePage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      tags: [ Instances ]
+      operationId: createInstance
+      summary: Create an instance
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstanceCreate'
+      responses:
+        '201':
+          description: Instance created
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Instance'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/instances/{instanceId}:
+    parameters:
+      - $ref: '#/components/parameters/CoreId'
+      - $ref: '#/components/parameters/InstanceId'
+    get:
+      tags: [ Instances ]
+      operationId: getInstance
+      summary: Get an instance
+      responses:
+        '200':
+          description: Instance configuration and runtime
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Instance'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [ Instances ]
+      operationId: updateInstance
+      summary: Update an instance
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/InstanceUpdate'
+      responses:
+        '200':
+          description: Updated instance
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Instance'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+    delete:
+      tags: [ Instances ]
+      operationId: deleteInstance
+      summary: Delete an instance
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: deleteFiles
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '202':
+          description: Deletion accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskAccepted'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+  /cores/{coreId}/instances/{instanceId}/actions/start:
+    post:
+      tags: [ Instances ]
+      operationId: startInstance
+      summary: Start an instance
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          $ref: '#/components/responses/TaskAccepted'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/instances/{instanceId}/actions/stop:
+    post:
+      tags: [ Instances ]
+      operationId: stopInstance
+      summary: Gracefully stop an instance
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                timeoutSeconds:
+                  type: integer
+                  minimum: 1
+                  maximum: 300
+                  default: 30
+      responses:
+        '202':
+          $ref: '#/components/responses/TaskAccepted'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/instances/{instanceId}/actions/restart:
+    post:
+      tags: [ Instances ]
+      operationId: restartInstance
+      summary: Restart an instance
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          $ref: '#/components/responses/TaskAccepted'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /cores/{coreId}/instances/{instanceId}/actions/kill:
+    post:
+      tags: [ Instances ]
+      operationId: killInstance
+      summary: Force terminate an instance
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ confirmation ]
+              properties:
+                confirmation:
+                  type: string
+                  const: KILL
+      responses:
+        '202':
+          $ref: '#/components/responses/TaskAccepted'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /cores/{coreId}/instances/{instanceId}/commands:
+    post:
+      tags: [ Instances ]
+      operationId: sendInstanceCommand
+      summary: Send a console command
+      description: The command is never echoed in responses or access logs.
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ command ]
+              properties:
+                command:
+                  type: string
+                  minLength: 1
+                  maxLength: 8192
+      responses:
+        '202':
+          description: Command accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ acceptedAt ]
+                properties:
+                  acceptedAt:
+                    type: string
+                    format: date-time
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /cores/{coreId}/instances/{instanceId}/logs:
+    get:
+      tags: [ Instances ]
+      operationId: getInstanceLogs
+      summary: Read console log history
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - name: after
+          in: query
+          description: Opaque log cursor
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Console log page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogPage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /cores/{coreId}/instances/{instanceId}/files:
+    get:
+      tags: [ Files ]
+      operationId: listInstanceFiles
+      summary: List an instance directory
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/FilePath'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Directory entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilePage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [ Files ]
+      operationId: deleteInstanceFile
+      summary: Delete an instance file or directory
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/FilePath'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: recursive
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '202':
+          $ref: '#/components/responses/TaskAccepted'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /cores/{coreId}/instances/{instanceId}/file-content:
+    get:
+      tags: [ Files ]
+      operationId: readInstanceFile
+      summary: Download an instance file
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/FilePath'
+      responses:
+        '200':
+          description: File content
+          headers:
+            ETag:
+              description: SHA-256 based content ETag
+              schema:
+                type: string
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [ Files ]
+      operationId: writeInstanceFile
+      summary: Atomically write a small instance file
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/FilePath'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              maxLength: 1048576
+      responses:
+        '200':
+          description: File written atomically
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileEntry'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+  /tasks:
+    get:
+      tags: [ Tasks ]
+      operationId: listTasks
+      summary: List visible tasks
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: state
+          in: query
+          schema:
+            $ref: '#/components/schemas/TaskState'
+      responses:
+        '200':
+          description: Tasks visible to the current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskPage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /tasks/{taskId}:
+    get:
+      tags: [ Tasks ]
+      operationId: getTask
+      summary: Get a task
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Task status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /tasks/{taskId}/actions/cancel:
+    post:
+      tags: [ Tasks ]
+      operationId: cancelTask
+      summary: Request task cancellation
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          $ref: '#/components/responses/TaskAccepted'
+        '409':
+          $ref: '#/components/responses/Conflict'
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: mcnp_session
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+    csrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+  headers:
+    ETag:
+      description: Quoted resource revision
+      schema:
+        type: string
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      description: Opaque pagination cursor
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    CoreId:
+      name: coreId
+      in: path
+      required: true
+      schema:
+        type: string
+    InstanceId:
+      name: instanceId
+      in: path
+      required: true
+      schema:
+        type: string
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      schema:
+        type: string
+    FilePath:
+      name: path
+      in: query
+      required: true
+      description: UTF-8 path relative to the instance root
+      schema:
+        type: string
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthenticated:
+      description: Authentication required or expired
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Insufficient permission
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource does not exist or is not visible
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Resource or state conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RevisionMismatch:
+      description: If-Match does not match current revision
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PayloadTooLarge:
+      description: Payload exceeds endpoint limit
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: Request rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    CoreFailure:
+      description: Core authentication or protocol failure
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Panel or Core is temporarily unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TaskAccepted:
+      description: Asynchronous task accepted
+      headers:
+        Location:
+          schema:
+            type: string
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TaskAccepted'
+  schemas:
+    Health:
+      type: object
+      required: [ status, time ]
+      properties:
+        status:
+          type: string
+          enum: [ ok ]
+        time:
+          type: string
+          format: date-time
+    SystemInfo:
+      type: object
+      required: [ version, apiVersions, capabilities, serverTime ]
+      properties:
+        version:
+          type: string
+        apiVersions:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        minimumClientVersion:
+          type: string
+        serverTime:
+          type: string
+          format: date-time
+    LoginRequest:
+      type: object
+      required: [ username, password, clientType ]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 64
+        password:
+          type: string
+          minLength: 1
+          maxLength: 1024
+        clientType:
+          type: string
+          enum: [ BROWSER, NATIVE ]
+        device:
+          $ref: '#/components/schemas/Device'
+        mfaCode:
+          type: [ string, 'null' ]
+    LoginResponse:
+      type: object
+      required: [ user, session ]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        session:
+          $ref: '#/components/schemas/SessionTokens'
+    Device:
+      type: object
+      required: [ name, platform, deviceId ]
+      properties:
+        name:
+          type: string
+          maxLength: 128
+        platform:
+          type: string
+          enum: [ WEB, WINDOWS, LINUX, MACOS, ANDROID, IOS ]
+        deviceId:
+          type: string
+          maxLength: 256
+    SessionTokens:
+      type: object
+      required: [ id, accessExpiresAt ]
+      properties:
+        id:
+          type: string
+        accessToken:
+          type: [ string, 'null' ]
+          description: Returned only to native clients
+        accessExpiresAt:
+          type: string
+          format: date-time
+        refreshToken:
+          type: [ string, 'null' ]
+          description: Returned only to native clients
+        refreshExpiresAt:
+          type: [ string, 'null' ]
+          format: date-time
+        csrfToken:
+          type: [ string, 'null' ]
+          description: Returned only to browser clients
+    User:
+      type: object
+      required: [ id, username, displayName, permissions ]
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+        resourceScopes:
+          type: array
+          items:
+            type: string
+    WebSocketTicket:
+      type: object
+      required: [ ticket, expiresAt ]
+      properties:
+        ticket:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+    CoreStatus:
+      type: string
+      enum: [ ONLINE, DEGRADED, OFFLINE, INCOMPATIBLE, AUTH_FAILED, UNKNOWN ]
+    Core:
+      type: object
+      required:
+        - id
+        - name
+        - address
+        - status
+        - capabilities
+        - secretConfigured
+        - tags
+        - revision
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        address:
+          type: string
+        status:
+          $ref: '#/components/schemas/CoreStatus'
+        latencyMs:
+          type: [ integer, 'null' ]
+          minimum: 0
+        lastSeenAt:
+          type: [ string, 'null' ]
+          format: date-time
+        version:
+          type: [ string, 'null' ]
+        protocolVersion:
+          type: [ string, 'null' ]
+        capabilities:
+          type: array
+          items:
+            type: string
+        secretConfigured:
+          type: boolean
+        secretUpdatedAt:
+          type: [ string, 'null' ]
+          format: date-time
+        tags:
+          type: array
+          items:
+            type: string
+        revision:
+          type: integer
+          minimum: 1
+    CoreCreate:
+      type: object
+      required: [ name, address, secret ]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        address:
+          type: string
+          description: Host and TCP port
+        secret:
+          type: string
+          minLength: 32
+          writeOnly: true
+        connectTimeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 60
+          default: 10
+        tags:
+          type: array
+          maxItems: 32
+          items:
+            type: string
+    CoreUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        address:
+          type: string
+        secret:
+          type: string
+          minLength: 32
+          writeOnly: true
+        connectTimeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 60
+        tags:
+          type: array
+          maxItems: 32
+          items:
+            type: string
+    CorePage:
+      type: object
+      required: [ items, nextCursor ]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Core'
+        nextCursor:
+          type: [ string, 'null' ]
+    InstanceKind:
+      type: string
+      enum: [ VANILLA, PAPER, VELOCITY, FABRIC, CUSTOM, UNKNOWN ]
+    InstanceState:
+      type: string
+      enum: [ CREATED, STARTING, RUNNING, STOPPING, STOPPED, FAILED, UNKNOWN ]
+    LaunchConfig:
+      type: object
+      required: [ executable, args, environment, stopCommand, stopTimeoutSeconds ]
+      properties:
+        executable:
+          type: string
+        args:
+          type: array
+          items:
+            type: string
+        environment:
+          type: object
+          additionalProperties:
+            type: string
+        stopCommand:
+          type: string
+          default: stop
+        stopTimeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 300
+          default: 30
+    InstanceRuntime:
+      type: object
+      required: [ state ]
+      properties:
+        state:
+          $ref: '#/components/schemas/InstanceState'
+        pid:
+          type: [ integer, 'null' ]
+        startedAt:
+          type: [ string, 'null' ]
+          format: date-time
+        exitCode:
+          type: [ integer, 'null' ]
+        players:
+          type: object
+          properties:
+            online:
+              type: integer
+              minimum: 0
+            max:
+              type: integer
+              minimum: 0
+        eventCursor:
+          type: [ string, 'null' ]
+    Instance:
+      type: object
+      required: [ id, coreId, name, kind, directory, launch, runtime, revision ]
+      properties:
+        id:
+          type: string
+        coreId:
+          type: string
+        name:
+          type: string
+        kind:
+          $ref: '#/components/schemas/InstanceKind'
+        directory:
+          type: string
+        launch:
+          $ref: '#/components/schemas/LaunchConfig'
+        runtime:
+          $ref: '#/components/schemas/InstanceRuntime'
+        revision:
+          type: integer
+          minimum: 1
+    InstanceCreate:
+      type: object
+      required: [ id, name, kind, directory, launch ]
+      properties:
+        id:
+          type: string
+          pattern: '^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        kind:
+          $ref: '#/components/schemas/InstanceKind'
+        directory:
+          type: string
+        launch:
+          $ref: '#/components/schemas/LaunchConfig'
+    InstanceUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        kind:
+          $ref: '#/components/schemas/InstanceKind'
+        launch:
+          $ref: '#/components/schemas/LaunchConfig'
+    InstancePage:
+      type: object
+      required: [ items, nextCursor ]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Instance'
+        nextCursor:
+          type: [ string, 'null' ]
+    LogLine:
+      type: object
+      required: [ cursor, occurredAt, stream, line ]
+      properties:
+        cursor:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        stream:
+          type: string
+          enum: [ stdout, stderr, system ]
+        line:
+          type: string
+    LogPage:
+      type: object
+      required: [ items, nextCursor ]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogLine'
+        nextCursor:
+          type: [ string, 'null' ]
+    FileEntry:
+      type: object
+      required: [ name, path, kind, size, modifiedAt ]
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+        kind:
+          type: string
+          enum: [ FILE, DIRECTORY, SYMLINK, OTHER ]
+        size:
+          type: integer
+          minimum: 0
+        modifiedAt:
+          type: string
+          format: date-time
+        sha256:
+          type: [ string, 'null' ]
+    FilePage:
+      type: object
+      required: [ items, nextCursor ]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FileEntry'
+        nextCursor:
+          type: [ string, 'null' ]
+    TaskState:
+      type: string
+      enum: [ QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLED ]
+    Task:
+      type: object
+      required: [ id, kind, state, createdAt ]
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        state:
+          $ref: '#/components/schemas/TaskState'
+        progress:
+          type: [ number, 'null' ]
+          minimum: 0
+          maximum: 1
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: [ string, 'null' ]
+          format: date-time
+        finishedAt:
+          type: [ string, 'null' ]
+          format: date-time
+        error:
+          oneOf:
+            - $ref: '#/components/schemas/Error'
+            - type: 'null'
+    TaskAccepted:
+      type: object
+      required: [ taskId, state, acceptedAt ]
+      properties:
+        taskId:
+          type: string
+        state:
+          type: string
+          const: QUEUED
+        acceptedAt:
+          type: string
+          format: date-time
+    TaskPage:
+      type: object
+      required: [ items, nextCursor ]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+        nextCursor:
+          type: [ string, 'null' ]
+    Error:
+      type: object
+      required: [ code, message, requestId, retryable ]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        requestId:
+          type: string
+        retryable:
+          type: boolean
+        details:
+          type: object
+          additionalProperties: true
+    ErrorResponse:
+      type: object
+      required: [ error ]
+      properties:
+        error:
+          $ref: '#/components/schemas/Error'
