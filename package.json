@@ -1,0 +1,23 @@
+{
+  "name": "mcnp-workspace",
+  "private": true,
+  "packageManager": "pnpm@11.17.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "pnpm --filter @mcnp/app build",
+    "desktop:dev": "pnpm --dir apps/desktop/src-tauri exec tauri dev",
+    "dev": "pnpm --filter @mcnp/app dev",
+    "mobile:android": "pnpm --dir apps/mobile/src-tauri exec tauri android dev",
+    "typecheck": "pnpm -r --if-present typecheck"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.4",
+    "@types/node": "^24.0.0",
+    "@vitejs/plugin-vue": "6.0.8",
+    "typescript": "5.9.3",
+    "vite": "8.1.5",
+    "vue-tsc": "3.3.8"
+  }
+}

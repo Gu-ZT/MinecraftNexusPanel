@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MCNP Mobile",
+  "version": "0.1.0",
+  "identifier": "dev.mcnp.mobile",
+  "build": {
+    "beforeDevCommand": "pnpm --dir ../../../frontend/app dev",
+    "beforeBuildCommand": "pnpm --dir ../../../frontend/app build",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../../../frontend/app/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "MCNP"
+      }
+    ]
+  },
+  "bundle": {
+    "active": false
+  }
+}

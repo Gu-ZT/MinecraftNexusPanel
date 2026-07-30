@@ -1,2 +1,14 @@
-/target
+/target/
+/node_modules/
+/frontend/*/node_modules/
+/frontend/app/dist/
+/apps/*/src-tauri/gen/
+
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+
 .idea/

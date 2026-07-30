@@ -1,0 +1,13 @@
+[package]
+name = "mcnp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+nexus-config.workspace = true
+nexus-core.workspace = true
+nexus-panel.workspace = true
+
+[lints]
+workspace = true

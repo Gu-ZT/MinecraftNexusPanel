@@ -1,0 +1,11 @@
+[package]
+name = "nexus-panel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+nexus-domain.workspace = true
+
+[lints]
+workspace = true

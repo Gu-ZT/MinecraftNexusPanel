@@ -1,0 +1,20 @@
+packages:
+  - frontend/*
+
+allowBuilds:
+  vue-demi: true
+
+# Rolldown's WASI binding still pins @emnapi 1.x, while wasm-runtime 1.2 requires 2.x.
+overrides:
+  '@napi-rs/wasm-runtime': 1.1.6
+
+catalog:
+  '@tanstack/vue-query': 5.101.4
+  '@types/node': 24.10.0
+  '@vitejs/plugin-vue': 6.0.8
+  pinia: 4.0.2
+  typescript: 5.9.3
+  vite: 8.1.5
+  vue: 3.5.40
+  vue-router: 5.2.0
+  vue-tsc: 3.3.8

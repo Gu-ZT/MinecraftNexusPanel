@@ -1,0 +1,26 @@
+{
+  "name": "@mcnp/app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vue-tsc --noEmit -p tsconfig.json && vite build",
+    "dev": "vite --host 127.0.0.1 --port 1420",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@mcnp/api-client": "workspace:*",
+    "@mcnp/platform": "workspace:*",
+    "@mcnp/ui": "workspace:*",
+    "@tanstack/vue-query": "catalog:",
+    "pinia": "catalog:",
+    "vue": "catalog:",
+    "vue-router": "catalog:"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vue-tsc": "catalog:"
+  }
+}
