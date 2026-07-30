@@ -38,6 +38,9 @@ importers:
 
   .:
     devDependencies:
+      '@redocly/cli':
+        specifier: 2.41.2
+        version: 2.41.2
       '@tauri-apps/cli':
         specifier: 2.11.4
         version: 2.11.4
@@ -191,6 +194,11 @@ packages:
 
   '@oxc-project/types@0.139.0':
     resolution: {integrity: sha512-r9gHphtCs+1M7J0pw6Sn/hh/Wpa/iQrOOkrNAlVLF/gHq+/CJmHIWKKUUhdWjcD6CIa8idarspCsASiXCXvFUw==}
+
+  '@redocly/cli@2.41.2':
+    resolution: {integrity: sha512-xCRdFatUF3N6IjAgdWXakolqqfDqUPsXPXW5nS+3xrPd/BXS03olTvOG5DJNlnplusodS7zuu7sGExPJBv8TDw==}
+    engines: {node: '>=22.12.0 || >=20.19.0 <21.0.0', npm: '>=10'}
+    hasBin: true
 
   '@rolldown/binding-android-arm64@1.1.5':
     resolution: {integrity: sha512-lZg8fqIv2v7FF237bwMgzGZEJvGL79/s5knJ/i6FmsGF4XXlzccZ4jb+TrFIxtSSxFtIpdsgrPZeMk1I9AFcyQ==}
@@ -920,6 +928,8 @@ snapshots:
     optional: true
 
   '@oxc-project/types@0.139.0': {}
+
+  '@redocly/cli@2.41.2': {}
 
   '@rolldown/binding-android-arm64@1.1.5':
     optional: true

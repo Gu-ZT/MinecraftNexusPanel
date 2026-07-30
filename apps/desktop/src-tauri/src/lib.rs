@@ -1,5 +1,7 @@
-pub fn run() {
-    tauri::Builder::default()
-        .run(tauri::generate_context!())
-        .expect("failed to run MCNP Desktop");
+use tauri::Builder;
+use tauri::Error;
+use tauri::generate_context;
+
+pub fn run() -> Result<(), Error> {
+    Builder::default().run(generate_context!())
 }

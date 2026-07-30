@@ -1,2 +1,34 @@
-pub const PROTOCOL_VERSION: &str = "1.0";
+mod frame;
+mod frame_codec;
+mod frame_error;
+mod message_codec;
+mod message_error;
+mod noise_transport;
+mod preshared_key;
+mod preshared_key_error;
+mod protocol_version;
+mod protocol_version_error;
+mod session_error;
+mod wire_error;
+mod wire_message;
+
+pub use frame::Frame;
+pub use frame_codec::FrameCodec;
+pub use frame_error::FrameError;
+pub use message_codec::deserialize_message;
+pub use message_codec::serialize_message;
+pub use message_error::MessageError;
+pub use noise_transport::NoiseTransport;
+pub use preshared_key::PresharedKey;
+pub use preshared_key_error::PresharedKeyError;
+pub use protocol_version::ProtocolVersion;
+pub use protocol_version_error::ProtocolVersionError;
+pub use session_error::SessionError;
+pub use wire_error::WireError;
+pub use wire_message::WireMessage;
+
+pub const CURRENT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::new(1, 0);
+pub const MAX_CIPHERTEXT_FRAME_BYTES: usize = 65_535;
+pub const MAX_PLAINTEXT_JSON_BYTES: usize = 60 * 1024;
 pub const NOISE_PROLOGUE: &[u8] = b"MCNP/1";
+pub const PROTOCOL_VERSION: &str = "1.0";

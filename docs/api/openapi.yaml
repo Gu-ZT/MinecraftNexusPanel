@@ -3,8 +3,6 @@ info:
   title: Minecraft Nexus Panel (MCNP) API
   version: 0.1.0-draft
   summary: Panel API for Web, Desktop, and Mobile clients
-  license:
-    name: License not yet selected
   description: |
     Draft v1 contract. Browser clients use a secure session cookie plus CSRF
     token for writes. Native clients use bearer access tokens and rotating
