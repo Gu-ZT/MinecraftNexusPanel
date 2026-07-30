@@ -1,9 +1,29 @@
 mod core_id;
 mod event_id;
+mod instance;
+mod instance_create;
+mod instance_create_error;
+mod instance_id;
+mod instance_id_error;
+mod instance_kind;
+mod instance_page;
+mod instance_runtime;
+mod instance_state;
+mod launch_config;
 mod request_id;
 
 pub use core_id::CoreId;
 pub use event_id::EventId;
+pub use instance::Instance;
+pub use instance_create::InstanceCreate;
+pub use instance_create_error::InstanceCreateError;
+pub use instance_id::InstanceId;
+pub use instance_id_error::InstanceIdError;
+pub use instance_kind::InstanceKind;
+pub use instance_page::InstancePage;
+pub use instance_runtime::InstanceRuntime;
+pub use instance_state::InstanceState;
+pub use launch_config::LaunchConfig;
 pub use request_id::RequestId;
 
 pub const API_VERSION: &str = "v1";

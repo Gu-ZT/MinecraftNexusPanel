@@ -41,7 +41,7 @@ async fn accepts_an_encrypted_session_hello() {
             "panelId": RequestId::new(),
             "panelName": "test-panel",
             "clientVersion": "0.1.0",
-            "capabilities": ["events", "transfer-v1"],
+            "capabilities": ["events", "instances"],
         }),
         deadline: None,
         idempotency_key: None,
@@ -71,8 +71,54 @@ async fn accepts_an_encrypted_session_hello() {
     assert!(ok);
     assert!(error.is_none());
     assert_eq!(result["protocol"], json!(CURRENT_PROTOCOL_VERSION));
-    assert_eq!(result["capabilities"], json!(["events", "transfer-v1"]));
+    assert_eq!(result["capabilities"], json!(["events", "instances"]));
     assert!(result["coreId"].as_str().is_some());
+
+    let invalid_request_id = RequestId::new();
+    transport
+        .write_message(&WireMessage::Request {
+            request_id: invalid_request_id,
+            method: "instance.create".to_owned(),
+            params: json!({
+                "id": "outside",
+                "name": "Outside",
+                "kind": "PAPER",
+                "directory": "../outside",
+                "launch": {
+                    "executable": "java",
+                    "args": [],
+                    "environment": {},
+                    "stopCommand": "stop",
+                    "stopTimeoutSeconds": 30,
+                },
+            }),
+            deadline: None,
+            idempotency_key: None,
+        })
+        .await
+        .expect("invalid instance request is sent");
+
+    let invalid_response = transport
+        .read_message()
+        .await
+        .expect("Core responds to the invalid instance request");
+    let WireMessage::Response {
+        request_id: response_id,
+        ok,
+        result,
+        error,
+    } = invalid_response
+    else {
+        panic!("Core returned a non-response message");
+    };
+
+    assert_eq!(response_id, invalid_request_id);
+    assert!(!ok);
+    assert!(result.is_none());
+    assert_eq!(
+        error.expect("rejected request includes an error").code,
+        "BAD_REQUEST"
+    );
 
     server_task.abort();
     let _ = server_task.await;

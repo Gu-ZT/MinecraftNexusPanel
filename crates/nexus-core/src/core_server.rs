@@ -4,6 +4,10 @@ use std::path::Path;
 
 use nexus_config::CoreConfig;
 use nexus_domain::CoreId;
+use nexus_domain::InstanceCreate;
+use nexus_domain::InstanceId;
+use nexus_domain::InstancePage;
+use nexus_domain::InstanceState;
 use nexus_domain::PRODUCT_VERSION;
 use nexus_domain::RequestId;
 use nexus_protocol::CURRENT_PROTOCOL_VERSION;
@@ -20,16 +24,21 @@ use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 
 use crate::CoreError;
+use crate::InstanceRepository;
+use crate::InstanceRepositoryError;
 
-const CORE_CAPABILITIES: [&str; 4] = ["events", "files", "metrics", "transfer-v1"];
+const CORE_CAPABILITIES: [&str; 2] = ["events", "instances"];
 const CORE_ID_FILE_NAME: &str = "core-id";
 const HEARTBEAT_SECONDS: u64 = 20;
+const INSTANCE_LIST_DEFAULT_LIMIT: usize = 50;
+const INSTANCE_LIST_MAXIMUM_LIMIT: usize = 200;
 
 pub struct CoreServer {
     core_id: CoreId,
     listen_address: SocketAddr,
     listener: TcpListener,
     pre_shared_key: PresharedKey,
+    instances: InstanceRepository,
 }
 
 impl CoreServer {
@@ -55,6 +64,7 @@ impl CoreServer {
             listen_address,
             listener,
             pre_shared_key,
+            instances: InstanceRepository::new(),
         })
     }
 
@@ -68,6 +78,11 @@ impl CoreServer {
         self.listen_address
     }
 
+    #[must_use]
+    pub fn instance_repository(&self) -> InstanceRepository {
+        self.instances.clone()
+    }
+
     pub async fn serve(self) -> Result<(), CoreError> {
         tracing::info!(
             core_id = %self.core_id,
@@ -79,9 +94,10 @@ impl CoreServer {
             let (stream, peer_address) = self.listener.accept().await.map_err(CoreError::Accept)?;
             let core_id = self.core_id;
             let pre_shared_key = self.pre_shared_key.clone();
+            let instances = self.instances.clone();
 
             tokio::spawn(async move {
-                if handle_connection(stream, &pre_shared_key, core_id)
+                if handle_connection(stream, &pre_shared_key, core_id, instances)
                     .await
                     .is_err()
                 {
@@ -100,6 +116,7 @@ async fn handle_connection(
     stream: TcpStream,
     pre_shared_key: &PresharedKey,
     core_id: CoreId,
+    instances: InstanceRepository,
 ) -> Result<(), CoreError> {
     let mut transport = NoiseTransport::accept(stream, pre_shared_key).await?;
     let first_message = transport.read_message().await?;
@@ -119,7 +136,7 @@ async fn handle_connection(
         let Some((request_id, method, params)) = request_parts(message) else {
             return Ok(());
         };
-        let response = request_response(request_id, &method, &params, core_id);
+        let response = request_response(request_id, &method, &params, core_id, &instances);
 
         transport.write_message(&response).await?;
     }
@@ -228,8 +245,9 @@ fn session_hello_response(
 fn request_response(
     request_id: RequestId,
     method: &str,
-    _params: &Value,
+    params: &Value,
     core_id: CoreId,
+    instances: &InstanceRepository,
 ) -> WireMessage {
     match method {
         "system.info" => success_response(
@@ -242,12 +260,157 @@ fn request_response(
             }),
         ),
         "system.ping" => success_response(request_id, json!({ "receivedAt": current_timestamp() })),
+        "instance.create" => instance_create_response(request_id, params, instances),
+        "instance.get" => instance_get_response(request_id, params, instances),
+        "instance.list" => instance_list_response(request_id, params, instances),
         _ => error_response(
             request_id,
             "METHOD_NOT_SUPPORTED",
             "The requested Core method is not supported",
         ),
     }
+}
+
+fn instance_create_response(
+    request_id: RequestId,
+    params: &Value,
+    instances: &InstanceRepository,
+) -> WireMessage {
+    let definition = match serde_json::from_value::<InstanceCreate>(params.clone()) {
+        Ok(definition) => definition,
+        Err(_) => {
+            return error_response(
+                request_id,
+                "BAD_REQUEST",
+                "instance.create requires a valid instance definition",
+            );
+        }
+    };
+
+    match instances.create(definition) {
+        Ok(instance) => success_response(request_id, json!(instance)),
+        Err(InstanceRepositoryError::AlreadyExists { .. }) => error_response(
+            request_id,
+            "INSTANCE_ALREADY_EXISTS",
+            "An instance with this ID already exists",
+        ),
+        Err(InstanceRepositoryError::InvalidInstance(_)) => error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.create requires a valid instance definition",
+        ),
+        Err(error) => repository_failure_response(request_id, &error),
+    }
+}
+
+fn instance_get_response(
+    request_id: RequestId,
+    params: &Value,
+    instances: &InstanceRepository,
+) -> WireMessage {
+    let Some(instance_id) = params
+        .get("instanceId")
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse::<InstanceId>().ok())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.get requires a valid instanceId",
+        );
+    };
+
+    match instances.get(&instance_id) {
+        Ok(Some(instance)) => success_response(request_id, json!(instance)),
+        Ok(None) => error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist"),
+        Err(error) => repository_failure_response(request_id, &error),
+    }
+}
+
+fn instance_list_response(
+    request_id: RequestId,
+    params: &Value,
+    instances: &InstanceRepository,
+) -> WireMessage {
+    let (cursor, limit, state) = match instance_list_parameters(params) {
+        Ok(parameters) => parameters,
+        Err(()) => {
+            return error_response(
+                request_id,
+                "BAD_REQUEST",
+                "instance.list parameters are invalid",
+            );
+        }
+    };
+    let instances = match instances.list() {
+        Ok(instances) => instances,
+        Err(error) => return repository_failure_response(request_id, &error),
+    };
+    let filtered = match state {
+        Some(state) => instances
+            .into_iter()
+            .filter(|instance| instance.runtime().state() == state)
+            .collect::<Vec<_>>(),
+        None => instances,
+    };
+    let start_index = cursor.as_ref().map_or(0, |cursor| {
+        filtered.partition_point(|instance| instance.id() <= cursor)
+    });
+    let has_more = filtered.len().saturating_sub(start_index) > limit;
+    let page = filtered
+        .into_iter()
+        .skip(start_index)
+        .take(limit)
+        .collect::<Vec<_>>();
+    let next_cursor = if has_more {
+        page.last().map(|instance| instance.id().to_string())
+    } else {
+        None
+    };
+
+    success_response(request_id, json!(InstancePage::new(page, next_cursor)))
+}
+
+fn instance_list_parameters(
+    params: &Value,
+) -> Result<(Option<InstanceId>, usize, Option<InstanceState>), ()> {
+    let cursor = match params.get("cursor") {
+        Some(value) => Some(
+            value
+                .as_str()
+                .ok_or(())?
+                .parse::<InstanceId>()
+                .map_err(|_| ())?,
+        ),
+        None => None,
+    };
+    let limit = match params.get("limit") {
+        Some(value) => value
+            .as_u64()
+            .and_then(|value| usize::try_from(value).ok())
+            .filter(|value| (1..=INSTANCE_LIST_MAXIMUM_LIMIT).contains(value))
+            .ok_or(())?,
+        None => INSTANCE_LIST_DEFAULT_LIMIT,
+    };
+    let state = match params.get("state") {
+        Some(value) => Some(serde_json::from_value(value.clone()).map_err(|_| ())?),
+        None => None,
+    };
+
+    Ok((cursor, limit, state))
+}
+
+fn repository_failure_response(
+    request_id: RequestId,
+    error: &InstanceRepositoryError,
+) -> WireMessage {
+    tracing::error!(error = %error, "Core instance repository is unavailable");
+
+    error_response(
+        request_id,
+        "INTERNAL_ERROR",
+        "Core instance repository is unavailable",
+    )
 }
 
 fn protocol_from_hello(params: &Value) -> Option<ProtocolVersion> {

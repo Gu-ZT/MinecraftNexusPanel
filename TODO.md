@@ -5,7 +5,7 @@
 ## 当前重点
 
 - [x] 完成 M0：工程契约、配置、日志、请求 ID、协议编解码与 CI。
-- [ ] 启动 M1：Core/Panel 最小纵向链路。
+- [x] 启动 M1：Core/Panel 最小纵向链路。
 
 ## M0：设计冻结与工程骨架
 
@@ -27,11 +27,12 @@
 ### 当前进展
 
 - [x] Core TCP：Noise NNpsk0 PSK 握手、加密帧、`session.hello`/`session.welcome`、`system.ping`、`system.info` 与持久化 `coreId`。
+- [x] Core：内存实例仓储，支持 `instance.create`、`instance.list`、`instance.get`、输入校验和分页读取。
 - [x] Panel：Core 加密连接客户端、Panel HTTP 存活/就绪探针、请求 ID 中间件与 SQLite 初始化基础。
 - [x] `all`：预先校验 Core/Panel 监听器并并发运行，不绕过 Core TCP 接口。
 
-- [ ] Core：TCP 监听、Noise PSK 握手与 `session.hello` / `session.welcome`。
-- [ ] Core：节点信息、实例内存仓储、实例列表和详情读取。
+- [x] Core：TCP 监听、Noise PSK 握手与 `session.hello` / `session.welcome`。
+- [x] Core：节点信息、实例内存仓储、实例创建、列表和详情读取。
 - [ ] Core：安全测试进程启动、停止、终止与状态事件。
 - [ ] Core：实例 stdin 命令、stdout/stderr 游标日志与基础指标。
 - [ ] Panel：SQLite 初始化、首位管理员初始化和登录会话。

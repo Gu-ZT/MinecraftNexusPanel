@@ -1,6 +1,10 @@
 use std::net::SocketAddr;
 
 use nexus_domain::CoreId;
+use nexus_domain::Instance;
+use nexus_domain::InstanceCreate;
+use nexus_domain::InstanceId;
+use nexus_domain::InstancePage;
 use nexus_domain::PRODUCT_VERSION;
 use nexus_domain::RequestId;
 use nexus_protocol::CURRENT_PROTOCOL_VERSION;
@@ -14,7 +18,7 @@ use tokio::net::TcpStream;
 
 use crate::CoreConnectionError;
 
-const PANEL_CAPABILITIES: [&str; 2] = ["events", "transfer-v1"];
+const PANEL_CAPABILITIES: [&str; 2] = ["events", "instances"];
 
 pub struct CoreConnection {
     capabilities: Vec<String>,
@@ -113,6 +117,38 @@ impl CoreConnection {
 
     pub async fn system_info(&mut self) -> Result<Value, CoreConnectionError> {
         self.request("system.info", json!({})).await
+    }
+
+    pub async fn create_instance(
+        &mut self,
+        instance: &InstanceCreate,
+    ) -> Result<Instance, CoreConnectionError> {
+        let params = serde_json::to_value(instance)
+            .map_err(|_| CoreConnectionError::InvalidResponse { field: "instance" })?;
+        let result = self.request("instance.create", params).await?;
+
+        serde_json::from_value(result)
+            .map_err(|_| CoreConnectionError::InvalidResponse { field: "instance" })
+    }
+
+    pub async fn get_instance(
+        &mut self,
+        instance_id: &InstanceId,
+    ) -> Result<Instance, CoreConnectionError> {
+        let result = self
+            .request("instance.get", json!({ "instanceId": instance_id }))
+            .await?;
+
+        serde_json::from_value(result)
+            .map_err(|_| CoreConnectionError::InvalidResponse { field: "instance" })
+    }
+
+    pub async fn list_instances(&mut self) -> Result<InstancePage, CoreConnectionError> {
+        let result = self.request("instance.list", json!({})).await?;
+
+        serde_json::from_value(result).map_err(|_| CoreConnectionError::InvalidResponse {
+            field: "instancePage",
+        })
     }
 
     async fn request(&mut self, method: &str, params: Value) -> Result<Value, CoreConnectionError> {
