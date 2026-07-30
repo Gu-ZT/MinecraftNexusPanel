@@ -1,29 +1,37 @@
+<div align="center">
+
+<img src="assets/mcnp-icon.png" width="256" height="256" alt="Minecraft Nexus Panel icon">
+
 # Minecraft Nexus Panel
 
-Minecraft Nexus Panel（MCNP）是支持 Core、Panel、All、Desktop 与 Mobile 形态的 Minecraft 服务器管理工具。
+**A multi-node Minecraft server management platform for web, desktop, and mobile operations.**
 
-## 工程布局
+English | [简体中文](README.zh_CN.md)
+
+</div>
+
+## Project Layout
 
 ```text
 apps/
-  nexus/              core、panel、all 统一命令行入口
-  desktop/src-tauri/  Tauri Desktop 壳
-  mobile/src-tauri/   Tauri Mobile 壳
+  nexus/              Unified CLI entry point for core, panel, and all modes
+  desktop/src-tauri/  Tauri Desktop shell
+  mobile/src-tauri/   Tauri Mobile shell
 crates/
-  nexus-domain/       共享领域类型
-  nexus-protocol/     Core TCP 协议
-  nexus-core/         节点和实例执行能力
-  nexus-panel/        HTTP、鉴权与节点连接池
-  nexus-storage/      SQLite/PostgreSQL 存储实现
-  nexus-config/       配置加载与运行模式
+  nexus-domain/       Shared domain types
+  nexus-protocol/     Core TCP protocol
+  nexus-core/         Node and instance execution capabilities
+  nexus-panel/        HTTP, authentication, and Core connection pool
+  nexus-storage/      SQLite/PostgreSQL storage implementations
+  nexus-config/       Configuration loading and runtime modes
 frontend/
-  app/                Web、Desktop、Mobile 统一 Vue 3 应用
-  api-client/         OpenAPI 生成客户端的承载包
-  ui/                 共享组件和设计令牌
-  platform/           Browser/Tauri 平台适配器
+  app/                Shared Vue 3 application for Web, Desktop, and Mobile
+  api-client/         Package for the generated OpenAPI client
+  ui/                 Shared components and design tokens
+  platform/           Browser/Tauri platform adapters
 ```
 
-## 本地命令
+## Local Commands
 
 ```powershell
 cargo test --workspace
@@ -35,4 +43,4 @@ pnpm build
 pnpm dev
 ```
 
-协议和产品范围见 [PLAN.md](PLAN.md) 与 [docs/api](docs/api/README.md)。
+See [PLAN.md](PLAN.md) and the [API documentation](docs/api/README.md) for the protocol design and product scope.
