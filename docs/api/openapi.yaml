@@ -1108,6 +1108,7 @@ components:
         - status
         - capabilities
         - secretConfigured
+        - skipCertificateVerification
         - tags
         - revision
       properties:
@@ -1117,6 +1118,7 @@ components:
           type: string
         address:
           type: string
+          description: IP/localhost host:port or a tls, mcnp, or https URL
         status:
           $ref: '#/components/schemas/CoreStatus'
         latencyMs:
@@ -1138,6 +1140,13 @@ components:
         secretUpdatedAt:
           type: [ string, 'null' ]
           format: date-time
+        skipCertificateVerification:
+          type: boolean
+        certificateVerified:
+          type: [ boolean, 'null' ]
+        tlsCertificateSha256:
+          type: [ string, 'null' ]
+          pattern: '^[0-9a-f]{64}$'
         tags:
           type: array
           items:
@@ -1155,7 +1164,7 @@ components:
           maxLength: 128
         address:
           type: string
-          description: Host and TCP port
+          description: IP/localhost host:port or a tls, mcnp, or https URL
         secret:
           type: string
           minLength: 32
@@ -1165,6 +1174,9 @@ components:
           minimum: 1
           maximum: 60
           default: 10
+        skipCertificateVerification:
+          type: boolean
+          default: false
         tags:
           type: array
           maxItems: 32
@@ -1187,6 +1199,8 @@ components:
           type: integer
           minimum: 1
           maximum: 60
+        skipCertificateVerification:
+          type: boolean
         tags:
           type: array
           maxItems: 32
@@ -1329,7 +1343,7 @@ components:
           type: string
     LogPage:
       type: object
-      required: [ items, nextCursor ]
+      required: [ items, nextCursor, eventCursor ]
       properties:
         items:
           type: array
@@ -1337,6 +1351,9 @@ components:
             $ref: '#/components/schemas/LogLine'
         nextCursor:
           type: [ string, 'null' ]
+        eventCursor:
+          type: string
+          description: Snapshot baseline used to subscribe to incremental console events
     InstanceMetricSample:
       type: object
       required:

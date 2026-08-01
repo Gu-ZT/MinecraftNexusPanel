@@ -3,6 +3,7 @@
 ## 1. 连接
 
 WebSocket 用于 Core 状态、实例状态、控制台、指标和任务进度。资源的初始快照仍通过 REST 获取，WebSocket 只传递变化和实时流。
+终端页面必须先读取 REST 日志历史，再以历史响应的 `eventCursor` 订阅控制台 topic；不能通过 WebSocket 请求完整历史。
 
 连接流程：
 

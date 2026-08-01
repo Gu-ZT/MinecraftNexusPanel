@@ -49,9 +49,9 @@ impl InstanceLogStore {
         stream: InstanceLogStream,
         line: String,
     ) -> Result<InstanceLogLine, InstanceLogStoreError> {
+        let mut lines = self.lock_lines()?;
         let cursor = self.cursor.fetch_add(1, Ordering::Relaxed);
         let log_line = InstanceLogLine::new(cursor.to_string(), current_timestamp(), stream, line);
-        let mut lines = self.lock_lines()?;
         let instance_lines = lines.entry(instance_id.clone()).or_default();
         instance_lines.push_back((cursor, log_line.clone()));
         while instance_lines.len() > MAXIMUM_LINES_PER_INSTANCE {
@@ -84,6 +84,11 @@ impl InstanceLogStore {
         limit: usize,
     ) -> Result<InstanceLogPage, InstanceLogStoreError> {
         let lines = self.lock_lines()?;
+        let event_cursor = self
+            .cursor
+            .load(Ordering::Relaxed)
+            .saturating_sub(1)
+            .to_string();
         let filtered = lines
             .get(instance_id)
             .into_iter()
@@ -116,7 +121,7 @@ impl InstanceLogStore {
         .map(InstanceLogLine::cursor)
         .map(str::to_owned);
 
-        Ok(InstanceLogPage::new(items, next_cursor))
+        Ok(InstanceLogPage::new(items, next_cursor, event_cursor))
     }
 
     fn lock_lines(&self) -> Result<MutexGuard<'_, InstanceLogLines>, InstanceLogStoreError> {

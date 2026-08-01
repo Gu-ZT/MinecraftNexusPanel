@@ -17,8 +17,10 @@ use nexus_domain::TaskId;
 use nexus_protocol::CURRENT_PROTOCOL_VERSION;
 use nexus_protocol::NoiseTransport;
 use nexus_protocol::PresharedKey;
+use nexus_protocol::TlsClientStream;
 use nexus_protocol::WireError;
 use nexus_protocol::WireMessage;
+use nexus_protocol::connect_tls;
 use serde_json::Value;
 use serde_json::from_value;
 use serde_json::json;
@@ -30,6 +32,7 @@ use tokio::time::sleep;
 use tokio::time::timeout;
 
 const TEST_PSK: &str = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY";
+type TestTransport = NoiseTransport<TlsClientStream<TcpStream>>;
 
 #[tokio::test]
 async fn starts_stops_and_kills_a_safe_test_process_with_state_events() {
@@ -49,6 +52,9 @@ async fn starts_stops_and_kills_a_safe_test_process_with_state_events() {
     let stream = TcpStream::connect(listen_address)
         .await
         .expect("Panel connects to Core");
+    let (stream, _) = connect_tls(stream, "localhost".to_owned(), false)
+        .await
+        .expect("TLS handshake succeeds");
     let mut transport = NoiseTransport::connect(stream, &pre_shared_key)
         .await
         .expect("Noise handshake succeeds");
@@ -229,6 +235,19 @@ async fn starts_stops_and_kills_a_safe_test_process_with_state_events() {
         logs.items()
             .iter()
             .any(|line| { line.stream() == InstanceLogStream::Stderr && line.line() == "warning" })
+    );
+    let latest_log_cursor = logs
+        .items()
+        .last()
+        .expect("logs contain a latest line")
+        .cursor()
+        .parse::<u64>()
+        .expect("latest log cursor is numeric");
+    assert!(
+        logs.event_cursor()
+            .parse::<u64>()
+            .expect("event cursor is numeric")
+            >= latest_log_cursor
     );
 
     let first_page = read_log_page(&mut transport, &instance_id, None, None, Some(1)).await;
@@ -412,7 +431,7 @@ async fn starts_stops_and_kills_a_safe_test_process_with_state_events() {
     let _ = server_task.await;
 }
 
-async fn establish_session(transport: &mut NoiseTransport<TcpStream>) {
+async fn establish_session(transport: &mut TestTransport) {
     let request_id = send_request(
         transport,
         "session.hello",
@@ -431,7 +450,7 @@ async fn establish_session(transport: &mut NoiseTransport<TcpStream>) {
 }
 
 async fn send_request(
-    transport: &mut NoiseTransport<TcpStream>,
+    transport: &mut TestTransport,
     method: &str,
     params: Value,
     idempotency_key: Option<&str>,
@@ -452,7 +471,7 @@ async fn send_request(
 }
 
 async fn read_success(
-    transport: &mut NoiseTransport<TcpStream>,
+    transport: &mut TestTransport,
     expected_request_id: RequestId,
     observed_states: &mut Vec<InstanceState>,
 ) -> Value {
@@ -481,7 +500,7 @@ async fn read_success(
 }
 
 async fn read_success_with_console(
-    transport: &mut NoiseTransport<TcpStream>,
+    transport: &mut TestTransport,
     expected_request_id: RequestId,
     observed_states: &mut Vec<InstanceState>,
     console_lines: &mut Vec<String>,
@@ -513,10 +532,7 @@ async fn read_success_with_console(
     }
 }
 
-async fn read_error(
-    transport: &mut NoiseTransport<TcpStream>,
-    expected_request_id: RequestId,
-) -> WireError {
+async fn read_error(transport: &mut TestTransport, expected_request_id: RequestId) -> WireError {
     loop {
         match transport
             .read_message()
@@ -541,7 +557,7 @@ async fn read_error(
 }
 
 async fn wait_for_state(
-    transport: &mut NoiseTransport<TcpStream>,
+    transport: &mut TestTransport,
     expected_state: InstanceState,
     observed_states: &mut Vec<InstanceState>,
 ) {
@@ -562,7 +578,7 @@ async fn wait_for_state(
 }
 
 async fn wait_for_console_line(
-    transport: &mut NoiseTransport<TcpStream>,
+    transport: &mut TestTransport,
     expected_line: &str,
     observed_states: &mut Vec<InstanceState>,
     console_lines: &mut Vec<String>,
@@ -588,7 +604,7 @@ async fn wait_for_console_line(
 }
 
 async fn wait_for_log_lines(
-    transport: &mut NoiseTransport<TcpStream>,
+    transport: &mut TestTransport,
     instance_id: &InstanceId,
     expected_lines: &[&str],
 ) -> InstanceLogPage {
@@ -609,7 +625,7 @@ async fn wait_for_log_lines(
 }
 
 async fn read_log_page(
-    transport: &mut NoiseTransport<TcpStream>,
+    transport: &mut TestTransport,
     instance_id: &InstanceId,
     after: Option<&str>,
     before: Option<&str>,

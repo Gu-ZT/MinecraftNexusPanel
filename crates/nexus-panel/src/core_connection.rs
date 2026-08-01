@@ -14,7 +14,9 @@ use nexus_protocol::CURRENT_PROTOCOL_VERSION;
 use nexus_protocol::NoiseTransport;
 use nexus_protocol::PresharedKey;
 use nexus_protocol::ProtocolVersion;
+use nexus_protocol::TlsClientStream;
 use nexus_protocol::WireMessage;
+use nexus_protocol::connect_tls;
 use serde_json::Value;
 use serde_json::from_value;
 use serde_json::json;
@@ -22,6 +24,7 @@ use serde_json::to_value;
 use tokio::net::TcpStream;
 
 use crate::CoreConnectionError;
+use crate::CoreEndpoint;
 
 const PANEL_CAPABILITIES: [&str; 3] = ["events", "instances", "metrics"];
 
@@ -30,7 +33,8 @@ pub struct CoreConnection {
     core_id: CoreId,
     heartbeat_seconds: u64,
     protocol: ProtocolVersion,
-    transport: NoiseTransport<TcpStream>,
+    tls_certificate_sha256: String,
+    transport: NoiseTransport<TlsClientStream<TcpStream>>,
 }
 
 impl CoreConnection {
@@ -40,9 +44,46 @@ impl CoreConnection {
         panel_id: &str,
         panel_name: &str,
     ) -> Result<Self, CoreConnectionError> {
-        let stream = TcpStream::connect(address)
+        Self::connect_endpoint(
+            &CoreEndpoint::from_socket_address(address),
+            pre_shared_key,
+            panel_id,
+            panel_name,
+        )
+        .await
+    }
+
+    pub async fn connect_address(
+        address: &str,
+        skip_certificate_verification: bool,
+        pre_shared_key: &PresharedKey,
+        panel_id: &str,
+        panel_name: &str,
+    ) -> Result<Self, CoreConnectionError> {
+        let endpoint = CoreEndpoint::parse(address, skip_certificate_verification)?;
+
+        Self::connect_endpoint(&endpoint, pre_shared_key, panel_id, panel_name).await
+    }
+
+    pub async fn connect_endpoint(
+        endpoint: &CoreEndpoint,
+        pre_shared_key: &PresharedKey,
+        panel_id: &str,
+        panel_name: &str,
+    ) -> Result<Self, CoreConnectionError> {
+        let address = format!("{}:{}", endpoint.host(), endpoint.port());
+        let stream = TcpStream::connect((endpoint.host(), endpoint.port()))
             .await
-            .map_err(|source| CoreConnectionError::Connect { address, source })?;
+            .map_err(|source| CoreConnectionError::Connect {
+                address: address.clone(),
+                source,
+            })?;
+        let (stream, tls_certificate_sha256) = connect_tls(
+            stream,
+            endpoint.host().to_owned(),
+            endpoint.verify_certificate(),
+        )
+        .await?;
         let mut transport = NoiseTransport::connect(stream, pre_shared_key).await?;
         let request_id = RequestId::new();
         let hello = WireMessage::Request {
@@ -78,12 +119,23 @@ impl CoreConnection {
             .ok_or(CoreConnectionError::InvalidResponse {
                 field: "heartbeatSeconds",
             })?;
+        let welcome_certificate_sha256 = response_field(&welcome, "tlsCertificateSha256")?;
+        let welcome_certificate_sha256 =
+            welcome_certificate_sha256
+                .as_str()
+                .ok_or(CoreConnectionError::InvalidResponse {
+                    field: "tlsCertificateSha256",
+                })?;
+        if welcome_certificate_sha256 != tls_certificate_sha256 {
+            return Err(CoreConnectionError::CertificateFingerprintMismatch);
+        }
 
         Ok(Self {
             capabilities,
             core_id,
             heartbeat_seconds,
             protocol,
+            tls_certificate_sha256,
             transport,
         })
     }
@@ -106,6 +158,11 @@ impl CoreConnection {
     #[must_use]
     pub const fn protocol(&self) -> ProtocolVersion {
         self.protocol
+    }
+
+    #[must_use]
+    pub fn tls_certificate_sha256(&self) -> &str {
+        &self.tls_certificate_sha256
     }
 
     pub async fn ping(&mut self) -> Result<String, CoreConnectionError> {

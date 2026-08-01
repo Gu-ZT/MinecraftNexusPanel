@@ -1,6 +1,8 @@
 mod core_error;
 mod core_request_state;
 mod core_server;
+mod core_tls_identity;
+mod core_tls_identity_error;
 mod instance_log_store;
 mod instance_log_store_error;
 mod instance_process;
@@ -16,6 +18,8 @@ pub use core_error::CoreError;
 use core_request_state::CoreRequestState;
 pub use core_server::CoreServer;
 pub use core_server::run;
+use core_tls_identity::CoreTlsIdentity;
+pub use core_tls_identity_error::CoreTlsIdentityError;
 use instance_log_store::InstanceLogStore;
 pub use instance_log_store_error::InstanceLogStoreError;
 use instance_process::InstanceProcess;

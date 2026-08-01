@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use nexus_protocol::SessionError;
 use thiserror::Error;
 
+use crate::CoreTlsIdentityError;
+
 #[derive(Debug, Error)]
 pub enum CoreError {
     #[error("failed to accept a Core TCP connection")]
@@ -33,6 +35,8 @@ pub enum CoreError {
     },
     #[error(transparent)]
     Session(#[from] SessionError),
+    #[error(transparent)]
+    TlsIdentity(#[from] CoreTlsIdentityError),
     #[error("failed to write the Core identity file {path}")]
     WriteCoreIdentity {
         path: PathBuf,

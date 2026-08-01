@@ -29,9 +29,9 @@ flowchart LR
     Browser <-->|HTTPS + WebSocket| Panel
     Mobile <-->|HTTPS + WebSocket| Panel
     Desktop <-->|Local or remote Web API| Panel
-    Panel <-->|Noise PSK over TCP| CoreA
-    Panel <-->|Noise PSK over TCP| CoreB
-    Panel <-->|Noise PSK over TCP| CoreC
+    Panel <-->|Noise PSK over TLS/TCP| CoreA
+    Panel <-->|Noise PSK over TLS/TCP| CoreB
+    Panel <-->|Noise PSK over TLS/TCP| CoreC
 ```
 
 - Core 只信任持有节点连接密钥的 Panel，不处理终端用户身份。
@@ -72,8 +72,8 @@ MinecraftNexusPanel/
 
 ### 4.1 Core 连接协议
 
-- 传输层为 TCP，应用层使用长度前缀帧。
-- 使用预共享密钥（PSK）完成 Noise 握手并加密后续流量，密钥本身不在网络中传输。
+- 传输层为 TLS/TCP，应用层使用长度前缀帧；Core 支持自定义证书，未配置时持久化生成自签名身份。
+- TLS 验证 Core 身份并派生传输密钥；TLS 流内继续使用 PSK 完成 Noise 握手，PSK 本身不在网络中传输。
 - v1 载荷使用 UTF-8 JSON，优先可调试性；大文件使用分块传输，避免单帧无限膨胀。
 - 每个请求必须携带 `requestId`，响应原样返回；事件使用独立 `eventId` 和单调递增序号。
 - Panel 维护连接池、心跳和指数退避重连；Core 不主动连接 Panel。

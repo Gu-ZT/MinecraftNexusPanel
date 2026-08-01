@@ -4,7 +4,9 @@ use nexus_domain::RequestId;
 use nexus_protocol::CURRENT_PROTOCOL_VERSION;
 use nexus_protocol::NoiseTransport;
 use nexus_protocol::PresharedKey;
+use nexus_protocol::TlsError;
 use nexus_protocol::WireMessage;
+use nexus_protocol::connect_tls;
 use serde_json::json;
 use tempfile::tempdir;
 use tokio::net::TcpStream;
@@ -29,6 +31,9 @@ async fn accepts_an_encrypted_session_hello() {
     let stream = TcpStream::connect(listen_address)
         .await
         .expect("Panel connects to Core");
+    let (stream, certificate_sha256) = connect_tls(stream, "localhost".to_owned(), false)
+        .await
+        .expect("TLS handshake succeeds");
     let mut transport = NoiseTransport::connect(stream, &pre_shared_key)
         .await
         .expect("Noise handshake succeeds");
@@ -73,6 +78,7 @@ async fn accepts_an_encrypted_session_hello() {
     assert_eq!(result["protocol"], json!(CURRENT_PROTOCOL_VERSION));
     assert_eq!(result["capabilities"], json!(["events", "instances"]));
     assert!(result["coreId"].as_str().is_some());
+    assert_eq!(result["tlsCertificateSha256"], certificate_sha256);
 
     let invalid_request_id = RequestId::new();
     transport
@@ -137,6 +143,7 @@ async fn retains_the_same_core_id_between_listener_restarts() {
         .await
         .expect("first Core listener binds");
     let first_id = first_server.core_id();
+    let first_certificate_sha256 = first_server.certificate_sha256().to_owned();
 
     drop(first_server);
 
@@ -145,4 +152,54 @@ async fn retains_the_same_core_id_between_listener_restarts() {
         .expect("second Core listener binds");
 
     assert_eq!(second_server.core_id(), first_id);
+    assert_eq!(second_server.certificate_sha256(), first_certificate_sha256);
+    assert!(data_directory.path().join("tls/core-cert.pem").is_file());
+    assert!(data_directory.path().join("tls/core-key.pem").is_file());
+
+    let configured = CoreConfig::new(
+        "127.0.0.1:0".to_owned(),
+        data_directory.path().to_path_buf(),
+        Some(TEST_PSK.to_owned()),
+    )
+    .expect("test Core configuration is valid")
+    .with_tls_identity_paths(
+        Some(data_directory.path().join("tls/core-cert.pem")),
+        Some(data_directory.path().join("tls/core-key.pem")),
+    )
+    .expect("configured TLS identity paths are valid");
+    drop(second_server);
+    let configured_server = CoreServer::bind(&configured)
+        .await
+        .expect("configured Core TLS identity loads");
+    assert_eq!(
+        configured_server.certificate_sha256(),
+        first_certificate_sha256
+    );
+}
+
+#[tokio::test]
+async fn rejects_the_default_certificate_when_strict_verification_is_requested() {
+    let data_directory = tempdir().expect("temporary Core data directory is created");
+    let config = CoreConfig::new(
+        "127.0.0.1:0".to_owned(),
+        data_directory.path().to_path_buf(),
+        Some(TEST_PSK.to_owned()),
+    )
+    .expect("test Core configuration is valid");
+    let server = CoreServer::bind(&config)
+        .await
+        .expect("Core listener binds");
+    let listen_address = server.listen_address();
+    let server_task = tokio::spawn(server.serve());
+    let stream = TcpStream::connect(listen_address)
+        .await
+        .expect("Panel connects to Core");
+
+    let error = connect_tls(stream, "localhost".to_owned(), true)
+        .await
+        .expect_err("strict verification rejects the self-signed certificate");
+    assert!(matches!(error, TlsError::Handshake(_)));
+
+    server_task.abort();
+    let _ = server_task.await;
 }

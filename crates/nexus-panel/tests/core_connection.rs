@@ -33,10 +33,12 @@ async fn connects_to_a_core_and_reads_its_system_info() {
         .await
         .expect("Core listener binds");
     let listen_address = server.listen_address();
+    let certificate_sha256 = server.certificate_sha256().to_owned();
     let server_task = spawn(server.serve());
     let pre_shared_key = PresharedKey::from_base64url(TEST_PSK).expect("test PSK is valid");
-    let mut connection = CoreConnection::connect(
-        listen_address,
+    let mut connection = CoreConnection::connect_address(
+        &listen_address.to_string(),
+        false,
         &pre_shared_key,
         "test-panel-id",
         "test-panel",
@@ -69,6 +71,7 @@ async fn connects_to_a_core_and_reads_its_system_info() {
     assert!(connection.capabilities().contains(&"metrics".to_owned()));
     assert_eq!(system_info["coreId"], connection.core_id().to_string());
     assert_eq!(connection.heartbeat_seconds(), 20);
+    assert_eq!(connection.tls_certificate_sha256(), certificate_sha256);
     assert_eq!(created.revision(), 1);
     assert_eq!(instances.items().len(), 1);
     assert_eq!(instances.items().first(), Some(&created));

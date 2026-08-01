@@ -1,6 +1,8 @@
+mod certificate_fingerprint;
 mod frame;
 mod frame_codec;
 mod frame_error;
+mod insecure_server_certificate_verifier;
 mod message_codec;
 mod message_error;
 mod noise_transport;
@@ -9,9 +11,12 @@ mod preshared_key_error;
 mod protocol_version;
 mod protocol_version_error;
 mod session_error;
+mod tls_client;
+mod tls_error;
 mod wire_error;
 mod wire_message;
 
+pub use certificate_fingerprint::certificate_sha256;
 pub use frame::Frame;
 pub use frame_codec::FrameCodec;
 pub use frame_error::FrameError;
@@ -24,6 +29,9 @@ pub use preshared_key_error::PresharedKeyError;
 pub use protocol_version::ProtocolVersion;
 pub use protocol_version_error::ProtocolVersionError;
 pub use session_error::SessionError;
+pub use tls_client::TlsClientStream;
+pub use tls_client::connect_tls;
+pub use tls_error::TlsError;
 pub use wire_error::WireError;
 pub use wire_message::WireMessage;
 

@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::net::SocketAddr;
 use std::path::Path;
+use std::sync::Arc;
 
 use nexus_config::CoreConfig;
 use nexus_domain::CoreId;
@@ -23,14 +24,17 @@ use serde_json::from_value;
 use serde_json::json;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
 use tokio::net::TcpListener;
-use tokio::net::TcpStream;
 use tokio::select;
 use tokio::spawn;
 use tokio::sync::broadcast::error::RecvError;
+use tokio_rustls::TlsAcceptor;
 
 use crate::CoreError;
 use crate::CoreRequestState;
+use crate::CoreTlsIdentity;
 use crate::InstanceProcessError;
 use crate::InstanceProcessManager;
 use crate::InstanceRepository;
@@ -47,11 +51,13 @@ const INSTANCE_LOG_MAXIMUM_LIMIT: usize = 200;
 
 pub struct CoreServer {
     core_id: CoreId,
+    certificate_sha256: Arc<str>,
     listen_address: SocketAddr,
     listener: TcpListener,
     pre_shared_key: PresharedKey,
     instances: InstanceRepository,
     processes: InstanceProcessManager,
+    tls_acceptor: TlsAcceptor,
 }
 
 impl CoreServer {
@@ -60,6 +66,7 @@ impl CoreServer {
             .pre_shared_key()
             .ok_or(CoreError::MissingPreSharedKey)?
             .clone();
+        let tls_identity = CoreTlsIdentity::load_or_create(config)?;
         let core_id = load_or_create_core_id(config.data_directory())?;
         let listener = TcpListener::bind(config.listen_address())
             .await
@@ -78,17 +85,24 @@ impl CoreServer {
 
         Ok(Self {
             core_id,
+            certificate_sha256: Arc::from(tls_identity.certificate_sha256()),
             listen_address,
             listener,
             pre_shared_key,
             instances,
             processes,
+            tls_acceptor: tls_identity.acceptor(),
         })
     }
 
     #[must_use]
     pub const fn core_id(&self) -> CoreId {
         self.core_id
+    }
+
+    #[must_use]
+    pub fn certificate_sha256(&self) -> &str {
+        &self.certificate_sha256
     }
 
     #[must_use]
@@ -111,14 +125,30 @@ impl CoreServer {
         loop {
             let (stream, peer_address) = self.listener.accept().await.map_err(CoreError::Accept)?;
             let core_id = self.core_id;
+            let certificate_sha256 = self.certificate_sha256.clone();
             let pre_shared_key = self.pre_shared_key.clone();
             let instances = self.instances.clone();
             let processes = self.processes.clone();
+            let tls_acceptor = self.tls_acceptor.clone();
 
             spawn(async move {
-                if handle_connection(stream, &pre_shared_key, core_id, instances, processes)
-                    .await
-                    .is_err()
+                let stream = match tls_acceptor.accept(stream).await {
+                    Ok(stream) => stream,
+                    Err(error) => {
+                        tracing::debug!(%peer_address, %error, "Core TLS handshake failed");
+                        return;
+                    }
+                };
+                if handle_connection(
+                    stream,
+                    &pre_shared_key,
+                    core_id,
+                    &certificate_sha256,
+                    instances,
+                    processes,
+                )
+                .await
+                .is_err()
                 {
                     tracing::debug!(%peer_address, "Core TCP connection closed during protocol handling");
                 }
@@ -131,20 +161,24 @@ pub async fn run(config: &CoreConfig) -> Result<(), CoreError> {
     CoreServer::bind(config).await?.serve().await
 }
 
-async fn handle_connection(
-    stream: TcpStream,
+async fn handle_connection<S>(
+    stream: S,
     pre_shared_key: &PresharedKey,
     core_id: CoreId,
+    certificate_sha256: &str,
     instances: InstanceRepository,
     processes: InstanceProcessManager,
-) -> Result<(), CoreError> {
+) -> Result<(), CoreError>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
     let mut transport = NoiseTransport::accept(stream, pre_shared_key).await?;
     let first_message = transport.read_message().await?;
     let Some((request_id, method, params, _)) = request_parts(first_message) else {
         return Ok(());
     };
     let (response, session_established) =
-        session_hello_response(request_id, &method, &params, core_id);
+        session_hello_response(request_id, &method, &params, core_id, certificate_sha256);
 
     transport.write_message(&response).await?;
     if !session_established {
@@ -240,6 +274,7 @@ fn session_hello_response(
     method: &str,
     params: &Value,
     core_id: CoreId,
+    certificate_sha256: &str,
 ) -> (WireMessage, bool) {
     if method != "session.hello" {
         return (
@@ -281,6 +316,7 @@ fn session_hello_response(
                 "coreId": core_id,
                 "coreName": "MCNP Core",
                 "serverVersion": PRODUCT_VERSION,
+                "tlsCertificateSha256": certificate_sha256,
                 "capabilities": negotiated_capabilities(params),
                 "sessionId": RequestId::new(),
                 "heartbeatSeconds": HEARTBEAT_SECONDS,

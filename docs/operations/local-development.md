@@ -10,6 +10,9 @@
 
 Core 只从环境变量 `MCNP_CORE_PSK` 读取连接密钥，不接受命令行密钥，避免其出现在 shell 历史或进程列表中。密钥必须是至少 32 个随机字节的无填充 Base64URL。
 
+Core 默认在数据目录的 `tls/` 下生成并复用自签名证书。需要使用自有证书时，同时设置 `MCNP_CORE_TLS_CERT` 和
+`MCNP_CORE_TLS_KEY` 为 PEM 文件路径。域名连接默认要求受信任证书；本地开发使用 IP/localhost 时自动跳过证书链验证。
+
 ```powershell
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ```

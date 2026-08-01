@@ -13,6 +13,8 @@ pub enum ConfigError {
     InvalidSocketAddress { option: &'static str, value: String },
     #[error("invalid Core pre-shared key")]
     InvalidCorePreSharedKey(#[source] PresharedKeyError),
+    #[error("Core TLS certificate and private key must be configured together")]
+    IncompleteCoreTlsIdentity,
     #[error("logging filter cannot be empty")]
     EmptyLogFilter,
     #[error("missing value for {option}")]

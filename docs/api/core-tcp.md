@@ -21,7 +21,23 @@
 - 连接、握手和单个请求必须分别配置超时。
 - Core 应限制单 IP 的并发握手数，错误密钥不得返回可区分的详细原因。
 
-### 2.2 Noise PSK
+### 2.2 TLS 服务器身份
+
+Core TCP 必须先建立 TLS，再在 TLS 流内执行 Noise PSK 握手：
+
+1. Core 可通过 `MCNP_CORE_TLS_CERT` 和 `MCNP_CORE_TLS_KEY` 配置 PEM 证书链与私钥，两项必须同时提供。
+2. 未配置时，Core 在数据目录的 `tls/core-cert.pem` 和 `tls/core-key.pem` 生成并持久化自签名密钥对；不会在每次启动时轮换。
+3. Panel 使用 IP 地址、`localhost` 或 `*.localhost` 连接时不校验证书链和主机名；仍校验 TLS 握手签名，并继续要求正确的 Noise PSK。
+4. Panel 使用 `tls://`、`mcnp://` 或 `https://` 域名 URL 时，默认校验证书有效期、信任链和 DNS 名。用户显式选择
+   `skipCertificateVerification` 后才可跳过该校验。
+5. 自动生成的自签名证书不能通过域名严格验证。域名部署必须配置受信任 CA 签发的证书，或由管理员显式选择跳过验证。
+
+Core 在 TLS 握手中自动发送证书链。Panel 在证书校验完成后才进入 Noise 握手，并核对 `session.welcome` 中的
+`tlsCertificateSha256` 与 TLS 对端叶证书指纹一致。不能把 Core 在同一连接中自报的公钥或指纹当成独立信任来源。
+
+TLS 1.2/1.3 使用 ECDHE 协商并派生对称会话密钥，不在网络上传输 AES 密钥。不得设计自定义“公钥加密 AES 密钥”握手。
+
+### 2.3 Noise PSK
 
 v1 使用 `Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s`：
 
@@ -36,7 +52,7 @@ PSK 不能写入日志或命令行参数。Core 优先从环境变量、系统�
 > Noise PSK 能保证持有同一密钥的双方身份与机密性，但不能区分共享该密钥的不同 Panel。需要独立撤销时，应为每个 Panel
 > 分配独立密钥记录。
 
-### 2.3 帧
+### 2.4 帧
 
 网络字节序为 big-endian：
 
@@ -54,13 +70,16 @@ PSK 不能写入日志或命令行参数。Core 优先从环境变量、系统�
 
 ## 3. 会话建立
 
-Noise 握手完成后，Panel 必须首先发送 `session.hello`，Core 在接受任何其他消息前返回 `session.welcome`。
+TLS 与 Noise 握手完成后，Panel 必须首先发送 `session.hello`，Core 在接受任何其他消息前返回 `session.welcome`。
 
 ```mermaid
 sequenceDiagram
     participant P as Panel
     participant C as Core
     P ->> C: TCP connect
+    P ->> C: TLS ClientHello
+    C -->> P: Certificate + TLS handshake
+    Note over P, C: Certificate policy completed
     P ->> C: Noise NNpsk0 handshake message
     C -->> P: Noise NNpsk0 handshake message
     Note over P, C: Encrypted transport mode
@@ -114,6 +133,7 @@ sequenceDiagram
       "transfer-v1"
     ],
     "sessionId": "0198...",
+    "tlsCertificateSha256": "64-character-lowercase-hex",
     "heartbeatSeconds": 20
   }
 }
@@ -123,6 +143,7 @@ sequenceDiagram
 - 次版本取双方均支持的较小值。
 - 能力必须通过交集协商；未协商的可选方法返回 `METHOD_NOT_SUPPORTED`。
 - `coreId` 在首次启动时生成并持久化，不能随重启变化。
+- `tlsCertificateSha256` 必须与当前 TLS 对端叶证书的 SHA-256 指纹一致。
 
 ## 4. 消息模型
 

@@ -156,8 +156,9 @@ Retry-After: 2
 ```json
 {
   "name": "Game Node 01",
-  "address": "10.0.0.12:25580",
+  "address": "tls://core-01.example.com:25580",
   "secret": "one-time-plaintext-psk",
+  "skipCertificateVerification": false,
   "connectTimeoutSeconds": 10,
   "tags": [
     "cn-east",
@@ -166,7 +167,10 @@ Retry-After: 2
 }
 ```
 
-Core 响应永远不返回 `secret`，只返回 `secretConfigured` 和 `secretUpdatedAt`。
+`address` 支持 IP/localhost 的 `host:port`，以及 `tls://`、`mcnp://`、`https://` URL。域名 URL 默认验证 TLS 证书；IP 和
+localhost 自动跳过证书链验证。`skipCertificateVerification` 仅用于管理员明确接受自签名或私有证书的场景。
+
+Core 响应永远不返回 `secret`，只返回 `secretConfigured`、`secretUpdatedAt`、实际 TLS 证书 SHA-256 指纹和验证结果。
 
 ### 5.3 实例
 

@@ -25,6 +25,8 @@ impl AppConfig {
         let mut data_directory = environment_or_default("MCNP_DATA_DIR", "data");
         let mut log_filter = environment_or_default("MCNP_LOG_FILTER", "info");
         let core_pre_shared_key = environment_optional("MCNP_CORE_PSK");
+        let mut core_tls_certificate = environment_optional("MCNP_CORE_TLS_CERT");
+        let mut core_tls_private_key = environment_optional("MCNP_CORE_TLS_KEY");
         let mut arguments = args.into_iter();
 
         while let Some(argument) = arguments.next() {
@@ -51,6 +53,12 @@ impl AppConfig {
                     }
                 }
                 "--core-listen" => core_listen = next_value(&mut arguments, "--core-listen")?,
+                "--core-tls-cert" => {
+                    core_tls_certificate = Some(next_value(&mut arguments, "--core-tls-cert")?);
+                }
+                "--core-tls-key" => {
+                    core_tls_private_key = Some(next_value(&mut arguments, "--core-tls-key")?);
+                }
                 "--panel-listen" => panel_listen = next_value(&mut arguments, "--panel-listen")?,
                 "--data-dir" => data_directory = next_value(&mut arguments, "--data-dir")?,
                 "--log-filter" => log_filter = next_value(&mut arguments, "--log-filter")?,
@@ -67,6 +75,10 @@ impl AppConfig {
             core_listen,
             PathBuf::from(&data_directory),
             core_pre_shared_key,
+        )?
+        .with_tls_identity_paths(
+            core_tls_certificate.map(PathBuf::from),
+            core_tls_private_key.map(PathBuf::from),
         )?;
         let panel = PanelConfig::new(panel_listen, PathBuf::from(data_directory))?;
         let logging = LoggingConfig::new(log_filter)?;
@@ -101,7 +113,7 @@ impl AppConfig {
 
     #[must_use]
     pub const fn usage() -> &'static str {
-        "Usage: mcnp [core|panel|all] [OPTIONS]\n\nOptions:\n  --mode MODE              Run core, panel, or all\n  --core-listen ADDRESS    Core TCP listen address\n  --panel-listen ADDRESS   Panel HTTP listen address\n  --data-dir PATH          Runtime data directory\n  --log-filter FILTER      tracing filter directive\n  -h, --help               Print help\n  -V, --version            Print version\n\nEnvironment:\n  MCNP_CORE_PSK            Required by core and all; unpadded Base64URL PSK\n  MCNP_CORE_LISTEN          Default Core TCP listen address\n  MCNP_PANEL_LISTEN         Default Panel HTTP listen address\n  MCNP_DATA_DIR             Default runtime data directory\n  MCNP_LOG_FILTER           Default tracing filter directive"
+        "Usage: mcnp [core|panel|all] [OPTIONS]\n\nOptions:\n  --mode MODE              Run core, panel, or all\n  --core-listen ADDRESS    Core TCP listen address\n  --core-tls-cert PATH     Core TLS certificate chain in PEM format\n  --core-tls-key PATH      Core TLS private key in PEM format\n  --panel-listen ADDRESS   Panel HTTP listen address\n  --data-dir PATH          Runtime data directory\n  --log-filter FILTER      tracing filter directive\n  -h, --help               Print help\n  -V, --version            Print version\n\nEnvironment:\n  MCNP_CORE_PSK            Required by core and all; unpadded Base64URL PSK\n  MCNP_CORE_LISTEN          Default Core TCP listen address\n  MCNP_CORE_TLS_CERT        Optional Core TLS certificate chain path\n  MCNP_CORE_TLS_KEY         Optional Core TLS private key path\n  MCNP_PANEL_LISTEN         Default Panel HTTP listen address\n  MCNP_DATA_DIR             Default runtime data directory\n  MCNP_LOG_FILTER           Default tracing filter directive"
     }
 }
 
@@ -122,6 +134,8 @@ fn next_value(
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::AppConfig;
     use crate::ConfigError;
     use crate::RunMode;
@@ -132,6 +146,10 @@ mod tests {
             "core",
             "--core-listen",
             "127.0.0.1:25580",
+            "--core-tls-cert",
+            "test-cert.pem",
+            "--core-tls-key",
+            "test-key.pem",
             "--panel-listen",
             "127.0.0.1:8080",
             "--data-dir",
@@ -156,6 +174,13 @@ mod tests {
         assert_eq!(
             config.core().data_directory().to_string_lossy(),
             "runtime-data"
+        );
+        assert_eq!(
+            config
+                .core()
+                .tls_certificate_path()
+                .expect("TLS certificate path is configured"),
+            PathBuf::from("test-cert.pem")
         );
         assert_eq!(config.logging().filter(), "debug");
     }

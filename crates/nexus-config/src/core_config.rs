@@ -11,6 +11,8 @@ pub struct CoreConfig {
     listen_address: SocketAddr,
     data_directory: PathBuf,
     pre_shared_key: Option<PresharedKey>,
+    tls_certificate_path: Option<PathBuf>,
+    tls_private_key_path: Option<PathBuf>,
 }
 
 impl CoreConfig {
@@ -37,7 +39,24 @@ impl CoreConfig {
             listen_address,
             data_directory,
             pre_shared_key,
+            tls_certificate_path: None,
+            tls_private_key_path: None,
         })
+    }
+
+    pub fn with_tls_identity_paths(
+        mut self,
+        certificate_path: Option<PathBuf>,
+        private_key_path: Option<PathBuf>,
+    ) -> Result<Self, ConfigError> {
+        match (&certificate_path, &private_key_path) {
+            (Some(_), Some(_)) | (None, None) => {
+                self.tls_certificate_path = certificate_path;
+                self.tls_private_key_path = private_key_path;
+                Ok(self)
+            }
+            (Some(_), None) | (None, Some(_)) => Err(ConfigError::IncompleteCoreTlsIdentity),
+        }
     }
 
     #[must_use]
@@ -53,5 +72,34 @@ impl CoreConfig {
     #[must_use]
     pub const fn pre_shared_key(&self) -> Option<&PresharedKey> {
         self.pre_shared_key.as_ref()
+    }
+
+    #[must_use]
+    pub fn tls_certificate_path(&self) -> Option<&Path> {
+        self.tls_certificate_path.as_deref()
+    }
+
+    #[must_use]
+    pub fn tls_private_key_path(&self) -> Option<&Path> {
+        self.tls_private_key_path.as_deref()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::CoreConfig;
+    use crate::ConfigError;
+
+    #[test]
+    fn requires_tls_certificate_and_private_key_together() {
+        let config = CoreConfig::new("127.0.0.1:25580".to_owned(), PathBuf::from("data"), None)
+            .expect("base Core configuration is valid");
+
+        assert_eq!(
+            config.with_tls_identity_paths(Some(PathBuf::from("cert.pem")), None),
+            Err(ConfigError::IncompleteCoreTlsIdentity)
+        );
     }
 }
