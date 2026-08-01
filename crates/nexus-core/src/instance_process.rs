@@ -41,6 +41,23 @@ impl InstanceProcess {
         receiver.await.unwrap_or(false)
     }
 
+    pub(crate) async fn send_command(&self, command: String) -> bool {
+        let (acknowledged, receiver) = oneshot::channel();
+        if self
+            .command_sender
+            .send(InstanceProcessCommand::SendCommand {
+                acknowledged,
+                command,
+            })
+            .await
+            .is_err()
+        {
+            return false;
+        }
+
+        receiver.await.unwrap_or(false)
+    }
+
     pub(crate) async fn stop(&self, timeout: Duration) -> bool {
         let (acknowledged, receiver) = oneshot::channel();
         if self

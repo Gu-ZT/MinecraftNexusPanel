@@ -21,6 +21,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 sha2 = "0.11.0"
 snow = "0.10.0"
+sysinfo = { version = "0.33.1", default-features = false, features = ["system"] }
 rusqlite = { version = "0.40.1", default-features = false, features = ["bundled"] }
 tauri = { version = "2.11.5", default-features = false, features = ["wry"] }
 tauri-build = { version = "2.6.3", features = [] }

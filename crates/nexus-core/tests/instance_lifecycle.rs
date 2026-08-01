@@ -7,6 +7,9 @@ use nexus_domain::Instance;
 use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
 use nexus_domain::InstanceKind;
+use nexus_domain::InstanceLogPage;
+use nexus_domain::InstanceLogStream;
+use nexus_domain::InstanceMetricSample;
 use nexus_domain::InstanceState;
 use nexus_domain::LaunchConfig;
 use nexus_domain::RequestId;
@@ -23,6 +26,7 @@ use serde_json::to_value;
 use tempfile::tempdir;
 use tokio::net::TcpStream;
 use tokio::spawn;
+use tokio::time::sleep;
 use tokio::time::timeout;
 
 const TEST_PSK: &str = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY";
@@ -63,7 +67,7 @@ async fn starts_stops_and_kills_a_safe_test_process_with_state_events() {
     let subscribe_request_id = send_request(
         &mut transport,
         "event.subscribe",
-        json!({ "topics": ["instance.state"] }),
+        json!({ "topics": ["instance.console", "instance.state"] }),
         None,
     )
     .await;
@@ -116,6 +120,160 @@ async fn starts_stops_and_kills_a_safe_test_process_with_state_events() {
             .expect("running instance is valid");
     assert_eq!(running.runtime().state(), InstanceState::Running);
     assert!(running.runtime().pid().is_some());
+
+    let empty_command_request_id = send_request(
+        &mut transport,
+        "instance.command",
+        json!({ "instanceId": instance_id, "command": "\r\n" }),
+        None,
+    )
+    .await;
+    assert_eq!(
+        read_error(&mut transport, empty_command_request_id)
+            .await
+            .code,
+        "BAD_REQUEST"
+    );
+
+    let nul_command_request_id = send_request(
+        &mut transport,
+        "instance.command",
+        json!({ "instanceId": instance_id, "command": "contains\0nul" }),
+        None,
+    )
+    .await;
+    assert_eq!(
+        read_error(&mut transport, nul_command_request_id)
+            .await
+            .code,
+        "BAD_REQUEST"
+    );
+
+    let oversized_command_request_id = send_request(
+        &mut transport,
+        "instance.command",
+        json!({ "instanceId": instance_id, "command": "x".repeat(8 * 1024 + 1) }),
+        None,
+    )
+    .await;
+    assert_eq!(
+        read_error(&mut transport, oversized_command_request_id)
+            .await
+            .code,
+        "BAD_REQUEST"
+    );
+
+    let metrics_request_id = send_request(
+        &mut transport,
+        "instance.metrics",
+        json!({
+            "instanceId": instance_id,
+            "range": "current",
+            "resolution": "current",
+        }),
+        None,
+    )
+    .await;
+    let metrics_result = read_success(&mut transport, metrics_request_id, &mut Vec::new()).await;
+    let metrics: Vec<InstanceMetricSample> = from_value(metrics_result["series"].clone())
+        .expect("metrics response includes a valid series");
+    assert_eq!(metrics.len(), 1);
+    assert!(metrics[0].occurred_at().ends_with('Z'));
+
+    let command_request_id = send_request(
+        &mut transport,
+        "instance.command",
+        json!({ "instanceId": instance_id, "command": "say hello\r\n" }),
+        None,
+    )
+    .await;
+    let mut command_states = Vec::new();
+    let mut console_lines = Vec::new();
+    let command_result = read_success_with_console(
+        &mut transport,
+        command_request_id,
+        &mut command_states,
+        &mut console_lines,
+    )
+    .await;
+    assert!(
+        command_result["acceptedAt"]
+            .as_str()
+            .is_some_and(|accepted_at| accepted_at.ends_with('Z'))
+    );
+    if !console_lines
+        .iter()
+        .any(|line| line == "received:say hello")
+    {
+        wait_for_console_line(
+            &mut transport,
+            "received:say hello",
+            &mut command_states,
+            &mut console_lines,
+        )
+        .await;
+    }
+
+    let logs = wait_for_log_lines(
+        &mut transport,
+        &instance_id,
+        &["ready", "warning", "received:say hello"],
+    )
+    .await;
+    assert!(
+        logs.items()
+            .iter()
+            .any(|line| { line.stream() == InstanceLogStream::Stdout && line.line() == "ready" })
+    );
+    assert!(
+        logs.items()
+            .iter()
+            .any(|line| { line.stream() == InstanceLogStream::Stderr && line.line() == "warning" })
+    );
+
+    let first_page = read_log_page(&mut transport, &instance_id, None, None, Some(1)).await;
+    assert_eq!(first_page.items().len(), 1);
+    let first_cursor = first_page.items()[0].cursor();
+    assert_eq!(first_page.next_cursor(), Some(first_cursor));
+    let remaining_page = read_log_page(
+        &mut transport,
+        &instance_id,
+        Some(first_cursor),
+        None,
+        Some(200),
+    )
+    .await;
+    assert!(remaining_page.items().iter().all(|line| {
+        line.cursor().parse::<u64>().expect("cursor is numeric")
+            > first_cursor.parse::<u64>().expect("cursor is numeric")
+    }));
+
+    let latest_cursor = logs
+        .items()
+        .last()
+        .expect("logs contain a latest line")
+        .cursor();
+    let previous_page = read_log_page(
+        &mut transport,
+        &instance_id,
+        None,
+        Some(latest_cursor),
+        Some(1),
+    )
+    .await;
+    assert_eq!(previous_page.items().len(), 1);
+    let previous_cursor = previous_page.items()[0].cursor();
+    assert_eq!(previous_page.next_cursor(), Some(previous_cursor));
+    let older_page = read_log_page(
+        &mut transport,
+        &instance_id,
+        None,
+        Some(previous_cursor),
+        Some(1),
+    )
+    .await;
+    assert_eq!(older_page.items().len(), 1);
+    assert_ne!(older_page.items()[0].cursor(), previous_cursor);
 
     let duplicate_start_request_id = send_request(
         &mut transport,
@@ -263,7 +421,7 @@ async fn establish_session(transport: &mut NoiseTransport<TcpStream>) {
             "panelId": RequestId::new(),
             "panelName": "lifecycle-test",
             "clientVersion": "0.1.0",
-            "capabilities": ["events", "instances"],
+            "capabilities": ["events", "instances", "metrics"],
         }),
         None,
     )
@@ -322,6 +480,39 @@ async fn read_success(
     }
 }
 
+async fn read_success_with_console(
+    transport: &mut NoiseTransport<TcpStream>,
+    expected_request_id: RequestId,
+    observed_states: &mut Vec<InstanceState>,
+    console_lines: &mut Vec<String>,
+) -> Value {
+    loop {
+        match transport
+            .read_message()
+            .await
+            .expect("Core message is received")
+        {
+            WireMessage::Response {
+                request_id,
+                ok,
+                result,
+                error,
+            } => {
+                assert_eq!(request_id, expected_request_id);
+                assert!(ok, "Core rejected request: {error:?}");
+                return result.expect("successful response includes a result");
+            }
+            event @ WireMessage::Event { .. } => {
+                if let Some(line) = console_line(&event) {
+                    console_lines.push(line);
+                }
+                record_state(event, observed_states);
+            }
+            WireMessage::Request { .. } => panic!("Core sent an unexpected request"),
+        }
+    }
+}
+
 async fn read_error(
     transport: &mut NoiseTransport<TcpStream>,
     expected_request_id: RequestId,
@@ -370,19 +561,101 @@ async fn wait_for_state(
     .expect("Core publishes the expected state before the timeout");
 }
 
+async fn wait_for_console_line(
+    transport: &mut NoiseTransport<TcpStream>,
+    expected_line: &str,
+    observed_states: &mut Vec<InstanceState>,
+    console_lines: &mut Vec<String>,
+) {
+    timeout(Duration::from_secs(5), async {
+        loop {
+            let message = transport
+                .read_message()
+                .await
+                .expect("Core console event is received");
+            if let Some(line) = console_line(&message) {
+                let matches = line == expected_line;
+                console_lines.push(line);
+                if matches {
+                    return;
+                }
+            }
+            record_state(message, observed_states);
+        }
+    })
+    .await
+    .expect("Core publishes the expected console line before the timeout");
+}
+
+async fn wait_for_log_lines(
+    transport: &mut NoiseTransport<TcpStream>,
+    instance_id: &InstanceId,
+    expected_lines: &[&str],
+) -> InstanceLogPage {
+    timeout(Duration::from_secs(5), async {
+        loop {
+            let page = read_log_page(transport, instance_id, None, None, Some(200)).await;
+            if expected_lines
+                .iter()
+                .all(|expected| page.items().iter().any(|line| line.line() == *expected))
+            {
+                return page;
+            }
+            sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("Core stores the expected log lines before the timeout")
+}
+
+async fn read_log_page(
+    transport: &mut NoiseTransport<TcpStream>,
+    instance_id: &InstanceId,
+    after: Option<&str>,
+    before: Option<&str>,
+    limit: Option<usize>,
+) -> InstanceLogPage {
+    let mut params = json!({ "instanceId": instance_id });
+    if let Some(after) = after {
+        params["after"] = json!(after);
+    }
+    if let Some(before) = before {
+        params["before"] = json!(before);
+    }
+    if let Some(limit) = limit {
+        params["limit"] = json!(limit);
+    }
+    let request_id = send_request(transport, "instance.logs", params, None).await;
+    from_value(read_success(transport, request_id, &mut Vec::new()).await)
+        .expect("Core returns a valid log page")
+}
+
 fn record_state(
     message: WireMessage,
     observed_states: &mut Vec<InstanceState>,
 ) -> Option<InstanceState> {
     let WireMessage::Event { topic, data, .. } = message else {
-        panic!("Core sent an unexpected response while waiting for an event");
+        return None;
     };
-    assert_eq!(topic, "instance.state");
+    if topic != "instance.state" {
+        return None;
+    }
     let state = from_value(data["runtime"]["state"].clone())
         .expect("state event includes a valid runtime state");
     observed_states.push(state);
 
     Some(state)
+}
+
+fn console_line(message: &WireMessage) -> Option<String> {
+    let WireMessage::Event { topic, data, .. } = message else {
+        return None;
+    };
+    if topic != "instance.console" {
+        return None;
+    }
+
+    data["line"].as_str().map(str::to_owned)
 }
 
 fn instance_create(instance_id: &InstanceId) -> InstanceCreate {
@@ -410,12 +683,13 @@ fn crashing_process_create(instance_id: &InstanceId) -> InstanceCreate {
 #[cfg(windows)]
 fn test_launch_config() -> LaunchConfig {
     LaunchConfig::new(
-        "cmd.exe".to_owned(),
+        "powershell.exe".to_owned(),
         vec![
-            "/D".to_owned(),
-            "/Q".to_owned(),
-            "/C".to_owned(),
-            "set /p line=".to_owned(),
+            "-NoLogo".to_owned(),
+            "-NoProfile".to_owned(),
+            "-NonInteractive".to_owned(),
+            "-Command".to_owned(),
+            "$ErrorActionPreference='Stop'; [Console]::Out.WriteLine('ready'); [Console]::Error.WriteLine('warning'); while (($line = [Console]::In.ReadLine()) -ne $null) { if ($line -eq 'stop') { exit 0 }; [Console]::Out.WriteLine(\"received:$line\") }".to_owned(),
         ],
         BTreeMap::new(),
         "stop".to_owned(),
@@ -443,7 +717,10 @@ fn crashing_process_launch_config() -> LaunchConfig {
 fn test_launch_config() -> LaunchConfig {
     LaunchConfig::new(
         "/bin/sh".to_owned(),
-        vec!["-c".to_owned(), "IFS= read -r line".to_owned()],
+        vec![
+            "-c".to_owned(),
+            "printf 'ready\\n'; printf 'warning\\n' >&2; while IFS= read -r line; do if [ \"$line\" = stop ]; then exit 0; fi; printf 'received:%s\\n' \"$line\"; done".to_owned(),
+        ],
         BTreeMap::new(),
         "stop".to_owned(),
         5,

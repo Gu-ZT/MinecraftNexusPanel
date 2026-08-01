@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use nexus_domain::CoreId;
 use nexus_domain::RequestId;
 
@@ -7,12 +9,13 @@ use crate::InstanceRepository;
 pub(crate) struct CoreRequestState {
     core_id: CoreId,
     event_subscription: Option<RequestId>,
+    event_topics: BTreeSet<String>,
     instances: InstanceRepository,
     processes: InstanceProcessManager,
 }
 
 impl CoreRequestState {
-    pub(crate) const fn new(
+    pub(crate) fn new(
         core_id: CoreId,
         instances: InstanceRepository,
         processes: InstanceProcessManager,
@@ -20,6 +23,7 @@ impl CoreRequestState {
         Self {
             core_id,
             event_subscription: None,
+            event_topics: BTreeSet::new(),
             instances,
             processes,
         }
@@ -37,6 +41,10 @@ impl CoreRequestState {
         self.event_subscription.is_some()
     }
 
+    pub(crate) fn is_subscribed_to_topic(&self, topic: &str) -> bool {
+        self.event_topics.contains(topic)
+    }
+
     pub(crate) const fn instances(&self) -> &InstanceRepository {
         &self.instances
     }
@@ -45,11 +53,17 @@ impl CoreRequestState {
         &self.processes
     }
 
-    pub(crate) fn subscribe_to_events(&mut self, subscription_id: RequestId) {
+    pub(crate) fn subscribe_to_events(
+        &mut self,
+        subscription_id: RequestId,
+        topics: BTreeSet<String>,
+    ) {
         self.event_subscription = Some(subscription_id);
+        self.event_topics = topics;
     }
 
     pub(crate) fn unsubscribe_from_events(&mut self) {
         self.event_subscription = None;
+        self.event_topics.clear();
     }
 }

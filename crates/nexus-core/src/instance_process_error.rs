@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use nexus_domain::InstanceId;
 use thiserror::Error;
 
+use crate::InstanceLogStoreError;
 use crate::InstanceRepositoryError;
 
 #[derive(Debug, Error)]
@@ -26,10 +27,24 @@ pub enum InstanceProcessError {
         #[source]
         source: io::Error,
     },
+    #[error("instance command must not contain a NUL byte")]
+    CommandContainsNul,
+    #[error("instance command must not be empty")]
+    CommandEmpty,
+    #[error("instance command exceeds the maximum size of {maximum_bytes} bytes")]
+    CommandTooLong { maximum_bytes: usize },
+    #[error(transparent)]
+    LogStore(#[from] InstanceLogStoreError),
+    #[error("metrics for instance {instance_id} are unavailable")]
+    MetricsUnavailable { instance_id: InstanceId },
     #[error("instance {instance_id} process is unavailable")]
     ProcessUnavailable { instance_id: InstanceId },
     #[error("instance {instance_id} process stdin is unavailable")]
     StdinUnavailable { instance_id: InstanceId },
+    #[error("instance {instance_id} process stderr is unavailable")]
+    StderrUnavailable { instance_id: InstanceId },
+    #[error("instance {instance_id} process stdout is unavailable")]
+    StdoutUnavailable { instance_id: InstanceId },
     #[error(transparent)]
     Repository(#[from] InstanceRepositoryError),
     #[error("failed to start the process for instance {instance_id}")]
@@ -44,4 +59,6 @@ pub enum InstanceProcessError {
     WorkingDirectoryOutsideDataDirectory { path: PathBuf },
     #[error("instance process registry lock is poisoned")]
     ProcessRegistryLockPoisoned,
+    #[error("process metrics system lock is poisoned")]
+    SystemLockPoisoned,
 }

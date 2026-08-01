@@ -67,6 +67,15 @@ impl InstanceProcessSupervisor {
                             kill_requested = accepted;
                             let _ = acknowledged.send(accepted);
                         }
+                        InstanceProcessCommand::SendCommand {
+                            acknowledged,
+                            command,
+                        } => {
+                            let accepted = !stopping
+                                && !kill_requested
+                                && self.write_command(&command).await.is_ok();
+                            let _ = acknowledged.send(accepted);
+                        }
                         InstanceProcessCommand::Stop { acknowledged, timeout } => {
                             let accepted = !stopping
                                 && !kill_requested
@@ -125,7 +134,12 @@ impl InstanceProcessSupervisor {
     }
 
     async fn write_stop_command(&mut self) -> Result<(), io::Error> {
-        self.stdin.write_all(self.stop_command.as_bytes()).await?;
+        let stop_command = self.stop_command.clone();
+        self.write_command(&stop_command).await
+    }
+
+    async fn write_command(&mut self, command: &str) -> Result<(), io::Error> {
+        self.stdin.write_all(command.as_bytes()).await?;
         self.stdin.write_all(LINE_ENDING).await?;
         self.stdin.flush().await
     }

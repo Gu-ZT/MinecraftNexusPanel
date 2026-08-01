@@ -4,6 +4,8 @@ use nexus_domain::CoreId;
 use nexus_domain::Instance;
 use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
+use nexus_domain::InstanceLogPage;
+use nexus_domain::InstanceMetricSample;
 use nexus_domain::InstancePage;
 use nexus_domain::PRODUCT_VERSION;
 use nexus_domain::RequestId;
@@ -21,7 +23,7 @@ use tokio::net::TcpStream;
 
 use crate::CoreConnectionError;
 
-const PANEL_CAPABILITIES: [&str; 2] = ["events", "instances"];
+const PANEL_CAPABILITIES: [&str; 3] = ["events", "instances", "metrics"];
 
 pub struct CoreConnection {
     capabilities: Vec<String>,
@@ -193,6 +195,72 @@ impl CoreConnection {
             idempotency_key,
         )
         .await
+    }
+
+    pub async fn send_instance_command(
+        &mut self,
+        instance_id: &InstanceId,
+        command: &str,
+    ) -> Result<String, CoreConnectionError> {
+        let result = self
+            .request(
+                "instance.command",
+                json!({
+                    "instanceId": instance_id,
+                    "command": command,
+                }),
+            )
+            .await?;
+
+        response_field(&result, "acceptedAt")?
+            .as_str()
+            .map(str::to_owned)
+            .ok_or(CoreConnectionError::InvalidResponse {
+                field: "acceptedAt",
+            })
+    }
+
+    pub async fn get_instance_logs(
+        &mut self,
+        instance_id: &InstanceId,
+        after: Option<&str>,
+        before: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<InstanceLogPage, CoreConnectionError> {
+        let mut params = json!({ "instanceId": instance_id });
+        if let Some(after) = after {
+            params["after"] = json!(after);
+        }
+        if let Some(before) = before {
+            params["before"] = json!(before);
+        }
+        if let Some(limit) = limit {
+            params["limit"] = json!(limit);
+        }
+        let result = self.request("instance.logs", params).await?;
+
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse {
+            field: "instanceLogPage",
+        })
+    }
+
+    pub async fn get_instance_metrics(
+        &mut self,
+        instance_id: &InstanceId,
+        range: Option<&str>,
+        resolution: Option<&str>,
+    ) -> Result<Vec<InstanceMetricSample>, CoreConnectionError> {
+        let mut params = json!({ "instanceId": instance_id });
+        if let Some(range) = range {
+            params["range"] = json!(range);
+        }
+        if let Some(resolution) = resolution {
+            params["resolution"] = json!(resolution);
+        }
+        let result = self.request("instance.metrics", params).await?;
+        let series = response_field(&result, "series")?;
+
+        from_value(series).map_err(|_| CoreConnectionError::InvalidResponse { field: "series" })
     }
 
     async fn request(&mut self, method: &str, params: Value) -> Result<Value, CoreConnectionError> {

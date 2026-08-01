@@ -203,6 +203,7 @@ sequenceDiagram
 - Panel 必须忽略未知 topic，并记录一次可限流的调试日志。
 - `instance.state` 在实例进入 `STARTING`、`RUNNING`、`STOPPING`、`STOPPED` 或 `FAILED` 时发布，`data` 包含
   `instanceId` 和完整 `runtime`。
+- 当前 `event.subscribe` 支持 `instance.state` 和 `instance.console`，Core 只转发订阅中明确列出的 topic。
 
 ## 5. 方法
 
@@ -232,11 +233,18 @@ sequenceDiagram
 | `instance.restart` | instanceId、timeoutSeconds            | taskId            |
 | `instance.kill`    | instanceId、confirmation              | taskId            |
 | `instance.command` | instanceId、command                   | acceptedAt        |
-| `instance.logs`    | instanceId、after、before、limit      | lines、nextCursor |
+| `instance.logs`    | instanceId、after、before、limit      | items、nextCursor |
 | `instance.metrics` | instanceId、range、resolution         | series            |
 
 实例写入使用 `revision` 做乐观锁。启动/停止等状态操作必须提供 `idempotencyKey`。命令最大 8 KiB，移除尾部换行后由 Core
-追加一个平台正确的换行。
+追加一个平台正确的换行；空命令、包含 NUL 的命令会被拒绝，命令内容不会由 Core 写入控制台日志。
+
+控制台日志按实例保留最近 10,000 行内存历史，stdout 和 stderr 各行合并到同一单调游标空间。单行正文最多 64 KiB，超出部分以
+` [truncated]` 结尾；非 UTF-8 输出使用替换字符解码。`after` 用于向后追读，`before` 用于向前翻页，`limit` 默认为 50、最大为
+200。Core 重启后内存历史和游标基线会重置。
+
+M1 的 `instance.metrics` 返回一个当前进程样本组成的 `series`，字段包括 `occurredAt`、`cpuPercent`、`memoryBytes`、
+`virtualMemoryBytes` 和 `uptimeSeconds`。`range` 与 `resolution` 当前仅作为后续历史采样能力的兼容参数。
 
 ### 5.3 文件
 

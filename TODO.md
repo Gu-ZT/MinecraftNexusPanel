@@ -35,14 +35,14 @@
 - [x] Core：TCP 监听、Noise PSK 握手与 `session.hello` / `session.welcome`。
 - [x] Core：节点信息、实例内存仓储、实例创建、列表和详情读取。
 - [x] Core：安全测试进程启动、停止、终止与状态事件。
-- [ ] Core：实例 stdin 命令、stdout/stderr 游标日志与基础指标。
+- [x] Core：实例 stdin 命令、stdout/stderr 游标日志与基础指标。
 - [ ] Panel：SQLite 初始化、首位管理员初始化和登录会话。
 - [ ] Panel：Core 添加、加密密钥保存、连通性检测和重连状态。
 - [ ] Panel：实例代理 REST API、幂等键和统一错误响应。
 - [ ] Panel：WebSocket 日志、任务进度和 Core 状态推送。
 - [ ] WebUI：登录、Core 切换、实例列表、状态控制和控制台。
 - [ ] `all`：单命令同时启动 Panel 与 loopback Core，仍暴露 Core TCP 接口。
-- [ ] 集成测试：空数据目录创建实例、运行测试进程、读取日志并安全停止。
+- [x] 集成测试：空数据目录创建实例、运行测试进程、读取日志并安全停止。
 
 ## M2：环境与一键搭建
 

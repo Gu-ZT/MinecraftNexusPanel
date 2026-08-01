@@ -6,9 +6,12 @@ use nexus_core::CoreServer;
 use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
 use nexus_domain::InstanceKind;
+use nexus_domain::InstanceLogPage;
+use nexus_domain::InstanceLogStream;
 use nexus_domain::InstanceState;
 use nexus_domain::LaunchConfig;
 use nexus_panel::CoreConnection;
+use nexus_panel::CoreConnectionError;
 use nexus_protocol::PresharedKey;
 use tempfile::tempdir;
 use tokio::spawn;
@@ -63,6 +66,7 @@ async fn connects_to_a_core_and_reads_its_system_info() {
     assert!(received_at.ends_with('Z'));
     assert!(connection.capabilities().contains(&"events".to_owned()));
     assert!(connection.capabilities().contains(&"instances".to_owned()));
+    assert!(connection.capabilities().contains(&"metrics".to_owned()));
     assert_eq!(system_info["coreId"], connection.core_id().to_string());
     assert_eq!(connection.heartbeat_seconds(), 20);
     assert_eq!(created.revision(), 1);
@@ -110,6 +114,38 @@ async fn controls_an_instance_process_through_the_panel_client() {
         .expect("Panel starts the instance");
     wait_for_state(&mut connection, definition.id(), InstanceState::Running).await;
 
+    let metrics = connection
+        .get_instance_metrics(definition.id(), Some("current"), Some("current"))
+        .await
+        .expect("Panel reads instance metrics");
+    assert_eq!(metrics.len(), 1);
+
+    let accepted_at = connection
+        .send_instance_command(definition.id(), "say hello\n")
+        .await
+        .expect("Panel sends an instance command");
+    assert!(accepted_at.ends_with('Z'));
+    let logs = wait_for_logs(&mut connection, definition.id(), "received:say hello").await;
+    assert!(
+        logs.items()
+            .iter()
+            .any(|line| { line.stream() == InstanceLogStream::Stdout && line.line() == "ready" })
+    );
+    assert!(
+        logs.items()
+            .iter()
+            .any(|line| { line.stream() == InstanceLogStream::Stderr && line.line() == "warning" })
+    );
+
+    let command_error = connection
+        .send_instance_command(definition.id(), "\r\n")
+        .await
+        .expect_err("Panel rejects an empty instance command");
+    assert!(matches!(
+        command_error,
+        CoreConnectionError::Rejected { code } if code == "BAD_REQUEST"
+    ));
+
     connection
         .stop_instance(definition.id(), Some(5), "panel-stop")
         .await
@@ -152,6 +188,27 @@ async fn wait_for_state(
     .expect("instance reaches the expected state before the timeout");
 }
 
+async fn wait_for_logs(
+    connection: &mut CoreConnection,
+    instance_id: &InstanceId,
+    expected_line: &str,
+) -> InstanceLogPage {
+    timeout(Duration::from_secs(5), async {
+        loop {
+            let page = connection
+                .get_instance_logs(instance_id, None, None, Some(200))
+                .await
+                .expect("Panel reads instance logs");
+            if page.items().iter().any(|line| line.line() == expected_line) {
+                return page;
+            }
+            sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("Panel observes the expected log line before the timeout")
+}
+
 fn instance_create(identifier: &str) -> InstanceCreate {
     InstanceCreate::new(
         InstanceId::new(identifier.to_owned()).expect("test identifier is valid"),
@@ -183,12 +240,13 @@ fn safe_process_create(identifier: &str) -> InstanceCreate {
 #[cfg(windows)]
 fn safe_process_launch_config() -> LaunchConfig {
     LaunchConfig::new(
-        "cmd.exe".to_owned(),
+        "powershell.exe".to_owned(),
         vec![
-            "/D".to_owned(),
-            "/Q".to_owned(),
-            "/C".to_owned(),
-            "set /p line=".to_owned(),
+            "-NoLogo".to_owned(),
+            "-NoProfile".to_owned(),
+            "-NonInteractive".to_owned(),
+            "-Command".to_owned(),
+            "$ErrorActionPreference='Stop'; [Console]::Out.WriteLine('ready'); [Console]::Error.WriteLine('warning'); while (($line = [Console]::In.ReadLine()) -ne $null) { if ($line -eq 'stop') { exit 0 }; [Console]::Out.WriteLine(\"received:$line\") }".to_owned(),
         ],
         BTreeMap::new(),
         "stop".to_owned(),
@@ -200,7 +258,10 @@ fn safe_process_launch_config() -> LaunchConfig {
 fn safe_process_launch_config() -> LaunchConfig {
     LaunchConfig::new(
         "/bin/sh".to_owned(),
-        vec!["-c".to_owned(), "IFS= read -r line".to_owned()],
+        vec![
+            "-c".to_owned(),
+            "printf 'ready\\n'; printf 'warning\\n' >&2; while IFS= read -r line; do if [ \"$line\" = stop ]; then exit 0; fi; printf 'received:%s\\n' \"$line\"; done".to_owned(),
+        ],
         BTreeMap::new(),
         "stop".to_owned(),
         5,

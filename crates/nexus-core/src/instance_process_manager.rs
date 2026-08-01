@@ -13,11 +13,17 @@ use std::time::Duration;
 use nexus_domain::EventId;
 use nexus_domain::Instance;
 use nexus_domain::InstanceId;
+use nexus_domain::InstanceLogPage;
+use nexus_domain::InstanceLogStream;
+use nexus_domain::InstanceMetricSample;
 use nexus_domain::InstanceRuntime;
 use nexus_domain::InstanceState;
 use nexus_domain::TaskId;
 use nexus_protocol::WireMessage;
 use serde_json::json;
+use sysinfo::Pid;
+use sysinfo::ProcessesToUpdate;
+use sysinfo::System;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tokio::process::Command;
@@ -25,13 +31,16 @@ use tokio::spawn;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 
+use crate::InstanceLogStore;
 use crate::InstanceProcess;
 use crate::InstanceProcessError;
 use crate::InstanceProcessSupervisor;
 use crate::InstanceRepository;
 use crate::InstanceRepositoryError;
+use crate::spawn_output_reader;
 
 const EVENT_CHANNEL_CAPACITY: usize = 256;
+const MAXIMUM_COMMAND_BYTES: usize = 8 * 1024;
 const PROCESS_COMMAND_CAPACITY: usize = 4;
 
 #[derive(Clone)]
@@ -39,21 +48,26 @@ pub struct InstanceProcessManager {
     data_directory: Arc<PathBuf>,
     event_sender: broadcast::Sender<WireMessage>,
     instances: InstanceRepository,
+    logs: InstanceLogStore,
     processes: Arc<Mutex<BTreeMap<InstanceId, InstanceProcess>>>,
     sequence: Arc<AtomicU64>,
+    system: Arc<Mutex<System>>,
 }
 
 impl InstanceProcessManager {
     #[must_use]
     pub fn new(data_directory: PathBuf, instances: InstanceRepository) -> Self {
         let (event_sender, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
+        let sequence = Arc::new(AtomicU64::new(1));
 
         Self {
             data_directory: Arc::new(data_directory),
-            event_sender,
+            event_sender: event_sender.clone(),
             instances,
+            logs: InstanceLogStore::new(event_sender, sequence.clone()),
             processes: Arc::new(Mutex::new(BTreeMap::new())),
-            sequence: Arc::new(AtomicU64::new(1)),
+            sequence,
+            system: Arc::new(Mutex::new(System::new())),
         }
     }
 
@@ -121,6 +135,75 @@ impl InstanceProcessManager {
         Ok(TaskId::new())
     }
 
+    pub async fn command(
+        &self,
+        instance_id: &InstanceId,
+        command: &str,
+    ) -> Result<String, InstanceProcessError> {
+        let command = normalize_command(command)?;
+        self.require_state(instance_id, &[InstanceState::Running])?;
+        let process = self.process(instance_id)?;
+
+        if !process.send_command(command).await {
+            return Err(InstanceProcessError::ProcessUnavailable {
+                instance_id: instance_id.clone(),
+            });
+        }
+
+        Ok(current_timestamp())
+    }
+
+    pub fn logs(
+        &self,
+        instance_id: &InstanceId,
+        after: Option<u64>,
+        before: Option<u64>,
+        limit: usize,
+    ) -> Result<InstanceLogPage, InstanceProcessError> {
+        self.require_instance(instance_id)?;
+
+        self.logs
+            .read(instance_id, after, before, limit)
+            .map_err(Into::into)
+    }
+
+    pub fn metrics(
+        &self,
+        instance_id: &InstanceId,
+    ) -> Result<InstanceMetricSample, InstanceProcessError> {
+        let instance = self.require_state(
+            instance_id,
+            &[InstanceState::Running, InstanceState::Stopping],
+        )?;
+        let process_id =
+            instance
+                .runtime()
+                .pid()
+                .ok_or_else(|| InstanceProcessError::MetricsUnavailable {
+                    instance_id: instance_id.clone(),
+                })?;
+        let process_id = Pid::from_u32(process_id);
+        let mut system = self
+            .system
+            .lock()
+            .map_err(|_| InstanceProcessError::SystemLockPoisoned)?;
+        system.refresh_processes(ProcessesToUpdate::Some(&[process_id]), false);
+        let process =
+            system
+                .process(process_id)
+                .ok_or_else(|| InstanceProcessError::MetricsUnavailable {
+                    instance_id: instance_id.clone(),
+                })?;
+
+        Ok(InstanceMetricSample::new(
+            current_timestamp(),
+            process.cpu_usage(),
+            process.memory(),
+            process.virtual_memory(),
+            process.run_time(),
+        ))
+    }
+
     async fn spawn(&self, instance: Instance) -> Result<TaskId, InstanceProcessError> {
         let instance_id = instance.id().clone();
         let working_directory = self.prepare_working_directory(&instance)?;
@@ -131,8 +214,8 @@ impl InstanceProcessManager {
             .envs(instance.launch().environment())
             .kill_on_drop(true)
             .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         for (name, _) in env::vars_os().filter(|(name, _)| {
             name.to_string_lossy()
                 .to_ascii_uppercase()
@@ -157,6 +240,20 @@ impl InstanceProcessManager {
             .ok_or_else(|| InstanceProcessError::StdinUnavailable {
                 instance_id: instance_id.clone(),
             })?;
+        let stdout =
+            child
+                .stdout
+                .take()
+                .ok_or_else(|| InstanceProcessError::StdoutUnavailable {
+                    instance_id: instance_id.clone(),
+                })?;
+        let stderr =
+            child
+                .stderr
+                .take()
+                .ok_or_else(|| InstanceProcessError::StderrUnavailable {
+                    instance_id: instance_id.clone(),
+                })?;
         let task_id = TaskId::new();
         let (command_sender, command_receiver) = mpsc::channel(PROCESS_COMMAND_CAPACITY);
         let process = InstanceProcess::new(task_id, command_sender);
@@ -177,6 +274,18 @@ impl InstanceProcessManager {
             }
         };
         self.publish_state(&running_instance);
+        spawn_output_reader(
+            stdout,
+            instance_id.clone(),
+            InstanceLogStream::Stdout,
+            self.logs.clone(),
+        );
+        spawn_output_reader(
+            stderr,
+            instance_id.clone(),
+            InstanceLogStream::Stderr,
+            self.logs.clone(),
+        );
 
         let stop_command = instance.launch().stop_command().to_owned();
         let event_sender = self.event_sender.clone();
@@ -239,12 +348,7 @@ impl InstanceProcessManager {
         instance_id: &InstanceId,
         allowed_states: &[InstanceState],
     ) -> Result<Instance, InstanceProcessError> {
-        let instance =
-            self.instances
-                .get(instance_id)?
-                .ok_or_else(|| InstanceRepositoryError::NotFound {
-                    instance_id: instance_id.clone(),
-                })?;
+        let instance = self.require_instance(instance_id)?;
         let state = instance.runtime().state();
         if !allowed_states.contains(&state) {
             return Err(InstanceRepositoryError::StateConflict {
@@ -255,6 +359,15 @@ impl InstanceProcessManager {
         }
 
         Ok(instance)
+    }
+
+    fn require_instance(&self, instance_id: &InstanceId) -> Result<Instance, InstanceProcessError> {
+        self.instances.get(instance_id)?.ok_or_else(|| {
+            InstanceRepositoryError::NotFound {
+                instance_id: instance_id.clone(),
+            }
+            .into()
+        })
     }
 
     fn process(&self, instance_id: &InstanceId) -> Result<InstanceProcess, InstanceProcessError> {
@@ -355,4 +468,21 @@ fn current_timestamp() -> String {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_owned())
+}
+
+fn normalize_command(command: &str) -> Result<String, InstanceProcessError> {
+    let command = command.trim_end_matches(['\r', '\n']);
+    if command.is_empty() {
+        return Err(InstanceProcessError::CommandEmpty);
+    }
+    if command.as_bytes().contains(&0) {
+        return Err(InstanceProcessError::CommandContainsNul);
+    }
+    if command.len() > MAXIMUM_COMMAND_BYTES {
+        return Err(InstanceProcessError::CommandTooLong {
+            maximum_bytes: MAXIMUM_COMMAND_BYTES,
+        });
+    }
+
+    Ok(command.to_owned())
 }

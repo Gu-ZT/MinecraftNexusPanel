@@ -623,6 +623,11 @@ paths:
           description: Opaque log cursor
           schema:
             type: string
+        - name: before
+          in: query
+          description: Opaque log cursor for reading older lines
+          schema:
+            type: string
         - $ref: '#/components/parameters/Limit'
       responses:
         '200':
@@ -633,6 +638,41 @@ paths:
                 $ref: '#/components/schemas/LogPage'
         '404':
           $ref: '#/components/responses/NotFound'
+  /cores/{coreId}/instances/{instanceId}/metrics:
+    get:
+      tags: [ Instances ]
+      operationId: getInstanceMetrics
+      summary: Read current process metrics
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - name: range
+          in: query
+          description: Reserved metrics history range
+          schema:
+            type: string
+        - name: resolution
+          in: query
+          description: Reserved metrics sampling resolution
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Current process metric series
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ series ]
+                properties:
+                  series:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InstanceMetricSample'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /cores/{coreId}/instances/{instanceId}/files:
     get:
       tags: [ Files ]
@@ -1297,6 +1337,30 @@ components:
             $ref: '#/components/schemas/LogLine'
         nextCursor:
           type: [ string, 'null' ]
+    InstanceMetricSample:
+      type: object
+      required:
+        - occurredAt
+        - cpuPercent
+        - memoryBytes
+        - virtualMemoryBytes
+        - uptimeSeconds
+      properties:
+        occurredAt:
+          type: string
+          format: date-time
+        cpuPercent:
+          type: number
+          minimum: 0
+        memoryBytes:
+          type: integer
+          minimum: 0
+        virtualMemoryBytes:
+          type: integer
+          minimum: 0
+        uptimeSeconds:
+          type: integer
+          minimum: 0
     FileEntry:
       type: object
       required: [ name, path, kind, size, modifiedAt ]

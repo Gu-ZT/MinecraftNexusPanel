@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::net::SocketAddr;
 use std::path::Path;
@@ -35,11 +36,14 @@ use crate::InstanceProcessManager;
 use crate::InstanceRepository;
 use crate::InstanceRepositoryError;
 
-const CORE_CAPABILITIES: [&str; 2] = ["events", "instances"];
+const CORE_CAPABILITIES: [&str; 3] = ["events", "instances", "metrics"];
 const CORE_ID_FILE_NAME: &str = "core-id";
+const EVENT_TOPICS: [&str; 2] = ["instance.console", "instance.state"];
 const HEARTBEAT_SECONDS: u64 = 20;
 const INSTANCE_LIST_DEFAULT_LIMIT: usize = 50;
 const INSTANCE_LIST_MAXIMUM_LIMIT: usize = 200;
+const INSTANCE_LOG_DEFAULT_LIMIT: usize = 50;
+const INSTANCE_LOG_MAXIMUM_LIMIT: usize = 200;
 
 pub struct CoreServer {
     core_id: CoreId,
@@ -168,7 +172,13 @@ async fn handle_connection(
             }
             event = event_receiver.recv(), if request_state.is_subscribed_to_events() => {
                 match event {
-                    Ok(event) => transport.write_message(&event).await?,
+                    Ok(event) => {
+                        if event_topic(&event)
+                            .is_some_and(|topic| request_state.is_subscribed_to_topic(topic))
+                        {
+                            transport.write_message(&event).await?;
+                        }
+                    }
                     Err(RecvError::Lagged(skipped)) => {
                         tracing::debug!(skipped, "Core event subscriber lagged behind");
                     }
@@ -298,12 +308,17 @@ async fn request_response(
             }),
         ),
         "system.ping" => success_response(request_id, json!({ "receivedAt": current_timestamp() })),
+        "instance.command" => {
+            instance_command_response(request_id, params, state.processes()).await
+        }
         "instance.create" => instance_create_response(request_id, params, state.instances()),
         "instance.get" => instance_get_response(request_id, params, state.instances()),
         "instance.kill" => {
             instance_kill_response(request_id, params, idempotency_key, state.processes()).await
         }
         "instance.list" => instance_list_response(request_id, params, state.instances()),
+        "instance.logs" => instance_logs_response(request_id, params, state.processes()),
+        "instance.metrics" => instance_metrics_response(request_id, params, state.processes()),
         "instance.start" => {
             instance_start_response(request_id, params, idempotency_key, state.processes()).await
         }
@@ -317,6 +332,89 @@ async fn request_response(
             "METHOD_NOT_SUPPORTED",
             "The requested Core method is not supported",
         ),
+    }
+}
+
+async fn instance_command_response(
+    request_id: RequestId,
+    params: &Value,
+    processes: &InstanceProcessManager,
+) -> WireMessage {
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.command requires a valid instanceId",
+        );
+    };
+    let Some(command) = params.get("command").and_then(Value::as_str) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.command requires a command string",
+        );
+    };
+
+    match processes.command(&instance_id, command).await {
+        Ok(accepted_at) => success_response(request_id, json!({ "acceptedAt": accepted_at })),
+        Err(error) => process_error_response(request_id, &error),
+    }
+}
+
+fn instance_logs_response(
+    request_id: RequestId,
+    params: &Value,
+    processes: &InstanceProcessManager,
+) -> WireMessage {
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.logs requires a valid instanceId",
+        );
+    };
+    let (after, before, limit) = match instance_log_parameters(params) {
+        Ok(parameters) => parameters,
+        Err(()) => {
+            return error_response(
+                request_id,
+                "BAD_REQUEST",
+                "instance.logs cursor or limit is invalid",
+            );
+        }
+    };
+
+    match processes.logs(&instance_id, after, before, limit) {
+        Ok(page) => success_response(request_id, json!(page)),
+        Err(error) => process_error_response(request_id, &error),
+    }
+}
+
+fn instance_metrics_response(
+    request_id: RequestId,
+    params: &Value,
+    processes: &InstanceProcessManager,
+) -> WireMessage {
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.metrics requires a valid instanceId",
+        );
+    };
+    if !optional_non_empty_string(params, "range")
+        || !optional_non_empty_string(params, "resolution")
+    {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.metrics range and resolution must be non-empty strings",
+        );
+    }
+
+    match processes.metrics(&instance_id) {
+        Ok(sample) => success_response(request_id, json!({ "series": [sample] })),
+        Err(error) => process_error_response(request_id, &error),
     }
 }
 
@@ -415,24 +513,15 @@ fn event_subscribe_response(
     params: &Value,
     state: &mut CoreRequestState,
 ) -> WireMessage {
-    let subscribes_to_instance_state =
-        params
-            .get("topics")
-            .and_then(Value::as_array)
-            .is_some_and(|topics| {
-                topics
-                    .iter()
-                    .any(|topic| topic.as_str() == Some("instance.state"))
-            });
-    if !subscribes_to_instance_state {
+    let Some(topics) = event_topics_parameter(params) else {
         return error_response(
             request_id,
             "BAD_REQUEST",
-            "event.subscribe requires the instance.state topic",
+            "event.subscribe requires one or more supported topics",
         );
-    }
+    };
     let subscription_id = RequestId::new();
-    state.subscribe_to_events(subscription_id);
+    state.subscribe_to_events(subscription_id, topics);
 
     success_response(request_id, json!({ "subscriptionId": subscription_id }))
 }
@@ -587,6 +676,51 @@ fn instance_list_parameters(
     Ok((cursor, limit, state))
 }
 
+fn instance_log_parameters(params: &Value) -> Result<(Option<u64>, Option<u64>, usize), ()> {
+    let after = optional_log_cursor(params, "after")?;
+    let before = optional_log_cursor(params, "before")?;
+    let limit = match params.get("limit") {
+        Some(value) => value
+            .as_u64()
+            .and_then(|value| usize::try_from(value).ok())
+            .filter(|value| (1..=INSTANCE_LOG_MAXIMUM_LIMIT).contains(value))
+            .ok_or(())?,
+        None => INSTANCE_LOG_DEFAULT_LIMIT,
+    };
+
+    Ok((after, before, limit))
+}
+
+fn optional_log_cursor(params: &Value, name: &str) -> Result<Option<u64>, ()> {
+    match params.get(name) {
+        Some(value) => value.as_str().ok_or(())?.parse().map(Some).map_err(|_| ()),
+        None => Ok(None),
+    }
+}
+
+fn optional_non_empty_string(params: &Value, name: &str) -> bool {
+    params
+        .get(name)
+        .is_none_or(|value| value.as_str().is_some_and(|value| !value.is_empty()))
+}
+
+fn event_topics_parameter(params: &Value) -> Option<BTreeSet<String>> {
+    let topics = params.get("topics")?.as_array()?;
+    if topics.is_empty() {
+        return None;
+    }
+
+    topics
+        .iter()
+        .map(Value::as_str)
+        .map(|topic| {
+            topic
+                .filter(|topic| EVENT_TOPICS.contains(topic))
+                .map(str::to_owned)
+        })
+        .collect()
+}
+
 fn instance_id_parameter(params: &Value) -> Option<InstanceId> {
     params
         .get("instanceId")
@@ -626,6 +760,11 @@ fn task_accepted_response(request_id: RequestId, task_id: TaskId) -> WireMessage
 
 fn process_error_response(request_id: RequestId, error: &InstanceProcessError) -> WireMessage {
     match error {
+        InstanceProcessError::CommandContainsNul
+        | InstanceProcessError::CommandEmpty
+        | InstanceProcessError::CommandTooLong { .. } => {
+            error_response(request_id, "BAD_REQUEST", "Instance command is invalid")
+        }
         InstanceProcessError::Repository(InstanceRepositoryError::NotFound { .. }) => {
             error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist")
         }
@@ -648,6 +787,13 @@ fn process_error_response(request_id: RequestId, error: &InstanceProcessError) -
                 None,
             )
         }
+    }
+}
+
+fn event_topic(message: &WireMessage) -> Option<&str> {
+    match message {
+        WireMessage::Event { topic, .. } => Some(topic),
+        WireMessage::Request { .. } | WireMessage::Response { .. } => None,
     }
 }
 
