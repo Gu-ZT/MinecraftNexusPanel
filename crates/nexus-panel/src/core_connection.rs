@@ -7,13 +7,16 @@ use nexus_domain::InstanceId;
 use nexus_domain::InstancePage;
 use nexus_domain::PRODUCT_VERSION;
 use nexus_domain::RequestId;
+use nexus_domain::TaskId;
 use nexus_protocol::CURRENT_PROTOCOL_VERSION;
 use nexus_protocol::NoiseTransport;
 use nexus_protocol::PresharedKey;
 use nexus_protocol::ProtocolVersion;
 use nexus_protocol::WireMessage;
 use serde_json::Value;
+use serde_json::from_value;
 use serde_json::json;
+use serde_json::to_value;
 use tokio::net::TcpStream;
 
 use crate::CoreConnectionError;
@@ -57,18 +60,17 @@ impl CoreConnection {
         transport.write_message(&hello).await?;
         let welcome = response_result(transport.read_message().await?, request_id)?;
         let protocol = response_field(&welcome, "protocol")?;
-        let protocol = serde_json::from_value(protocol)
+        let protocol = from_value(protocol)
             .map_err(|_| CoreConnectionError::InvalidResponse { field: "protocol" })?;
         let protocol = CURRENT_PROTOCOL_VERSION.negotiate(protocol)?;
         let core_id = response_field(&welcome, "coreId")?;
-        let core_id = serde_json::from_value(core_id)
+        let core_id = from_value(core_id)
             .map_err(|_| CoreConnectionError::InvalidResponse { field: "coreId" })?;
         let capabilities = response_field(&welcome, "capabilities")?;
-        let capabilities = serde_json::from_value(capabilities).map_err(|_| {
-            CoreConnectionError::InvalidResponse {
+        let capabilities =
+            from_value(capabilities).map_err(|_| CoreConnectionError::InvalidResponse {
                 field: "capabilities",
-            }
-        })?;
+            })?;
         let heartbeat_seconds = response_field(&welcome, "heartbeatSeconds")?
             .as_u64()
             .ok_or(CoreConnectionError::InvalidResponse {
@@ -123,12 +125,11 @@ impl CoreConnection {
         &mut self,
         instance: &InstanceCreate,
     ) -> Result<Instance, CoreConnectionError> {
-        let params = serde_json::to_value(instance)
+        let params = to_value(instance)
             .map_err(|_| CoreConnectionError::InvalidResponse { field: "instance" })?;
         let result = self.request("instance.create", params).await?;
 
-        serde_json::from_value(result)
-            .map_err(|_| CoreConnectionError::InvalidResponse { field: "instance" })
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "instance" })
     }
 
     pub async fn get_instance(
@@ -139,31 +140,97 @@ impl CoreConnection {
             .request("instance.get", json!({ "instanceId": instance_id }))
             .await?;
 
-        serde_json::from_value(result)
-            .map_err(|_| CoreConnectionError::InvalidResponse { field: "instance" })
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "instance" })
     }
 
     pub async fn list_instances(&mut self) -> Result<InstancePage, CoreConnectionError> {
         let result = self.request("instance.list", json!({})).await?;
 
-        serde_json::from_value(result).map_err(|_| CoreConnectionError::InvalidResponse {
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse {
             field: "instancePage",
         })
     }
 
+    pub async fn start_instance(
+        &mut self,
+        instance_id: &InstanceId,
+        idempotency_key: &str,
+    ) -> Result<TaskId, CoreConnectionError> {
+        self.lifecycle_request(
+            "instance.start",
+            json!({ "instanceId": instance_id }),
+            idempotency_key,
+        )
+        .await
+    }
+
+    pub async fn stop_instance(
+        &mut self,
+        instance_id: &InstanceId,
+        timeout_seconds: Option<u16>,
+        idempotency_key: &str,
+    ) -> Result<TaskId, CoreConnectionError> {
+        let mut params = json!({ "instanceId": instance_id });
+        if let Some(timeout_seconds) = timeout_seconds {
+            params["timeoutSeconds"] = json!(timeout_seconds);
+        }
+
+        self.lifecycle_request("instance.stop", params, idempotency_key)
+            .await
+    }
+
+    pub async fn kill_instance(
+        &mut self,
+        instance_id: &InstanceId,
+        idempotency_key: &str,
+    ) -> Result<TaskId, CoreConnectionError> {
+        self.lifecycle_request(
+            "instance.kill",
+            json!({
+                "instanceId": instance_id,
+                "confirmation": instance_id,
+            }),
+            idempotency_key,
+        )
+        .await
+    }
+
     async fn request(&mut self, method: &str, params: Value) -> Result<Value, CoreConnectionError> {
+        self.request_with_idempotency(method, params, None).await
+    }
+
+    async fn request_with_idempotency(
+        &mut self,
+        method: &str,
+        params: Value,
+        idempotency_key: Option<&str>,
+    ) -> Result<Value, CoreConnectionError> {
         let request_id = RequestId::new();
         let request = WireMessage::Request {
             request_id,
             method: method.to_owned(),
             params,
             deadline: None,
-            idempotency_key: None,
+            idempotency_key: idempotency_key.map(str::to_owned),
         };
 
         self.transport.write_message(&request).await?;
 
         response_result(self.transport.read_message().await?, request_id)
+    }
+
+    async fn lifecycle_request(
+        &mut self,
+        method: &str,
+        params: Value,
+        idempotency_key: &str,
+    ) -> Result<TaskId, CoreConnectionError> {
+        let result = self
+            .request_with_idempotency(method, params, Some(idempotency_key))
+            .await?;
+        let task_id = response_field(&result, "taskId")?;
+
+        from_value(task_id).map_err(|_| CoreConnectionError::InvalidResponse { field: "taskId" })
     }
 }
 

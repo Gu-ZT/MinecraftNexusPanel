@@ -201,6 +201,8 @@ sequenceDiagram
 - `sequence` 在一个 Core 会话内单调递增，不要求跨重启连续。
 - 可靠恢复依赖各主题自己的 `cursor`，例如控制台日志游标。
 - Panel 必须忽略未知 topic，并记录一次可限流的调试日志。
+- `instance.state` 在实例进入 `STARTING`、`RUNNING`、`STOPPING`、`STOPPED` 或 `FAILED` 时发布，`data` 包含
+  `instanceId` 和完整 `runtime`。
 
 ## 5. 方法
 

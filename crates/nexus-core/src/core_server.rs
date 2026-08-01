@@ -10,6 +10,7 @@ use nexus_domain::InstancePage;
 use nexus_domain::InstanceState;
 use nexus_domain::PRODUCT_VERSION;
 use nexus_domain::RequestId;
+use nexus_domain::TaskId;
 use nexus_protocol::CURRENT_PROTOCOL_VERSION;
 use nexus_protocol::NoiseTransport;
 use nexus_protocol::PresharedKey;
@@ -17,13 +18,20 @@ use nexus_protocol::ProtocolVersion;
 use nexus_protocol::WireError;
 use nexus_protocol::WireMessage;
 use serde_json::Value;
+use serde_json::from_value;
 use serde_json::json;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
+use tokio::select;
+use tokio::spawn;
+use tokio::sync::broadcast::error::RecvError;
 
 use crate::CoreError;
+use crate::CoreRequestState;
+use crate::InstanceProcessError;
+use crate::InstanceProcessManager;
 use crate::InstanceRepository;
 use crate::InstanceRepositoryError;
 
@@ -39,6 +47,7 @@ pub struct CoreServer {
     listener: TcpListener,
     pre_shared_key: PresharedKey,
     instances: InstanceRepository,
+    processes: InstanceProcessManager,
 }
 
 impl CoreServer {
@@ -59,12 +68,17 @@ impl CoreServer {
             source,
         })?;
 
+        let instances = InstanceRepository::new();
+        let processes =
+            InstanceProcessManager::new(config.data_directory().to_path_buf(), instances.clone());
+
         Ok(Self {
             core_id,
             listen_address,
             listener,
             pre_shared_key,
-            instances: InstanceRepository::new(),
+            instances,
+            processes,
         })
     }
 
@@ -95,9 +109,10 @@ impl CoreServer {
             let core_id = self.core_id;
             let pre_shared_key = self.pre_shared_key.clone();
             let instances = self.instances.clone();
+            let processes = self.processes.clone();
 
-            tokio::spawn(async move {
-                if handle_connection(stream, &pre_shared_key, core_id, instances)
+            spawn(async move {
+                if handle_connection(stream, &pre_shared_key, core_id, instances, processes)
                     .await
                     .is_err()
                 {
@@ -117,10 +132,11 @@ async fn handle_connection(
     pre_shared_key: &PresharedKey,
     core_id: CoreId,
     instances: InstanceRepository,
+    processes: InstanceProcessManager,
 ) -> Result<(), CoreError> {
     let mut transport = NoiseTransport::accept(stream, pre_shared_key).await?;
     let first_message = transport.read_message().await?;
-    let Some((request_id, method, params)) = request_parts(first_message) else {
+    let Some((request_id, method, params, _)) = request_parts(first_message) else {
         return Ok(());
     };
     let (response, session_established) =
@@ -131,14 +147,35 @@ async fn handle_connection(
         return Ok(());
     }
 
-    loop {
-        let message = transport.read_message().await?;
-        let Some((request_id, method, params)) = request_parts(message) else {
-            return Ok(());
-        };
-        let response = request_response(request_id, &method, &params, core_id, &instances);
+    let mut request_state = CoreRequestState::new(core_id, instances, processes);
+    let mut event_receiver = request_state.processes().subscribe();
 
-        transport.write_message(&response).await?;
+    loop {
+        select! {
+            message = transport.read_message() => {
+                let Some((request_id, method, params, idempotency_key)) = request_parts(message?) else {
+                    return Ok(());
+                };
+                let response = request_response(
+                    request_id,
+                    &method,
+                    &params,
+                    idempotency_key.as_deref(),
+                    &mut request_state,
+                ).await;
+
+                transport.write_message(&response).await?;
+            }
+            event = event_receiver.recv(), if request_state.is_subscribed_to_events() => {
+                match event {
+                    Ok(event) => transport.write_message(&event).await?,
+                    Err(RecvError::Lagged(skipped)) => {
+                        tracing::debug!(skipped, "Core event subscriber lagged behind");
+                    }
+                    Err(RecvError::Closed) => return Ok(()),
+                }
+            }
+        }
     }
 }
 
@@ -175,14 +212,15 @@ fn load_or_create_core_id(data_directory: &Path) -> Result<CoreId, CoreError> {
     Ok(core_id)
 }
 
-fn request_parts(message: WireMessage) -> Option<(RequestId, String, Value)> {
+fn request_parts(message: WireMessage) -> Option<(RequestId, String, Value, Option<String>)> {
     match message {
         WireMessage::Request {
             request_id,
             method,
             params,
+            idempotency_key,
             ..
-        } => Some((request_id, method, params)),
+        } => Some((request_id, method, params, idempotency_key)),
         WireMessage::Response { .. } | WireMessage::Event { .. } => None,
     }
 }
@@ -242,27 +280,38 @@ fn session_hello_response(
     )
 }
 
-fn request_response(
+async fn request_response(
     request_id: RequestId,
     method: &str,
     params: &Value,
-    core_id: CoreId,
-    instances: &InstanceRepository,
+    idempotency_key: Option<&str>,
+    state: &mut CoreRequestState,
 ) -> WireMessage {
     match method {
         "system.info" => success_response(
             request_id,
             json!({
-                "coreId": core_id,
+                "coreId": state.core_id(),
                 "serverVersion": PRODUCT_VERSION,
                 "protocol": CURRENT_PROTOCOL_VERSION,
                 "capabilities": CORE_CAPABILITIES,
             }),
         ),
         "system.ping" => success_response(request_id, json!({ "receivedAt": current_timestamp() })),
-        "instance.create" => instance_create_response(request_id, params, instances),
-        "instance.get" => instance_get_response(request_id, params, instances),
-        "instance.list" => instance_list_response(request_id, params, instances),
+        "instance.create" => instance_create_response(request_id, params, state.instances()),
+        "instance.get" => instance_get_response(request_id, params, state.instances()),
+        "instance.kill" => {
+            instance_kill_response(request_id, params, idempotency_key, state.processes()).await
+        }
+        "instance.list" => instance_list_response(request_id, params, state.instances()),
+        "instance.start" => {
+            instance_start_response(request_id, params, idempotency_key, state.processes()).await
+        }
+        "instance.stop" => {
+            instance_stop_response(request_id, params, idempotency_key, state.processes()).await
+        }
+        "event.subscribe" => event_subscribe_response(request_id, params, state),
+        "event.unsubscribe" => event_unsubscribe_response(request_id, params, state),
         _ => error_response(
             request_id,
             "METHOD_NOT_SUPPORTED",
@@ -271,12 +320,150 @@ fn request_response(
     }
 }
 
+async fn instance_start_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    processes: &InstanceProcessManager,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.start requires a valid instanceId",
+        );
+    };
+
+    match processes.start(&instance_id).await {
+        Ok(task_id) => task_accepted_response(request_id, task_id),
+        Err(error) => process_error_response(request_id, &error),
+    }
+}
+
+async fn instance_stop_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    processes: &InstanceProcessManager,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.stop requires a valid instanceId",
+        );
+    };
+    let timeout_seconds = match optional_timeout_seconds(params) {
+        Ok(timeout_seconds) => timeout_seconds,
+        Err(()) => {
+            return error_response(
+                request_id,
+                "BAD_REQUEST",
+                "instance.stop timeoutSeconds must be between 1 and 300",
+            );
+        }
+    };
+
+    match processes.stop(&instance_id, timeout_seconds).await {
+        Ok(task_id) => task_accepted_response(request_id, task_id),
+        Err(error) => process_error_response(request_id, &error),
+    }
+}
+
+async fn instance_kill_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    processes: &InstanceProcessManager,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.kill requires a valid instanceId",
+        );
+    };
+    let confirmation_matches = params
+        .get("confirmation")
+        .and_then(Value::as_str)
+        .is_some_and(|confirmation| confirmation == instance_id.as_str());
+    if !confirmation_matches {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.kill confirmation must match instanceId",
+        );
+    }
+
+    match processes.kill(&instance_id).await {
+        Ok(task_id) => task_accepted_response(request_id, task_id),
+        Err(error) => process_error_response(request_id, &error),
+    }
+}
+
+fn event_subscribe_response(
+    request_id: RequestId,
+    params: &Value,
+    state: &mut CoreRequestState,
+) -> WireMessage {
+    let subscribes_to_instance_state =
+        params
+            .get("topics")
+            .and_then(Value::as_array)
+            .is_some_and(|topics| {
+                topics
+                    .iter()
+                    .any(|topic| topic.as_str() == Some("instance.state"))
+            });
+    if !subscribes_to_instance_state {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "event.subscribe requires the instance.state topic",
+        );
+    }
+    let subscription_id = RequestId::new();
+    state.subscribe_to_events(subscription_id);
+
+    success_response(request_id, json!({ "subscriptionId": subscription_id }))
+}
+
+fn event_unsubscribe_response(
+    request_id: RequestId,
+    params: &Value,
+    state: &mut CoreRequestState,
+) -> WireMessage {
+    let subscription_id = params
+        .get("subscriptionId")
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse::<RequestId>().ok());
+    if subscription_id.is_none() || subscription_id != state.event_subscription() {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "event.unsubscribe requires the active subscriptionId",
+        );
+    }
+    state.unsubscribe_from_events();
+
+    success_response(request_id, json!({}))
+}
+
 fn instance_create_response(
     request_id: RequestId,
     params: &Value,
     instances: &InstanceRepository,
 ) -> WireMessage {
-    let definition = match serde_json::from_value::<InstanceCreate>(params.clone()) {
+    let definition = match from_value::<InstanceCreate>(params.clone()) {
         Ok(definition) => definition,
         Err(_) => {
             return error_response(
@@ -393,11 +580,75 @@ fn instance_list_parameters(
         None => INSTANCE_LIST_DEFAULT_LIMIT,
     };
     let state = match params.get("state") {
-        Some(value) => Some(serde_json::from_value(value.clone()).map_err(|_| ())?),
+        Some(value) => Some(from_value(value.clone()).map_err(|_| ())?),
         None => None,
     };
 
     Ok((cursor, limit, state))
+}
+
+fn instance_id_parameter(params: &Value) -> Option<InstanceId> {
+    params
+        .get("instanceId")
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse().ok())
+}
+
+fn optional_timeout_seconds(params: &Value) -> Result<Option<u16>, ()> {
+    match params.get("timeoutSeconds") {
+        Some(value) => value
+            .as_u64()
+            .and_then(|value| u16::try_from(value).ok())
+            .filter(|value| (1..=300).contains(value))
+            .map(Some)
+            .ok_or(()),
+        None => Ok(None),
+    }
+}
+
+fn missing_idempotency_key_response(request_id: RequestId) -> WireMessage {
+    error_response(
+        request_id,
+        "PRECONDITION_REQUIRED",
+        "Instance lifecycle operations require idempotencyKey",
+    )
+}
+
+fn task_accepted_response(request_id: RequestId, task_id: TaskId) -> WireMessage {
+    success_response(
+        request_id,
+        json!({
+            "taskId": task_id,
+            "acceptedAt": current_timestamp(),
+        }),
+    )
+}
+
+fn process_error_response(request_id: RequestId, error: &InstanceProcessError) -> WireMessage {
+    match error {
+        InstanceProcessError::Repository(InstanceRepositoryError::NotFound { .. }) => {
+            error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist")
+        }
+        InstanceProcessError::Repository(InstanceRepositoryError::StateConflict {
+            state, ..
+        }) => error_response_with_details(
+            request_id,
+            "INSTANCE_STATE_CONFLICT",
+            "Instance state does not allow this operation",
+            false,
+            Some(json!({ "state": state })),
+        ),
+        _ => {
+            tracing::error!(%error, "Instance process operation failed");
+            error_response_with_details(
+                request_id,
+                "INSTANCE_PROCESS_FAILED",
+                "Instance process operation failed",
+                true,
+                None,
+            )
+        }
+    }
 }
 
 fn repository_failure_response(
@@ -417,7 +668,7 @@ fn protocol_from_hello(params: &Value) -> Option<ProtocolVersion> {
     params
         .get("protocol")
         .cloned()
-        .and_then(|value| serde_json::from_value(value).ok())
+        .and_then(|value| from_value(value).ok())
 }
 
 fn negotiated_capabilities(params: &Value) -> Vec<&'static str> {
@@ -452,6 +703,16 @@ fn success_response(request_id: RequestId, result: Value) -> WireMessage {
 }
 
 fn error_response(request_id: RequestId, code: &str, message: &str) -> WireMessage {
+    error_response_with_details(request_id, code, message, false, None)
+}
+
+fn error_response_with_details(
+    request_id: RequestId,
+    code: &str,
+    message: &str,
+    retryable: bool,
+    details: Option<Value>,
+) -> WireMessage {
     WireMessage::Response {
         request_id,
         ok: false,
@@ -459,8 +720,8 @@ fn error_response(request_id: RequestId, code: &str, message: &str) -> WireMessa
         error: Some(WireError {
             code: code.to_owned(),
             message: message.to_owned(),
-            retryable: false,
-            details: None,
+            retryable,
+            details,
         }),
     }
 }

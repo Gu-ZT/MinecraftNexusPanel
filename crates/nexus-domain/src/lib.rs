@@ -11,6 +11,7 @@ mod instance_runtime;
 mod instance_state;
 mod launch_config;
 mod request_id;
+mod task_id;
 
 pub use core_id::CoreId;
 pub use event_id::EventId;
@@ -25,6 +26,7 @@ pub use instance_runtime::InstanceRuntime;
 pub use instance_state::InstanceState;
 pub use launch_config::LaunchConfig;
 pub use request_id::RequestId;
+pub use task_id::TaskId;
 
 pub const API_VERSION: &str = "v1";
 pub const PRODUCT_NAME: &str = "MCNP";

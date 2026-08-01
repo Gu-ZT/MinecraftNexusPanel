@@ -40,6 +40,16 @@ impl Instance {
     }
 
     #[must_use]
+    pub fn directory(&self) -> &str {
+        &self.directory
+    }
+
+    #[must_use]
+    pub fn launch(&self) -> &LaunchConfig {
+        &self.launch
+    }
+
+    #[must_use]
     pub fn runtime(&self) -> &InstanceRuntime {
         &self.runtime
     }
@@ -47,5 +57,9 @@ impl Instance {
     #[must_use]
     pub const fn revision(&self) -> u64 {
         self.revision
+    }
+
+    pub fn set_runtime(&mut self, runtime: InstanceRuntime) {
+        self.runtime = runtime;
     }
 }

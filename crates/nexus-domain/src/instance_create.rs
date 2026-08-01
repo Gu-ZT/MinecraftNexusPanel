@@ -96,6 +96,7 @@ fn is_valid_launch(launch: &LaunchConfig) -> bool {
             !name.trim().is_empty()
                 && !name.contains('\0')
                 && !name.contains('=')
+                && !name.to_ascii_uppercase().starts_with("MCNP_")
                 && !value.contains('\0')
         })
         && !launch.stop_command().trim().is_empty()
@@ -124,6 +125,27 @@ mod tests {
                 "java".to_owned(),
                 Vec::new(),
                 BTreeMap::new(),
+                "stop".to_owned(),
+                30,
+            ),
+        );
+
+        assert!(instance.is_err());
+    }
+
+    #[test]
+    fn rejects_reserved_core_environment_variables() {
+        let mut environment = BTreeMap::new();
+        environment.insert("MCNP_CORE_PSK".to_owned(), "secret".to_owned());
+        let instance = InstanceCreate::new(
+            InstanceId::new("survival".to_owned()).expect("test identifier is valid"),
+            "Survival".to_owned(),
+            InstanceKind::Paper,
+            "instances/survival".to_owned(),
+            LaunchConfig::new(
+                "java".to_owned(),
+                Vec::new(),
+                environment,
                 "stop".to_owned(),
                 30,
             ),

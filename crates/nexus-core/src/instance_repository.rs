@@ -1,10 +1,13 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::MutexGuard;
 
 use nexus_domain::Instance;
 use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
+use nexus_domain::InstanceRuntime;
+use nexus_domain::InstanceState;
 
 use crate::InstanceRepositoryError;
 
@@ -48,10 +51,51 @@ impl InstanceRepository {
         Ok(instances.values().cloned().collect())
     }
 
+    pub fn set_runtime(
+        &self,
+        instance_id: &InstanceId,
+        runtime: InstanceRuntime,
+    ) -> Result<Instance, InstanceRepositoryError> {
+        let mut instances = self.lock_instances()?;
+        let instance =
+            instances
+                .get_mut(instance_id)
+                .ok_or_else(|| InstanceRepositoryError::NotFound {
+                    instance_id: instance_id.clone(),
+                })?;
+        instance.set_runtime(runtime);
+
+        Ok(instance.clone())
+    }
+
+    pub fn transition_runtime(
+        &self,
+        instance_id: &InstanceId,
+        allowed_states: &[InstanceState],
+        runtime: InstanceRuntime,
+    ) -> Result<Instance, InstanceRepositoryError> {
+        let mut instances = self.lock_instances()?;
+        let instance =
+            instances
+                .get_mut(instance_id)
+                .ok_or_else(|| InstanceRepositoryError::NotFound {
+                    instance_id: instance_id.clone(),
+                })?;
+        let state = instance.runtime().state();
+        if !allowed_states.contains(&state) {
+            return Err(InstanceRepositoryError::StateConflict {
+                instance_id: instance_id.clone(),
+                state,
+            });
+        }
+        instance.set_runtime(runtime);
+
+        Ok(instance.clone())
+    }
+
     fn lock_instances(
         &self,
-    ) -> Result<std::sync::MutexGuard<'_, BTreeMap<InstanceId, Instance>>, InstanceRepositoryError>
-    {
+    ) -> Result<MutexGuard<'_, BTreeMap<InstanceId, Instance>>, InstanceRepositoryError> {
         self.instances
             .lock()
             .map_err(|_| InstanceRepositoryError::LockPoisoned)
