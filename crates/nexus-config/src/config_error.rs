@@ -13,6 +13,8 @@ pub enum ConfigError {
     InvalidSocketAddress { option: &'static str, value: String },
     #[error("invalid Core pre-shared key")]
     InvalidCorePreSharedKey(#[source] PresharedKeyError),
+    #[error("Panel master key must be exactly 32 bytes encoded as unpadded Base64URL")]
+    InvalidPanelMasterKey,
     #[error("initial administrator username must contain between 1 and 64 characters")]
     InvalidInitialAdminUsername,
     #[error("Core TLS certificate and private key must be configured together")]

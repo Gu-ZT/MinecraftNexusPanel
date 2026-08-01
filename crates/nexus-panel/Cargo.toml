@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+aes-gcm.workspace = true
 argon2.workspace = true
 nexus-domain.workspace = true
 nexus-config.workspace = true

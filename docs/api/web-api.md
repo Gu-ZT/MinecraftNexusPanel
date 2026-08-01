@@ -172,6 +172,8 @@ localhost 自动跳过证书链验证。`skipCertificateVerification` 仅用于�
 
 Core 响应永远不返回 `secret`，只返回 `secretConfigured`、`secretUpdatedAt`、实际 TLS 证书 SHA-256 指纹和验证结果。
 
+Panel 使用 `MCNP_PANEL_MASTER_KEY` 对 Core PSK 执行 AES-256-GCM 信封加密，密文使用随机 nonce，并通过 Core ID 关联数据绑定到对应注册记录。Panel 启动时恢复注册表并自动连接；心跳失败后以 1 秒起步、最长 30 秒的指数退避重连。主动 reconnect 会立即丢弃现有连接并进入 `UNKNOWN`，后续连接结果更新为 `ONLINE`、`OFFLINE`、`AUTH_FAILED` 或 `INCOMPATIBLE`。
+
 ### 5.3 实例
 
 实例路径总是包含 `coreId`，防止不同 Core 上相同实例 ID 产生歧义。

@@ -20,21 +20,30 @@ use serde_json::json;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tokio::net::TcpListener;
+use uuid::Uuid;
 
 use crate::AuthService;
+use crate::CoreRegistry;
 use crate::PanelError;
+use crate::PanelState;
+use crate::SecretCipher;
 use crate::auth_routes::auth_routes;
+use crate::core_routes::core_routes;
 
 pub struct PanelServer {
     listen_address: SocketAddr,
     listener: TcpListener,
-    auth: AuthService,
+    state: PanelState,
 }
 
 impl PanelServer {
     pub async fn bind(config: &PanelConfig) -> Result<Self, PanelError> {
+        let master_key = config
+            .master_key()
+            .ok_or(PanelError::MissingPanelMasterKey)?;
         let store = SqliteStore::open(config.data_directory())?;
-        let auth = AuthService::new(store);
+        let panel_id = store.get_or_create_panel_id(&Uuid::now_v7().to_string())?;
+        let auth = AuthService::new(store.clone());
         if let Some(initial_admin) = config.initial_admin() {
             if auth.initialize_admin(initial_admin)? {
                 tracing::info!(
@@ -48,6 +57,7 @@ impl PanelServer {
                 "Panel has no users; configure MCNP_INITIAL_ADMIN_USERNAME and MCNP_INITIAL_ADMIN_PASSWORD"
             );
         }
+        let cores = CoreRegistry::new(store, SecretCipher::new(master_key), panel_id)?;
         let listener = TcpListener::bind(config.listen_address())
             .await
             .map_err(|source| PanelError::Bind {
@@ -62,7 +72,7 @@ impl PanelServer {
         Ok(Self {
             listen_address,
             listener,
-            auth,
+            state: PanelState::new(auth, cores),
         })
     }
 
@@ -79,19 +89,20 @@ impl PanelServer {
 
         axum::serve(
             self.listener,
-            router(self.auth).into_make_service_with_connect_info::<SocketAddr>(),
+            router(self.state).into_make_service_with_connect_info::<SocketAddr>(),
         )
         .await
         .map_err(PanelError::Serve)
     }
 }
 
-fn router(auth: AuthService) -> Router {
+fn router(state: PanelState) -> Router {
     Router::new()
         .route("/api/v1/health/live", get(health))
         .route("/api/v1/health/ready", get(readiness))
         .merge(auth_routes())
-        .with_state(auth)
+        .merge(core_routes())
+        .with_state(state)
         .layer(middleware::from_fn(assign_request_id))
 }
 
@@ -121,8 +132,8 @@ async fn health() -> Json<Value> {
     }))
 }
 
-async fn readiness(State(auth): State<AuthService>) -> Response {
-    match auth.has_users() {
+async fn readiness(State(state): State<PanelState>) -> Response {
+    match state.auth().has_users() {
         Ok(true) => health().await.into_response(),
         Ok(false) | Err(_) => (
             StatusCode::SERVICE_UNAVAILABLE,

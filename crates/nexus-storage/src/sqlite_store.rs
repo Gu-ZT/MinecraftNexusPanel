@@ -11,8 +11,10 @@ use rusqlite::Result as SqliteResult;
 use rusqlite::Row;
 use rusqlite::TransactionBehavior;
 
+use crate::NewCore;
 use crate::NewSession;
 use crate::StorageError;
+use crate::StoredCore;
 use crate::StoredSession;
 use crate::StoredUser;
 
@@ -76,6 +78,72 @@ impl SqliteStore {
         transaction.commit().map_err(StorageError::Query)?;
 
         Ok(true)
+    }
+
+    pub fn get_or_create_panel_id(&self, candidate: &str) -> Result<String, StorageError> {
+        let mut connection = self.lock_connection()?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(StorageError::Query)?;
+        transaction
+            .execute(
+                "INSERT OR IGNORE INTO panel_metadata (key, value) VALUES ('panel_id', ?1)",
+                [candidate],
+            )
+            .map_err(StorageError::Query)?;
+        let panel_id = transaction
+            .query_row(
+                "SELECT value FROM panel_metadata WHERE key = 'panel_id'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(StorageError::Query)?;
+        transaction.commit().map_err(StorageError::Query)?;
+
+        Ok(panel_id)
+    }
+
+    pub fn insert_core(&self, core: &NewCore) -> Result<bool, StorageError> {
+        let connection = self.lock_connection()?;
+        let inserted = connection
+            .execute(
+                "INSERT OR IGNORE INTO cores (
+                    id, name, address, secret_envelope, secret_updated_at,
+                    connect_timeout_seconds, skip_certificate_verification, tags_json,
+                    revision, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, ?9)",
+                (
+                    core.id.as_str(),
+                    core.name.as_str(),
+                    core.address.as_str(),
+                    core.secret_envelope.as_slice(),
+                    core.secret_updated_at.as_str(),
+                    core.connect_timeout_seconds,
+                    core.skip_certificate_verification,
+                    core.tags_json.as_str(),
+                    core.created_at.as_str(),
+                ),
+            )
+            .map_err(StorageError::Query)?;
+
+        Ok(inserted == 1)
+    }
+
+    pub fn list_cores(&self) -> Result<Vec<StoredCore>, StorageError> {
+        let connection = self.lock_connection()?;
+        let mut statement = connection
+            .prepare(
+                "SELECT id, name, address, secret_envelope, secret_updated_at,
+                        connect_timeout_seconds, skip_certificate_verification, tags_json, revision
+                 FROM cores ORDER BY id",
+            )
+            .map_err(StorageError::Query)?;
+        let rows = statement
+            .query_map([], map_core)
+            .map_err(StorageError::Query)?;
+
+        rows.collect::<SqliteResult<Vec<_>>>()
+            .map_err(StorageError::Query)
     }
 
     pub fn create_session(&self, session: &NewSession) -> Result<(), StorageError> {
@@ -323,7 +391,31 @@ fn migrate(connection: &mut Connection) -> Result<(), StorageError> {
             CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
             CREATE INDEX IF NOT EXISTS rotated_session_tokens_session_id_idx
                 ON rotated_session_tokens(session_id);
-            PRAGMA user_version = 1;
+
+            CREATE TABLE IF NOT EXISTS panel_metadata (
+                key TEXT PRIMARY KEY NOT NULL,
+                value TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS cores (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                address TEXT NOT NULL,
+                secret_envelope BLOB NOT NULL,
+                secret_updated_at TEXT NOT NULL,
+                connect_timeout_seconds INTEGER NOT NULL CHECK (
+                    connect_timeout_seconds BETWEEN 1 AND 60
+                ),
+                skip_certificate_verification INTEGER NOT NULL CHECK (
+                    skip_certificate_verification IN (0, 1)
+                ),
+                tags_json TEXT NOT NULL,
+                revision INTEGER NOT NULL CHECK (revision >= 1),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            PRAGMA user_version = 2;
             ",
         )
         .map_err(StorageError::Migrate)
@@ -354,6 +446,20 @@ fn map_user(row: &Row<'_>) -> SqliteResult<StoredUser> {
     ))
 }
 
+fn map_core(row: &Row<'_>) -> SqliteResult<StoredCore> {
+    Ok(StoredCore {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        address: row.get(2)?,
+        secret_envelope: row.get(3)?,
+        secret_updated_at: row.get(4)?,
+        connect_timeout_seconds: row.get(5)?,
+        skip_certificate_verification: row.get(6)?,
+        tags_json: row.get(7)?,
+        revision: row.get(8)?,
+    })
+}
+
 fn map_session(row: &Row<'_>) -> SqliteResult<StoredSession> {
     Ok(StoredSession::new(
         row.get(0)?,
@@ -375,6 +481,7 @@ mod tests {
 
     use super::DATABASE_FILE_NAME;
     use super::SqliteStore;
+    use crate::NewCore;
     use tempfile::tempdir;
 
     #[test]
@@ -436,5 +543,43 @@ mod tests {
             .expect("migrated user exists");
 
         assert_eq!(user.display_name(), "Administrator");
+    }
+
+    #[test]
+    fn persists_core_registrations_and_a_stable_panel_id() {
+        let data_directory = tempdir().expect("temporary Panel data directory is created");
+        let store = SqliteStore::open(data_directory.path()).expect("Panel database opens");
+        let core = NewCore {
+            id: "0198f8a8-c684-7361-b36a-43c7831c84c0".to_owned(),
+            name: "Game Node".to_owned(),
+            address: "tls://core.example.com:25580".to_owned(),
+            secret_envelope: vec![1, 2, 3, 4],
+            secret_updated_at: "2026-08-01T10:00:00Z".to_owned(),
+            connect_timeout_seconds: 10,
+            skip_certificate_verification: false,
+            tags_json: "[\"production\"]".to_owned(),
+            created_at: "2026-08-01T10:00:00Z".to_owned(),
+        };
+
+        assert!(store.insert_core(&core).expect("Core is inserted"));
+        assert!(!store.insert_core(&core).expect("duplicate Core is ignored"));
+        let cores = store.list_cores().expect("Core registrations are listed");
+        let stored = cores.first().expect("stored Core is returned");
+
+        assert_eq!(cores.len(), 1);
+        assert_eq!(stored.name(), "Game Node");
+        assert_eq!(stored.secret_envelope(), [1, 2, 3, 4]);
+        assert_eq!(
+            store
+                .get_or_create_panel_id("panel-1")
+                .expect("Panel ID is created"),
+            "panel-1"
+        );
+        assert_eq!(
+            store
+                .get_or_create_panel_id("panel-2")
+                .expect("Panel ID is reused"),
+            "panel-1"
+        );
     }
 }

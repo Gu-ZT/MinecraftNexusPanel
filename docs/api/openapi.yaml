@@ -234,6 +234,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
+        '502':
+          $ref: '#/components/responses/CoreFailure'
   /cores/{coreId}:
     parameters:
       - $ref: '#/components/parameters/CoreId'
@@ -336,6 +338,31 @@ paths:
           $ref: '#/components/responses/CoreFailure'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /cores/{coreId}/actions/reconnect:
+    post:
+      tags: [ Cores ]
+      operationId: reconnectCore
+      summary: Drop the current connection and reconnect a Core
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+      responses:
+        '202':
+          description: Reconnect scheduled
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Core'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '403':
           $ref: '#/components/responses/Forbidden'
   /cores/{coreId}/instances:

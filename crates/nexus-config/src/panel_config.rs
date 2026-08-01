@@ -4,12 +4,14 @@ use std::path::PathBuf;
 
 use crate::ConfigError;
 use crate::InitialAdminConfig;
+use crate::PanelMasterKey;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PanelConfig {
     listen_address: SocketAddr,
     data_directory: PathBuf,
     initial_admin: Option<InitialAdminConfig>,
+    master_key: Option<PanelMasterKey>,
 }
 
 impl PanelConfig {
@@ -28,12 +30,19 @@ impl PanelConfig {
             listen_address,
             data_directory,
             initial_admin: None,
+            master_key: None,
         })
     }
 
     #[must_use]
     pub fn with_initial_admin(mut self, initial_admin: InitialAdminConfig) -> Self {
         self.initial_admin = Some(initial_admin);
+        self
+    }
+
+    #[must_use]
+    pub fn with_master_key(mut self, master_key: PanelMasterKey) -> Self {
+        self.master_key = Some(master_key);
         self
     }
 
@@ -50,5 +59,10 @@ impl PanelConfig {
     #[must_use]
     pub const fn initial_admin(&self) -> Option<&InitialAdminConfig> {
         self.initial_admin.as_ref()
+    }
+
+    #[must_use]
+    pub const fn master_key(&self) -> Option<&PanelMasterKey> {
+        self.master_key.as_ref()
     }
 }

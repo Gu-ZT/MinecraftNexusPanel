@@ -1,5 +1,7 @@
 use nexus_config::PanelConfig;
+use nexus_config::PanelMasterKey;
 use nexus_domain::RequestId;
+use nexus_panel::PanelError;
 use nexus_panel::PanelServer;
 use tempfile::tempdir;
 use tokio::io::AsyncReadExt;
@@ -13,7 +15,8 @@ async fn responds_to_the_liveness_probe() {
         "127.0.0.1:0".to_owned(),
         data_directory.path().to_path_buf(),
     )
-    .expect("test Panel configuration is valid");
+    .expect("test Panel configuration is valid")
+    .with_master_key(PanelMasterKey::from_bytes([11_u8; 32]));
     let server = PanelServer::bind(&config)
         .await
         .expect("Panel listener binds");
@@ -42,4 +45,20 @@ async fn responds_to_the_liveness_probe() {
 
     server_task.abort();
     let _ = server_task.await;
+}
+
+#[tokio::test]
+async fn refuses_to_start_without_a_panel_master_key() {
+    let data_directory = tempdir().expect("temporary Panel data directory is created");
+    let config = PanelConfig::new(
+        "127.0.0.1:0".to_owned(),
+        data_directory.path().to_path_buf(),
+    )
+    .expect("test Panel configuration is valid");
+
+    assert!(matches!(
+        PanelServer::bind(&config).await,
+        Err(PanelError::MissingPanelMasterKey)
+    ));
+    assert!(!data_directory.path().join("panel.db").exists());
 }

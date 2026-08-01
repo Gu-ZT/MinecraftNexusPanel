@@ -4,6 +4,7 @@ use std::path::Path;
 
 use nexus_config::InitialAdminConfig;
 use nexus_config::PanelConfig;
+use nexus_config::PanelMasterKey;
 use nexus_domain::RequestId;
 use nexus_panel::PanelError;
 use nexus_panel::PanelServer;
@@ -266,6 +267,7 @@ fn panel_config(data_directory: &Path, username: &str, password: &str) -> PanelC
     PanelConfig::new("127.0.0.1:0".to_owned(), data_directory.to_path_buf())
         .expect("test Panel configuration is valid")
         .with_initial_admin(initial_admin)
+        .with_master_key(PanelMasterKey::from_bytes([11_u8; 32]))
 }
 
 async fn stop_panel(server_task: JoinHandle<Result<(), PanelError>>) {

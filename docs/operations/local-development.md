@@ -6,9 +6,11 @@
 - Node.js `22.12` 或更高版本。
 - pnpm `11.17.0`。
 
-## 生成 Core 连接密钥
+## 生成服务密钥
 
 Core 只从环境变量 `MCNP_CORE_PSK` 读取连接密钥，不接受命令行密钥，避免其出现在 shell 历史或进程列表中。密钥必须是至少 32 个随机字节的无填充 Base64URL。
+
+Panel 使用独立的 `MCNP_PANEL_MASTER_KEY` 加密数据库中的 Core PSK。该密钥必须是恰好 32 个随机字节的无填充 Base64URL，不能与 Core PSK 复用；更换或丢失后，已有 Core 密文将无法解密。
 
 Core 默认在数据目录的 `tls/` 下生成并复用自签名证书。需要使用自有证书时，同时设置 `MCNP_CORE_TLS_CERT` 和
 `MCNP_CORE_TLS_KEY` 为 PEM 文件路径。域名连接默认要求受信任证书；本地开发使用 IP/localhost 时自动跳过证书链验证。
@@ -20,10 +22,11 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'
 将输出设置到当前 PowerShell 会话：
 
 ```powershell
-$env:MCNP_CORE_PSK = 'replace-with-the-generated-secret'
+$env:MCNP_CORE_PSK = 'replace-with-the-generated-core-secret'
+$env:MCNP_PANEL_MASTER_KEY = 'replace-with-a-different-generated-panel-key'
 ```
 
-`all` 和 `core` 模式需要该变量；`panel` 模式不需要。可从根目录的 [`.env.example`](../../.env.example) 查看其他可选运行变量。实际 `.env` 文件被 Git 忽略。
+`all` 模式需要两个变量，`core` 模式只需要 `MCNP_CORE_PSK`，`panel` 模式只需要 `MCNP_PANEL_MASTER_KEY`。可从根目录的 [`.env.example`](../../.env.example) 查看其他可选运行变量。实际 `.env` 文件被 Git 忽略。
 
 ## 启动模式
 

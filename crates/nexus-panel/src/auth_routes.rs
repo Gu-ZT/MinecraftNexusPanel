@@ -20,12 +20,14 @@ use axum::routing::post;
 use nexus_domain::RequestId;
 use nexus_storage::StoredSession;
 use serde_json::json;
+use tokio::task::spawn_blocking;
 
 use crate::AuthError;
 use crate::AuthService;
 use crate::IssuedSession;
 use crate::LoginRequest;
 use crate::LoginResponse;
+use crate::PanelState;
 use crate::RefreshRequest;
 use crate::SessionResponse;
 use crate::UserResponse;
@@ -33,7 +35,7 @@ use crate::UserResponse;
 const SESSION_COOKIE_NAME: &str = "mcnp_session";
 const SESSION_COOKIE_MAX_AGE_SECONDS: i64 = 30 * 24 * 60 * 60;
 
-pub(crate) fn auth_routes() -> Router<AuthService> {
+pub(crate) fn auth_routes() -> Router<PanelState> {
     Router::new()
         .route("/api/v1/auth/login", post(login))
         .route("/api/v1/auth/refresh", post(refresh))
@@ -42,11 +44,12 @@ pub(crate) fn auth_routes() -> Router<AuthService> {
 }
 
 async fn login(
-    State(auth): State<AuthService>,
+    State(state): State<PanelState>,
     ConnectInfo(source_address): ConnectInfo<SocketAddr>,
     Extension(request_id): Extension<RequestId>,
     payload: Result<Json<LoginRequest>, JsonRejection>,
 ) -> Response {
+    let auth = state.auth().clone();
     let request = match payload {
         Ok(Json(request)) if request.is_valid() => request,
         Ok(_) | Err(_) => return validation_error(request_id),
@@ -60,11 +63,12 @@ async fn login(
 }
 
 async fn refresh(
-    State(auth): State<AuthService>,
+    State(state): State<PanelState>,
     Extension(request_id): Extension<RequestId>,
     headers: HeaderMap,
     payload: Result<Option<Json<RefreshRequest>>, JsonRejection>,
 ) -> Response {
+    let auth = state.auth().clone();
     let request = match payload {
         Ok(request) => request,
         Err(_) => return validation_error(request_id),
@@ -87,10 +91,11 @@ async fn refresh(
 }
 
 async fn logout(
-    State(auth): State<AuthService>,
+    State(state): State<PanelState>,
     Extension(request_id): Extension<RequestId>,
     headers: HeaderMap,
 ) -> Response {
+    let auth = state.auth().clone();
     let credential = match request_credential(&headers) {
         Some(credential) => credential,
         None => return auth_error_response(AuthError::InvalidSession, request_id),
@@ -122,10 +127,11 @@ async fn logout(
 }
 
 async fn current_user(
-    State(auth): State<AuthService>,
+    State(state): State<PanelState>,
     Extension(request_id): Extension<RequestId>,
     headers: HeaderMap,
 ) -> Response {
+    let auth = state.auth().clone();
     let credential = match request_credential(&headers) {
         Some(credential) => credential,
         None => return auth_error_response(AuthError::InvalidSession, request_id),
@@ -138,7 +144,7 @@ async fn current_user(
     }
 }
 
-fn authenticate(
+pub(crate) fn authenticate(
     auth: &AuthService,
     credential: &RequestCredential,
 ) -> Result<StoredSession, AuthError> {
@@ -148,12 +154,12 @@ fn authenticate(
     }
 }
 
-async fn run_blocking<T, F>(operation: F) -> Result<T, AuthError>
+pub(crate) async fn run_blocking<T, F>(operation: F) -> Result<T, AuthError>
 where
     T: Send + 'static,
     F: FnOnce() -> Result<T, AuthError> + Send + 'static,
 {
-    tokio::task::spawn_blocking(operation).await?
+    spawn_blocking(operation).await?
 }
 
 fn issued_session_response(session: &IssuedSession, include_user: bool) -> Response {
@@ -186,7 +192,7 @@ fn clear_session_cookie(response: &mut Response) {
     }
 }
 
-fn request_credential(headers: &HeaderMap) -> Option<RequestCredential> {
+pub(crate) fn request_credential(headers: &HeaderMap) -> Option<RequestCredential> {
     if let Some(value) =
         header_text(headers, AUTHORIZATION.as_str()).and_then(|value| value.strip_prefix("Bearer "))
     {
@@ -205,7 +211,7 @@ fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
         .find_map(|(cookie_name, value)| (cookie_name == name).then_some(value))
 }
 
-fn header_text<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+pub(crate) fn header_text<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     headers.get(name)?.to_str().ok()
 }
 
@@ -218,7 +224,7 @@ fn validation_error(request_id: RequestId) -> Response {
     )
 }
 
-fn auth_error_response(error: AuthError, request_id: RequestId) -> Response {
+pub(crate) fn auth_error_response(error: AuthError, request_id: RequestId) -> Response {
     match error {
         AuthError::InvalidCredentials => error_response(
             StatusCode::UNAUTHORIZED,
@@ -270,7 +276,7 @@ fn auth_error_response(error: AuthError, request_id: RequestId) -> Response {
     }
 }
 
-fn error_response(
+pub(crate) fn error_response(
     status: StatusCode,
     code: &str,
     message: &str,
@@ -290,7 +296,7 @@ fn error_response(
         .into_response()
 }
 
-enum RequestCredential {
+pub(crate) enum RequestCredential {
     Bearer(String),
     Browser(String),
 }
