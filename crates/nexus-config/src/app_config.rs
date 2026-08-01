@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use crate::ConfigError;
 use crate::CoreConfig;
+use crate::InitialAdminConfig;
 use crate::LoggingConfig;
 use crate::PanelConfig;
 use crate::RunMode;
@@ -27,6 +28,8 @@ impl AppConfig {
         let core_pre_shared_key = environment_optional("MCNP_CORE_PSK");
         let mut core_tls_certificate = environment_optional("MCNP_CORE_TLS_CERT");
         let mut core_tls_private_key = environment_optional("MCNP_CORE_TLS_KEY");
+        let initial_admin_username = environment_optional("MCNP_INITIAL_ADMIN_USERNAME");
+        let initial_admin_password = environment_optional("MCNP_INITIAL_ADMIN_PASSWORD");
         let mut arguments = args.into_iter();
 
         while let Some(argument) = arguments.next() {
@@ -80,7 +83,15 @@ impl AppConfig {
             core_tls_certificate.map(PathBuf::from),
             core_tls_private_key.map(PathBuf::from),
         )?;
-        let panel = PanelConfig::new(panel_listen, PathBuf::from(data_directory))?;
+        let initial_admin = match (initial_admin_username, initial_admin_password) {
+            (Some(username), Some(password)) => Some(InitialAdminConfig::new(username, password)?),
+            (None, None) => None,
+            _ => return Err(ConfigError::IncompleteInitialAdminCredentials),
+        };
+        let mut panel = PanelConfig::new(panel_listen, PathBuf::from(data_directory))?;
+        if let Some(initial_admin) = initial_admin {
+            panel = panel.with_initial_admin(initial_admin);
+        }
         let logging = LoggingConfig::new(log_filter)?;
 
         Ok(Self {
@@ -113,7 +124,7 @@ impl AppConfig {
 
     #[must_use]
     pub const fn usage() -> &'static str {
-        "Usage: mcnp [core|panel|all] [OPTIONS]\n\nOptions:\n  --mode MODE              Run core, panel, or all\n  --core-listen ADDRESS    Core TCP listen address\n  --core-tls-cert PATH     Core TLS certificate chain in PEM format\n  --core-tls-key PATH      Core TLS private key in PEM format\n  --panel-listen ADDRESS   Panel HTTP listen address\n  --data-dir PATH          Runtime data directory\n  --log-filter FILTER      tracing filter directive\n  -h, --help               Print help\n  -V, --version            Print version\n\nEnvironment:\n  MCNP_CORE_PSK            Required by core and all; unpadded Base64URL PSK\n  MCNP_CORE_LISTEN          Default Core TCP listen address\n  MCNP_CORE_TLS_CERT        Optional Core TLS certificate chain path\n  MCNP_CORE_TLS_KEY         Optional Core TLS private key path\n  MCNP_PANEL_LISTEN         Default Panel HTTP listen address\n  MCNP_DATA_DIR             Default runtime data directory\n  MCNP_LOG_FILTER           Default tracing filter directive"
+        "Usage: mcnp [core|panel|all] [OPTIONS]\n\nOptions:\n  --mode MODE              Run core, panel, or all\n  --core-listen ADDRESS    Core TCP listen address\n  --core-tls-cert PATH     Core TLS certificate chain in PEM format\n  --core-tls-key PATH      Core TLS private key in PEM format\n  --panel-listen ADDRESS   Panel HTTP listen address\n  --data-dir PATH          Runtime data directory\n  --log-filter FILTER      tracing filter directive\n  -h, --help               Print help\n  -V, --version            Print version\n\nEnvironment:\n  MCNP_CORE_PSK            Required by core and all; unpadded Base64URL PSK\n  MCNP_CORE_LISTEN          Default Core TCP listen address\n  MCNP_CORE_TLS_CERT        Optional Core TLS certificate chain path\n  MCNP_CORE_TLS_KEY         Optional Core TLS private key path\n  MCNP_PANEL_LISTEN         Default Panel HTTP listen address\n  MCNP_INITIAL_ADMIN_USERNAME  Initial administrator username for an empty database\n  MCNP_INITIAL_ADMIN_PASSWORD  Initial administrator password for an empty database\n  MCNP_DATA_DIR             Default runtime data directory\n  MCNP_LOG_FILTER           Default tracing filter directive"
     }
 }
 

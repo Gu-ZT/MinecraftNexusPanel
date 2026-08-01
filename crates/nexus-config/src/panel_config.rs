@@ -3,11 +3,13 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::ConfigError;
+use crate::InitialAdminConfig;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PanelConfig {
     listen_address: SocketAddr,
     data_directory: PathBuf,
+    initial_admin: Option<InitialAdminConfig>,
 }
 
 impl PanelConfig {
@@ -25,7 +27,14 @@ impl PanelConfig {
         Ok(Self {
             listen_address,
             data_directory,
+            initial_admin: None,
         })
+    }
+
+    #[must_use]
+    pub fn with_initial_admin(mut self, initial_admin: InitialAdminConfig) -> Self {
+        self.initial_admin = Some(initial_admin);
+        self
     }
 
     #[must_use]
@@ -36,5 +45,10 @@ impl PanelConfig {
     #[must_use]
     pub fn data_directory(&self) -> &Path {
         &self.data_directory
+    }
+
+    #[must_use]
+    pub const fn initial_admin(&self) -> Option<&InitialAdminConfig> {
+        self.initial_admin.as_ref()
     }
 }

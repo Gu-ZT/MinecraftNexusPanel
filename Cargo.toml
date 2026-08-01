@@ -8,6 +8,7 @@ edition = "2024"
 rust-version = "1.85"
 
 [workspace.dependencies]
+argon2 = { version = "0.5.3", default-features = false, features = ["std"] }
 nexus-config = { path = "crates/nexus-config" }
 nexus-core = { path = "crates/nexus-core" }
 nexus-domain = { path = "crates/nexus-domain" }
@@ -16,6 +17,7 @@ nexus-protocol = { path = "crates/nexus-protocol" }
 nexus-storage = { path = "crates/nexus-storage" }
 axum = "0.8.9"
 base64 = "0.23.0"
+getrandom = "0.3.4"
 hkdf = "0.13.0"
 rcgen = "0.13.2"
 rustls = { version = "0.23.35", default-features = false, features = ["ring", "std", "tls12"] }

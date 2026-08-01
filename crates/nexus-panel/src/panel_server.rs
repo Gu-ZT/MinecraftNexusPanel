@@ -3,10 +3,13 @@ use std::net::SocketAddr;
 use axum::Json;
 use axum::Router;
 use axum::extract::Request;
+use axum::extract::State;
 use axum::http::HeaderName;
 use axum::http::HeaderValue;
+use axum::http::StatusCode;
 use axum::middleware;
 use axum::middleware::Next;
+use axum::response::IntoResponse;
 use axum::response::Response;
 use axum::routing::get;
 use nexus_config::PanelConfig;
@@ -18,17 +21,33 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tokio::net::TcpListener;
 
+use crate::AuthService;
 use crate::PanelError;
+use crate::auth_routes::auth_routes;
 
 pub struct PanelServer {
     listen_address: SocketAddr,
     listener: TcpListener,
-    store: SqliteStore,
+    auth: AuthService,
 }
 
 impl PanelServer {
     pub async fn bind(config: &PanelConfig) -> Result<Self, PanelError> {
         let store = SqliteStore::open(config.data_directory())?;
+        let auth = AuthService::new(store);
+        if let Some(initial_admin) = config.initial_admin() {
+            if auth.initialize_admin(initial_admin)? {
+                tracing::info!(
+                    username = initial_admin.username(),
+                    "Initial administrator created"
+                );
+            }
+        }
+        if !auth.has_users()? {
+            tracing::warn!(
+                "Panel has no users; configure MCNP_INITIAL_ADMIN_USERNAME and MCNP_INITIAL_ADMIN_PASSWORD"
+            );
+        }
         let listener = TcpListener::bind(config.listen_address())
             .await
             .map_err(|source| PanelError::Bind {
@@ -43,7 +62,7 @@ impl PanelServer {
         Ok(Self {
             listen_address,
             listener,
-            store,
+            auth,
         })
     }
 
@@ -58,17 +77,21 @@ impl PanelServer {
             "Panel HTTP listener is ready"
         );
 
-        axum::serve(self.listener, router(self.store))
-            .await
-            .map_err(PanelError::Serve)
+        axum::serve(
+            self.listener,
+            router(self.auth).into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .await
+        .map_err(PanelError::Serve)
     }
 }
 
-fn router(store: SqliteStore) -> Router {
+fn router(auth: AuthService) -> Router {
     Router::new()
         .route("/api/v1/health/live", get(health))
-        .route("/api/v1/health/ready", get(health))
-        .with_state(store)
+        .route("/api/v1/health/ready", get(readiness))
+        .merge(auth_routes())
+        .with_state(auth)
         .layer(middleware::from_fn(assign_request_id))
 }
 
@@ -96,6 +119,20 @@ async fn health() -> Json<Value> {
         "status": "ok",
         "time": current_timestamp(),
     }))
+}
+
+async fn readiness(State(auth): State<AuthService>) -> Response {
+    match auth.has_users() {
+        Ok(true) => health().await.into_response(),
+        Ok(false) | Err(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "status": "not_ready",
+                "time": current_timestamp(),
+            })),
+        )
+            .into_response(),
+    }
 }
 
 fn current_timestamp() -> String {

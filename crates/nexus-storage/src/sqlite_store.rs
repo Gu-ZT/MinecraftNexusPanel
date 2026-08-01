@@ -3,11 +3,18 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::MutexGuard;
 
 use rusqlite::Connection;
+use rusqlite::OptionalExtension;
+use rusqlite::Result as SqliteResult;
+use rusqlite::Row;
 use rusqlite::TransactionBehavior;
 
+use crate::NewSession;
 use crate::StorageError;
+use crate::StoredSession;
+use crate::StoredUser;
 
 const DATABASE_FILE_NAME: &str = "panel.db";
 
@@ -43,6 +50,7 @@ impl SqliteStore {
         &self,
         user_id: &str,
         username: &str,
+        display_name: &str,
         password_hash: &str,
         created_at: &str,
     ) -> Result<bool, StorageError> {
@@ -61,13 +69,163 @@ impl SqliteStore {
 
         transaction
             .execute(
-                "INSERT INTO users (id, username, password_hash, is_admin, created_at) VALUES (?1, ?2, ?3, 1, ?4)",
-                (user_id, username, password_hash, created_at),
+                "INSERT INTO users (id, username, display_name, password_hash, is_admin, created_at) VALUES (?1, ?2, ?3, ?4, 1, ?5)",
+                (user_id, username, display_name, password_hash, created_at),
             )
             .map_err(StorageError::Query)?;
         transaction.commit().map_err(StorageError::Query)?;
 
         Ok(true)
+    }
+
+    pub fn create_session(&self, session: &NewSession) -> Result<(), StorageError> {
+        let connection = self.lock_connection()?;
+        connection
+            .execute(
+                "INSERT INTO sessions (
+                    id, user_id, client_type, access_token_hash, access_expires_at,
+                    refresh_token_hash, refresh_expires_at, csrf_token_hash, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
+                (
+                    session.id.as_str(),
+                    session.user_id.as_str(),
+                    session.client_type.as_str(),
+                    session.access_token_hash.as_deref(),
+                    session.access_expires_at,
+                    session.refresh_token_hash.as_str(),
+                    session.refresh_expires_at,
+                    session.csrf_token_hash.as_deref(),
+                    session.created_at,
+                ),
+            )
+            .map_err(StorageError::Query)?;
+
+        Ok(())
+    }
+
+    pub fn find_user_by_username(
+        &self,
+        username: &str,
+    ) -> Result<Option<StoredUser>, StorageError> {
+        let connection = self.lock_connection()?;
+        connection
+            .query_row(
+                "SELECT id, username, display_name, password_hash, is_admin
+                 FROM users WHERE username = ?1",
+                [username],
+                map_user,
+            )
+            .optional()
+            .map_err(StorageError::Query)
+    }
+
+    pub fn find_session_by_access_token(
+        &self,
+        token_hash: &str,
+        now: i64,
+    ) -> Result<Option<StoredSession>, StorageError> {
+        self.find_session(
+            "s.access_token_hash = ?1 AND s.access_expires_at > ?2",
+            token_hash,
+            now,
+        )
+    }
+
+    pub fn find_session_by_refresh_token(
+        &self,
+        token_hash: &str,
+        now: i64,
+    ) -> Result<Option<StoredSession>, StorageError> {
+        self.find_session(
+            "s.refresh_token_hash = ?1 AND s.refresh_expires_at > ?2",
+            token_hash,
+            now,
+        )
+    }
+
+    pub fn rotate_session(
+        &self,
+        session_id: &str,
+        old_refresh_token_hash: &str,
+        replacement: &NewSession,
+    ) -> Result<bool, StorageError> {
+        let mut connection = self.lock_connection()?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(StorageError::Query)?;
+        transaction
+            .execute(
+                "DELETE FROM rotated_session_tokens WHERE expires_at <= ?1",
+                [replacement.created_at],
+            )
+            .map_err(StorageError::Query)?;
+        transaction
+            .execute(
+                "INSERT OR IGNORE INTO rotated_session_tokens (token_hash, session_id, expires_at)
+                 SELECT refresh_token_hash, id, refresh_expires_at
+                 FROM sessions
+                 WHERE id = ?1 AND refresh_token_hash = ?2 AND revoked_at IS NULL",
+                (session_id, old_refresh_token_hash),
+            )
+            .map_err(StorageError::Query)?;
+        let updated = transaction
+            .execute(
+                "UPDATE sessions
+                 SET access_token_hash = ?1,
+                     access_expires_at = ?2,
+                     refresh_token_hash = ?3,
+                     refresh_expires_at = ?4,
+                     csrf_token_hash = ?5,
+                     updated_at = ?6
+                 WHERE id = ?7 AND refresh_token_hash = ?8 AND revoked_at IS NULL",
+                (
+                    replacement.access_token_hash.as_deref(),
+                    replacement.access_expires_at,
+                    replacement.refresh_token_hash.as_str(),
+                    replacement.refresh_expires_at,
+                    replacement.csrf_token_hash.as_deref(),
+                    replacement.created_at,
+                    session_id,
+                    old_refresh_token_hash,
+                ),
+            )
+            .map_err(StorageError::Query)?;
+        transaction.commit().map_err(StorageError::Query)?;
+
+        Ok(updated == 1)
+    }
+
+    pub fn revoke_session(&self, session_id: &str, now: i64) -> Result<bool, StorageError> {
+        let connection = self.lock_connection()?;
+        let updated = connection
+            .execute(
+                "UPDATE sessions SET revoked_at = ?1, updated_at = ?1
+                 WHERE id = ?2 AND revoked_at IS NULL",
+                (now, session_id),
+            )
+            .map_err(StorageError::Query)?;
+
+        Ok(updated == 1)
+    }
+
+    pub fn revoke_session_for_rotated_token(
+        &self,
+        token_hash: &str,
+        now: i64,
+    ) -> Result<bool, StorageError> {
+        let connection = self.lock_connection()?;
+        let updated = connection
+            .execute(
+                "UPDATE sessions SET revoked_at = ?1, updated_at = ?1
+                 WHERE id = (
+                    SELECT session_id FROM rotated_session_tokens
+                    WHERE token_hash = ?2 AND expires_at > ?1
+                 ) AND revoked_at IS NULL",
+                (now, token_hash),
+            )
+            .map_err(StorageError::Query)?;
+
+        Ok(updated == 1)
     }
 
     #[must_use]
@@ -83,7 +241,28 @@ impl SqliteStore {
             .map_err(StorageError::Query)
     }
 
-    fn lock_connection(&self) -> Result<std::sync::MutexGuard<'_, Connection>, StorageError> {
+    fn find_session(
+        &self,
+        token_predicate: &str,
+        token_hash: &str,
+        now: i64,
+    ) -> Result<Option<StoredSession>, StorageError> {
+        let connection = self.lock_connection()?;
+        let query = format!(
+            "SELECT s.id, s.client_type, s.csrf_token_hash,
+                    u.id, u.username, u.display_name, u.password_hash, u.is_admin
+             FROM sessions s
+             INNER JOIN users u ON u.id = s.user_id
+             WHERE {token_predicate} AND s.revoked_at IS NULL"
+        );
+
+        connection
+            .query_row(&query, (token_hash, now), map_session)
+            .optional()
+            .map_err(StorageError::Query)
+    }
+
+    fn lock_connection(&self) -> Result<MutexGuard<'_, Connection>, StorageError> {
         self.connection
             .lock()
             .map_err(|_| StorageError::LockPoisoned)
@@ -100,17 +279,101 @@ fn migrate(connection: &mut Connection) -> Result<(), StorageError> {
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY NOT NULL,
                 username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                display_name TEXT NOT NULL,
                 password_hash TEXT NOT NULL,
                 is_admin INTEGER NOT NULL CHECK (is_admin IN (0, 1)),
                 created_at TEXT NOT NULL
             );
             ",
         )
+        .map_err(StorageError::Migrate)?;
+
+    if !column_exists(connection, "users", "display_name")? {
+        connection
+            .execute(
+                "ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT 'Administrator'",
+                [],
+            )
+            .map_err(StorageError::Migrate)?;
+    }
+
+    connection
+        .execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT PRIMARY KEY NOT NULL,
+                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                client_type TEXT NOT NULL CHECK (client_type IN ('BROWSER', 'NATIVE')),
+                access_token_hash TEXT UNIQUE,
+                access_expires_at INTEGER,
+                refresh_token_hash TEXT NOT NULL UNIQUE,
+                refresh_expires_at INTEGER NOT NULL,
+                csrf_token_hash TEXT,
+                revoked_at INTEGER,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS rotated_session_tokens (
+                token_hash TEXT PRIMARY KEY NOT NULL,
+                session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                expires_at INTEGER NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
+            CREATE INDEX IF NOT EXISTS rotated_session_tokens_session_id_idx
+                ON rotated_session_tokens(session_id);
+            PRAGMA user_version = 1;
+            ",
+        )
         .map_err(StorageError::Migrate)
+}
+
+fn column_exists(connection: &Connection, table: &str, column: &str) -> Result<bool, StorageError> {
+    let mut statement = connection
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(StorageError::Migrate)?;
+    let mut rows = statement.query([]).map_err(StorageError::Migrate)?;
+    while let Some(row) = rows.next().map_err(StorageError::Migrate)? {
+        let name: String = row.get(1).map_err(StorageError::Migrate)?;
+        if name == column {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+fn map_user(row: &Row<'_>) -> SqliteResult<StoredUser> {
+    Ok(StoredUser::new(
+        row.get(0)?,
+        row.get(1)?,
+        row.get(2)?,
+        row.get(3)?,
+        row.get(4)?,
+    ))
+}
+
+fn map_session(row: &Row<'_>) -> SqliteResult<StoredSession> {
+    Ok(StoredSession::new(
+        row.get(0)?,
+        row.get(1)?,
+        row.get(2)?,
+        StoredUser::new(
+            row.get(3)?,
+            row.get(4)?,
+            row.get(5)?,
+            row.get(6)?,
+            row.get(7)?,
+        ),
+    ))
 }
 
 #[cfg(test)]
 mod tests {
+    use rusqlite::Connection;
+
+    use super::DATABASE_FILE_NAME;
     use super::SqliteStore;
     use tempfile::tempdir;
 
@@ -124,6 +387,7 @@ mod tests {
                 .create_initial_user(
                     "user-1",
                     "administrator",
+                    "Administrator",
                     "password-hash",
                     "2026-07-30T10:15:31Z",
                 )
@@ -135,11 +399,42 @@ mod tests {
                 .create_initial_user(
                     "user-2",
                     "another-user",
+                    "Another User",
                     "password-hash",
                     "2026-07-30T10:15:31Z",
                 )
                 .expect("second initialization is rejected")
         );
         assert!(store.database_path().exists());
+    }
+
+    #[test]
+    fn migrates_the_initial_user_schema() {
+        let data_directory = tempdir().expect("temporary Panel data directory is created");
+        let connection = Connection::open(data_directory.path().join(DATABASE_FILE_NAME))
+            .expect("legacy Panel database opens");
+        connection
+            .execute_batch(
+                "CREATE TABLE users (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    is_admin INTEGER NOT NULL,
+                    created_at TEXT NOT NULL
+                 );
+                 INSERT INTO users VALUES (
+                    'user-1', 'admin', 'password-hash', 1, '2026-07-30T10:15:31Z'
+                 );",
+            )
+            .expect("legacy user schema is created");
+        drop(connection);
+
+        let store = SqliteStore::open(data_directory.path()).expect("Panel database migrates");
+        let user = store
+            .find_user_by_username("admin")
+            .expect("migrated user query succeeds")
+            .expect("migrated user exists");
+
+        assert_eq!(user.display_name(), "Administrator");
     }
 }
