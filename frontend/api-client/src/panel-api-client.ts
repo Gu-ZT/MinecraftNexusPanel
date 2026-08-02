@@ -1,0 +1,272 @@
+import type { ApiClientOptions } from './api-client-options';
+import { createApiUrl } from './create-api-url';
+
+type HttpMethod = 'GET' | 'POST';
+
+interface RequestOptions {
+  method?: HttpMethod;
+  body?: unknown;
+  csrf?: boolean;
+  idempotent?: boolean;
+}
+
+interface ErrorBody {
+  error?: {
+    code?: string;
+    message?: string;
+    requestId?: string;
+  };
+}
+
+export type ClientType = 'BROWSER' | 'NATIVE';
+export type CoreStatus = 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'INCOMPATIBLE' | 'AUTH_FAILED' | 'UNKNOWN';
+export type InstanceKind = 'VANILLA' | 'PAPER' | 'VELOCITY' | 'FABRIC' | 'CUSTOM' | 'UNKNOWN';
+export type InstanceState = 'CREATED' | 'STARTING' | 'RUNNING' | 'STOPPING' | 'STOPPED' | 'FAILED' | 'UNKNOWN';
+export type LogStream = 'stdout' | 'stderr' | 'system';
+
+export interface User {
+  id: string;
+  username: string;
+  displayName: string;
+  permissions: string[];
+  resourceScopes?: string[];
+}
+
+export interface SessionTokens {
+  id: string;
+  accessToken: string | null;
+  accessExpiresAt: string;
+  refreshToken: string | null;
+  refreshExpiresAt: string | null;
+  csrfToken: string | null;
+}
+
+export interface LoginResponse {
+  user: User;
+  session: SessionTokens;
+}
+
+export interface Core {
+  id: string;
+  name: string;
+  address: string;
+  status: CoreStatus;
+  latencyMs: number | null;
+  lastSeenAt: string | null;
+  version: string | null;
+  protocolVersion: string | null;
+  capabilities: string[];
+  secretConfigured: boolean;
+  secretUpdatedAt: string | null;
+  skipCertificateVerification: boolean;
+  certificateVerified: boolean | null;
+  tlsCertificateSha256: string | null;
+  tags: string[];
+  revision: number;
+}
+
+export interface CorePage {
+  items: Core[];
+  nextCursor: string | null;
+}
+
+export interface LaunchConfig {
+  executable: string;
+  args: string[];
+  environment: Record<string, string>;
+  stopCommand: string;
+  stopTimeoutSeconds: number;
+}
+
+export interface InstanceRuntime {
+  state: InstanceState;
+  pid: number | null;
+  startedAt: string | null;
+  exitCode: number | null;
+  players?: {
+    online?: number;
+    max?: number;
+  };
+  eventCursor?: string | null;
+}
+
+export interface Instance {
+  id: string;
+  coreId: string;
+  name: string;
+  kind: InstanceKind;
+  directory: string;
+  launch: LaunchConfig;
+  runtime: InstanceRuntime;
+  revision: number;
+}
+
+export interface InstancePage {
+  items: Instance[];
+  nextCursor: string | null;
+}
+
+export interface LogLine {
+  cursor: string;
+  occurredAt: string;
+  stream: LogStream;
+  line: string;
+}
+
+export interface LogPage {
+  items: LogLine[];
+  nextCursor: string | null;
+  eventCursor: string;
+}
+
+export interface TaskAccepted {
+  taskId: string;
+  acceptedAt: string;
+}
+
+export interface CommandAccepted {
+  acceptedAt: string;
+}
+
+export interface PanelApiClient {
+  login(username: string, password: string, clientType: ClientType): Promise<LoginResponse>;
+  getCurrentUser(): Promise<User>;
+  logout(): Promise<void>;
+  listCores(): Promise<CorePage>;
+  listInstances(coreId: string): Promise<InstancePage>;
+  getInstanceLogs(coreId: string, instanceId: string): Promise<LogPage>;
+  startInstance(coreId: string, instanceId: string): Promise<TaskAccepted>;
+  stopInstance(coreId: string, instanceId: string): Promise<TaskAccepted>;
+  killInstance(coreId: string, instanceId: string): Promise<TaskAccepted>;
+  sendInstanceCommand(coreId: string, instanceId: string, command: string): Promise<CommandAccepted>;
+}
+
+export class ApiRequestError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly requestId?: string;
+
+  constructor(status: number, code: string, message: string, requestId?: string) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+    this.code = code;
+    if (requestId !== undefined) {
+      this.requestId = requestId;
+    }
+  }
+}
+
+export function createPanelApiClient(options: ApiClientOptions): PanelApiClient {
+  async function request<T>(path: string, requestOptions: RequestOptions = {}): Promise<T> {
+    const method = requestOptions.method ?? 'GET';
+    const headers = new Headers({ Accept: 'application/json' });
+    const accessToken = options.getAccessToken?.();
+    const csrfToken = requestOptions.csrf ? options.getCsrfToken?.() : undefined;
+    if (accessToken) {
+      headers.set('Authorization', `Bearer ${accessToken}`);
+    }
+    if (csrfToken) {
+      headers.set('X-CSRF-Token', csrfToken);
+    }
+    if (requestOptions.idempotent) {
+      headers.set('Idempotency-Key', createRequestId());
+    }
+    if (requestOptions.body !== undefined) {
+      headers.set('Content-Type', 'application/json');
+    }
+
+    const init: RequestInit = {
+      method,
+      headers,
+      credentials: 'same-origin',
+    };
+    if (requestOptions.body !== undefined) {
+      init.body = JSON.stringify(requestOptions.body);
+    }
+
+    const response = await fetch(createApiUrl(options.baseUrl, path), init);
+    if (!response.ok) {
+      throw await createRequestError(response);
+    }
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    return response.json() as Promise<T>;
+  }
+
+  return {
+    login(username, password, clientType) {
+      return request<LoginResponse>('/api/v1/auth/login', {
+        method: 'POST',
+        body: { username, password, clientType },
+      });
+    },
+    getCurrentUser() {
+      return request<User>('/api/v1/auth/me');
+    },
+    logout() {
+      return request<void>('/api/v1/auth/logout', { method: 'POST', csrf: true });
+    },
+    listCores() {
+      return request<CorePage>('/api/v1/cores?limit=50');
+    },
+    listInstances(coreId) {
+      return request<InstancePage>(`/api/v1/cores/${encodeURIComponent(coreId)}/instances?limit=50`);
+    },
+    getInstanceLogs(coreId, instanceId) {
+      return request<LogPage>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/logs?limit=200`,
+      );
+    },
+    startInstance(coreId, instanceId) {
+      return request<TaskAccepted>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/actions/start`,
+        { method: 'POST', csrf: true, idempotent: true },
+      );
+    },
+    stopInstance(coreId, instanceId) {
+      return request<TaskAccepted>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/actions/stop`,
+        { method: 'POST', csrf: true, idempotent: true },
+      );
+    },
+    killInstance(coreId, instanceId) {
+      return request<TaskAccepted>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/actions/kill`,
+        { method: 'POST', csrf: true, idempotent: true, body: { confirmation: 'KILL' } },
+      );
+    },
+    sendInstanceCommand(coreId, instanceId, command) {
+      return request<CommandAccepted>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/commands`,
+        { method: 'POST', csrf: true, idempotent: true, body: { command } },
+      );
+    },
+  };
+}
+
+async function createRequestError(response: Response): Promise<ApiRequestError> {
+  const body = await readErrorBody(response);
+  const code = body.error?.code ?? `HTTP_${response.status}`;
+  const message = body.error?.message ?? response.statusText;
+
+  return new ApiRequestError(response.status, code, message, body.error?.requestId);
+}
+
+async function readErrorBody(response: Response): Promise<ErrorBody> {
+  try {
+    return (await response.json()) as ErrorBody;
+  } catch {
+    return {};
+  }
+}
+
+function createRequestId(): string {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
+}
