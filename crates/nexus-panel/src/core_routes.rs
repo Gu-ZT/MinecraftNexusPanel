@@ -145,7 +145,7 @@ async fn reconnect_core(
     }
 }
 
-async fn authorize(
+pub(crate) async fn authorize(
     state: &PanelState,
     headers: &HeaderMap,
     write: bool,
@@ -182,11 +182,11 @@ async fn authorize(
     Ok(())
 }
 
-fn parse_core_id(value: &str) -> Option<CoreId> {
+pub(crate) fn parse_core_id(value: &str) -> Option<CoreId> {
     CoreId::from_str(value).ok()
 }
 
-fn invalid_core_id_response(request_id: RequestId) -> Response {
+pub(crate) fn invalid_core_id_response(request_id: RequestId) -> Response {
     error_response(
         StatusCode::BAD_REQUEST,
         "VALIDATION_FAILED",
@@ -195,7 +195,7 @@ fn invalid_core_id_response(request_id: RequestId) -> Response {
     )
 }
 
-fn resource_response(status: StatusCode, value: Value) -> Response {
+pub(crate) fn resource_response(status: StatusCode, value: Value) -> Response {
     let revision = value
         .get("revision")
         .and_then(Value::as_u64)
@@ -207,7 +207,7 @@ fn resource_response(status: StatusCode, value: Value) -> Response {
     response
 }
 
-fn registry_error_response(error: CoreRegistryError, request_id: RequestId) -> Response {
+pub(crate) fn registry_error_response(error: CoreRegistryError, request_id: RequestId) -> Response {
     match error {
         CoreRegistryError::InvalidRequest { .. }
         | CoreRegistryError::InvalidSecret(_)
@@ -217,6 +217,56 @@ fn registry_error_response(error: CoreRegistryError, request_id: RequestId) -> R
             "Core registration is invalid",
             request_id,
         ),
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "INSTANCE_NOT_FOUND" =>
+        {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "INSTANCE_NOT_FOUND",
+                "Instance does not exist",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "INSTANCE_ALREADY_EXISTS" =>
+        {
+            error_response(
+                StatusCode::CONFLICT,
+                "INSTANCE_ALREADY_EXISTS",
+                "Instance already exists",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "INSTANCE_STATE_CONFLICT" =>
+        {
+            error_response(
+                StatusCode::CONFLICT,
+                "INSTANCE_STATE_CONFLICT",
+                "Instance state does not allow this operation",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "BAD_REQUEST" =>
+        {
+            error_response(
+                StatusCode::BAD_REQUEST,
+                "VALIDATION_FAILED",
+                "Request validation failed",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "PRECONDITION_REQUIRED" =>
+        {
+            error_response(
+                StatusCode::PRECONDITION_REQUIRED,
+                "PRECONDITION_REQUIRED",
+                "Idempotency-Key is required",
+                request_id,
+            )
+        }
         CoreRegistryError::AlreadyExists { .. } => error_response(
             StatusCode::CONFLICT,
             "CORE_ALREADY_EXISTS",
@@ -229,8 +279,10 @@ fn registry_error_response(error: CoreRegistryError, request_id: RequestId) -> R
             "Core registration does not exist",
             request_id,
         ),
-        CoreRegistryError::Connection(_) | CoreRegistryError::ConnectionTimeout => error_response(
-            StatusCode::BAD_GATEWAY,
+        CoreRegistryError::Connection(_)
+        | CoreRegistryError::ConnectionTimeout
+        | CoreRegistryError::ConnectionUnavailable => error_response(
+            StatusCode::SERVICE_UNAVAILABLE,
             "CORE_UNAVAILABLE",
             "Core connection could not be established",
             request_id,

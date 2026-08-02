@@ -7,6 +7,7 @@ use nexus_domain::InstanceId;
 use nexus_domain::InstanceLogPage;
 use nexus_domain::InstanceMetricSample;
 use nexus_domain::InstancePage;
+use nexus_domain::InstanceState;
 use nexus_domain::PRODUCT_VERSION;
 use nexus_domain::RequestId;
 use nexus_domain::TaskId;
@@ -184,9 +185,19 @@ impl CoreConnection {
         &mut self,
         instance: &InstanceCreate,
     ) -> Result<Instance, CoreConnectionError> {
+        self.create_instance_with_idempotency(instance, None).await
+    }
+
+    pub async fn create_instance_with_idempotency(
+        &mut self,
+        instance: &InstanceCreate,
+        idempotency_key: Option<&str>,
+    ) -> Result<Instance, CoreConnectionError> {
         let params = to_value(instance)
             .map_err(|_| CoreConnectionError::InvalidResponse { field: "instance" })?;
-        let result = self.request("instance.create", params).await?;
+        let result = self
+            .request_with_idempotency("instance.create", params, idempotency_key)
+            .await?;
 
         from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "instance" })
     }
@@ -203,7 +214,26 @@ impl CoreConnection {
     }
 
     pub async fn list_instances(&mut self) -> Result<InstancePage, CoreConnectionError> {
-        let result = self.request("instance.list", json!({})).await?;
+        self.list_instances_with_filters(None, None, None).await
+    }
+
+    pub async fn list_instances_with_filters(
+        &mut self,
+        cursor: Option<&InstanceId>,
+        limit: Option<usize>,
+        state: Option<InstanceState>,
+    ) -> Result<InstancePage, CoreConnectionError> {
+        let mut params = json!({});
+        if let Some(cursor) = cursor {
+            params["cursor"] = json!(cursor);
+        }
+        if let Some(limit) = limit {
+            params["limit"] = json!(limit);
+        }
+        if let Some(state) = state {
+            params["state"] = json!(state);
+        }
+        let result = self.request("instance.list", params).await?;
 
         from_value(result).map_err(|_| CoreConnectionError::InvalidResponse {
             field: "instancePage",
@@ -259,13 +289,24 @@ impl CoreConnection {
         instance_id: &InstanceId,
         command: &str,
     ) -> Result<String, CoreConnectionError> {
+        self.send_instance_command_with_idempotency(instance_id, command, None)
+            .await
+    }
+
+    pub async fn send_instance_command_with_idempotency(
+        &mut self,
+        instance_id: &InstanceId,
+        command: &str,
+        idempotency_key: Option<&str>,
+    ) -> Result<String, CoreConnectionError> {
         let result = self
-            .request(
+            .request_with_idempotency(
                 "instance.command",
                 json!({
                     "instanceId": instance_id,
                     "command": command,
                 }),
+                idempotency_key,
             )
             .await?;
 

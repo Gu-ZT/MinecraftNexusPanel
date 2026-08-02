@@ -18,6 +18,8 @@ pub enum CoreRegistryError {
     Connection(#[from] CoreConnectionError),
     #[error("Core connection timed out")]
     ConnectionTimeout,
+    #[error("Core connection is unavailable")]
+    ConnectionUnavailable,
     #[error("invalid Core registration field: {field}")]
     InvalidRequest { field: &'static str },
     #[error("stored Core registration is invalid: {core_id}")]

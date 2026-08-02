@@ -5,7 +5,11 @@ use std::time::Duration;
 use std::time::Instant;
 
 use nexus_domain::CoreId;
+use nexus_domain::InstanceCreate;
+use nexus_domain::InstanceId;
+use nexus_domain::InstanceState;
 use nexus_domain::PRODUCT_NAME;
+use nexus_domain::TaskId;
 use nexus_protocol::PresharedKey;
 use nexus_protocol::ProtocolVersion;
 use nexus_protocol::SessionError;
@@ -194,6 +198,171 @@ impl CoreRegistry {
         core_json(&core).await
     }
 
+    pub async fn create_instance(
+        &self,
+        core_id: CoreId,
+        request: &InstanceCreate,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let instance = connection
+            .create_instance_with_idempotency(request, Some(idempotency_key))
+            .await?;
+
+        Ok(instance_json(core_id, &json!(instance)))
+    }
+
+    pub async fn get_instance(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let instance = connection.get_instance(instance_id).await?;
+
+        Ok(instance_json(core_id, &json!(instance)))
+    }
+
+    pub async fn list_instances(
+        &self,
+        core_id: CoreId,
+        cursor: Option<&InstanceId>,
+        limit: Option<usize>,
+        state: Option<InstanceState>,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let page = connection
+            .list_instances_with_filters(cursor, limit, state)
+            .await?;
+
+        Ok(instance_page_json(core_id, &json!(page)))
+    }
+
+    pub async fn start_instance(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let task_id = connection
+            .start_instance(instance_id, idempotency_key)
+            .await?;
+
+        Ok(task_accepted_json(task_id))
+    }
+
+    pub async fn stop_instance(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        timeout_seconds: Option<u16>,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let task_id = connection
+            .stop_instance(instance_id, timeout_seconds, idempotency_key)
+            .await?;
+
+        Ok(task_accepted_json(task_id))
+    }
+
+    pub async fn kill_instance(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let task_id = connection
+            .kill_instance(instance_id, idempotency_key)
+            .await?;
+
+        Ok(task_accepted_json(task_id))
+    }
+
+    pub async fn send_instance_command(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        command: &str,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let accepted_at = connection
+            .send_instance_command_with_idempotency(instance_id, command, Some(idempotency_key))
+            .await?;
+
+        Ok(json!({ "acceptedAt": accepted_at }))
+    }
+
+    pub async fn get_instance_logs(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        after: Option<&str>,
+        before: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let page = connection
+            .get_instance_logs(instance_id, after, before, limit)
+            .await?;
+
+        Ok(json!(page))
+    }
+
+    pub async fn get_instance_metrics(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        range: Option<&str>,
+        resolution: Option<&str>,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let series = connection
+            .get_instance_metrics(instance_id, range, resolution)
+            .await?;
+
+        Ok(json!({ "series": series }))
+    }
+
     async fn find(&self, core_id: CoreId) -> Result<Arc<ManagedCore>, CoreRegistryError> {
         self.entries
             .read()
@@ -209,6 +378,37 @@ impl CoreRegistry {
         spawn(async move {
             monitor_connection(core, panel_id, shutdown).await;
         });
+    }
+}
+
+fn task_accepted_json(task_id: TaskId) -> Value {
+    json!({
+        "taskId": task_id,
+        "acceptedAt": current_timestamp(),
+    })
+}
+
+fn instance_page_json(core_id: CoreId, page: &Value) -> Value {
+    let mut page = page.clone();
+    if let Some(items) = page.get_mut("items").and_then(Value::as_array_mut) {
+        for item in items {
+            add_core_id(core_id, item);
+        }
+    }
+
+    page
+}
+
+fn instance_json(core_id: CoreId, instance: &Value) -> Value {
+    let mut instance = instance.clone();
+    add_core_id(core_id, &mut instance);
+
+    instance
+}
+
+fn add_core_id(core_id: CoreId, value: &mut Value) {
+    if let Some(object) = value.as_object_mut() {
+        object.insert("coreId".to_owned(), json!(core_id));
     }
 }
 

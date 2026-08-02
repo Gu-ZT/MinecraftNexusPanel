@@ -38,7 +38,7 @@
 - [x] Core：实例 stdin 命令、stdout/stderr 游标日志与基础指标。
 - [x] Panel：SQLite 初始化、首位管理员初始化和登录会话。
 - [x] Panel：Core 添加、加密密钥保存、连通性检测和重连状态。
-- [ ] Panel：实例代理 REST API、幂等键和统一错误响应。
+- [x] Panel：实例代理 REST API、幂等键和统一错误响应。
 - [ ] Panel：WebSocket 日志、任务进度和 Core 状态推送。
 - [ ] WebUI：登录、Core 切换、实例列表、状态控制和控制台。
 - [ ] `all`：单命令同时启动 Panel 与 loopback Core，仍暴露 Core TCP 接口。
