@@ -26,6 +26,8 @@ pub enum CoreRegistryError {
     InvalidStoredCore { core_id: String },
     #[error("Core secret must be valid unpadded Base64URL containing at least 32 bytes")]
     InvalidSecret(#[source] PresharedKeyError),
+    #[error("loopback Core returned unexpected identity: expected {expected}, got {actual}")]
+    LocalCoreIdMismatch { expected: CoreId, actual: CoreId },
     #[error("Core registration does not exist: {core_id}")]
     NotFound { core_id: CoreId },
     #[error("stored Core tags are invalid")]

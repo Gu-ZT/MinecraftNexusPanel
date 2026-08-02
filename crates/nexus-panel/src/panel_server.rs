@@ -59,6 +59,9 @@ impl PanelServer {
             );
         }
         let cores = CoreRegistry::new(store, SecretCipher::new(master_key), panel_id)?;
+        if let Some(local_core) = config.local_core() {
+            cores.ensure_local_core(local_core).await?;
+        }
         let listener = TcpListener::bind(config.listen_address())
             .await
             .map_err(|source| PanelError::Bind {

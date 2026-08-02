@@ -1,3 +1,4 @@
+use std::fmt;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::path::PathBuf;
@@ -6,13 +7,31 @@ use nexus_protocol::PresharedKey;
 
 use crate::ConfigError;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct CoreConfig {
     listen_address: SocketAddr,
     data_directory: PathBuf,
+    encoded_pre_shared_key: Option<String>,
     pre_shared_key: Option<PresharedKey>,
     tls_certificate_path: Option<PathBuf>,
     tls_private_key_path: Option<PathBuf>,
+}
+
+impl fmt::Debug for CoreConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CoreConfig")
+            .field("listen_address", &self.listen_address)
+            .field("data_directory", &self.data_directory)
+            .field(
+                "encoded_pre_shared_key",
+                &self.encoded_pre_shared_key.as_ref().map(|_| "REDACTED"),
+            )
+            .field("pre_shared_key", &self.pre_shared_key)
+            .field("tls_certificate_path", &self.tls_certificate_path)
+            .field("tls_private_key_path", &self.tls_private_key_path)
+            .finish()
+    }
 }
 
 impl CoreConfig {
@@ -31,13 +50,15 @@ impl CoreConfig {
                     value: listen_address,
                 })?;
         let pre_shared_key = encoded_pre_shared_key
-            .map(|value| PresharedKey::from_base64url(&value))
+            .as_deref()
+            .map(PresharedKey::from_base64url)
             .transpose()
             .map_err(ConfigError::InvalidCorePreSharedKey)?;
 
         Ok(Self {
             listen_address,
             data_directory,
+            encoded_pre_shared_key,
             pre_shared_key,
             tls_certificate_path: None,
             tls_private_key_path: None,
@@ -75,6 +96,11 @@ impl CoreConfig {
     }
 
     #[must_use]
+    pub fn encoded_pre_shared_key(&self) -> Option<&str> {
+        self.encoded_pre_shared_key.as_deref()
+    }
+
+    #[must_use]
     pub fn tls_certificate_path(&self) -> Option<&Path> {
         self.tls_certificate_path.as_deref()
     }
@@ -101,5 +127,21 @@ mod tests {
             config.with_tls_identity_paths(Some(PathBuf::from("cert.pem")), None),
             Err(ConfigError::IncompleteCoreTlsIdentity)
         );
+    }
+
+    #[test]
+    fn redacts_the_pre_shared_key_from_debug_output() {
+        let secret = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY";
+        let config = CoreConfig::new(
+            "127.0.0.1:25580".to_owned(),
+            PathBuf::from("data"),
+            Some(secret.to_owned()),
+        )
+        .expect("base Core configuration is valid");
+
+        let debug_output = format!("{config:?}");
+
+        assert!(!debug_output.contains(secret));
+        assert!(debug_output.contains("REDACTED"));
     }
 }

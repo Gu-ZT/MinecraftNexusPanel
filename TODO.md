@@ -41,7 +41,7 @@
 - [x] Panel：实例代理 REST API、幂等键和统一错误响应。
 - [ ] Panel：WebSocket 日志、任务进度和 Core 状态推送。
 - [ ] WebUI：登录、Core 切换、实例列表、状态控制和控制台。
-- [ ] `all`：单命令同时启动 Panel 与 loopback Core，仍暴露 Core TCP 接口。
+- [x] `all`：单命令同时启动 Panel 与 loopback Core，仍暴露 Core TCP 接口。
 - [x] 集成测试：空数据目录创建实例、运行测试进程、读取日志并安全停止。
 
 ## M2：环境与一键搭建

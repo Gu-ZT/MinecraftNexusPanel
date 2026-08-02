@@ -1,6 +1,11 @@
+use std::net::IpAddr;
+use std::net::Ipv4Addr;
+use std::net::SocketAddr;
+
 use nexus_config::AppConfig;
 use nexus_config::ConfigError;
 use nexus_config::CoreConfig;
+use nexus_config::LocalCoreConfig;
 use nexus_config::PanelConfig;
 use nexus_config::RunMode;
 use nexus_domain::PRODUCT_NAME;
@@ -53,10 +58,25 @@ async fn run_all(core_config: CoreConfig, panel_config: PanelConfig) -> Result<(
     let core_server = nexus_core::CoreServer::bind(&core_config)
         .await
         .map_err(|error| error.to_string())?;
-    let panel_server = nexus_panel::PanelServer::bind(&panel_config)
-        .await
-        .map_err(|error| error.to_string())?;
+    let encoded_pre_shared_key = core_config
+        .encoded_pre_shared_key()
+        .ok_or("Core pre-shared key is required in all mode")?
+        .to_owned();
+    let local_core = LocalCoreConfig::new(
+        core_server.core_id(),
+        loopback_address(core_server.listen_address()),
+        encoded_pre_shared_key,
+    );
+    let panel_config = panel_config.with_local_core(local_core);
     let mut core_task = tokio::spawn(core_server.serve());
+    let panel_server = match nexus_panel::PanelServer::bind(&panel_config).await {
+        Ok(panel_server) => panel_server,
+        Err(error) => {
+            core_task.abort();
+            let _ = core_task.await;
+            return Err(error.to_string());
+        }
+    };
 
     tokio::select! {
         core_result = &mut core_task => {
@@ -71,6 +91,14 @@ async fn run_all(core_config: CoreConfig, panel_config: PanelConfig) -> Result<(
             let _ = core_task.await;
             panel_result.map_err(|error| error.to_string())
         }
+    }
+}
+
+fn loopback_address(address: SocketAddr) -> SocketAddr {
+    if address.ip().is_unspecified() {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), address.port())
+    } else {
+        address
     }
 }
 

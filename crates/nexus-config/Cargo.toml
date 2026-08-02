@@ -6,6 +6,7 @@ rust-version.workspace = true
 
 [dependencies]
 base64.workspace = true
+nexus-domain.workspace = true
 nexus-protocol.workspace = true
 thiserror.workspace = true
 

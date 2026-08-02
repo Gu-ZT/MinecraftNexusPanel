@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
+use nexus_config::LocalCoreConfig;
 use nexus_domain::CoreId;
 use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
@@ -149,6 +150,56 @@ impl CoreRegistry {
         self.spawn_connection_monitor(core.clone());
 
         core_json(&core).await
+    }
+
+    pub async fn ensure_local_core(
+        &self,
+        config: &LocalCoreConfig,
+    ) -> Result<(), CoreRegistryError> {
+        let pre_shared_key = PresharedKey::from_base64url(config.encoded_pre_shared_key())
+            .map_err(CoreRegistryError::InvalidSecret)?;
+        let address = config.listen_address().to_string();
+        let (connection, runtime) =
+            establish_connection(&address, false, 10, &pre_shared_key, &self.panel_id).await?;
+        if connection.core_id() != config.core_id() {
+            return Err(CoreRegistryError::LocalCoreIdMismatch {
+                expected: config.core_id(),
+                actual: connection.core_id(),
+            });
+        }
+        let now = current_timestamp();
+        let new_core = NewCore {
+            id: config.core_id().to_string(),
+            name: "Loopback Core".to_owned(),
+            address,
+            secret_envelope: self
+                .cipher
+                .encrypt(config.core_id(), config.encoded_pre_shared_key().as_bytes())?,
+            secret_updated_at: now.clone(),
+            connect_timeout_seconds: 10,
+            skip_certificate_verification: false,
+            tags_json: to_string(&["local", "loopback"])?,
+            created_at: now,
+        };
+        let registration = StoredCore::from_new(&new_core);
+        let store = self.store.clone();
+        let inserted = spawn_blocking(move || store.insert_core(&new_core)).await??;
+        if !inserted && self.entries.read().await.contains_key(&config.core_id()) {
+            return Ok(());
+        }
+        let core = Arc::new(ManagedCore::new(
+            registration,
+            pre_shared_key,
+            Some(connection),
+            runtime,
+        ));
+        self.entries
+            .write()
+            .await
+            .insert(config.core_id(), core.clone());
+        self.spawn_connection_monitor(core);
+
+        Ok(())
     }
 
     pub async fn list(&self) -> Result<Value, CoreRegistryError> {
