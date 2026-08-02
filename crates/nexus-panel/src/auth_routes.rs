@@ -296,6 +296,7 @@ pub(crate) fn error_response(
         .into_response()
 }
 
+#[derive(Clone)]
 pub(crate) enum RequestCredential {
     Bearer(String),
     Browser(String),

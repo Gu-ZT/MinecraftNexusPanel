@@ -30,6 +30,7 @@ use crate::SecretCipher;
 use crate::auth_routes::auth_routes;
 use crate::core_routes::core_routes;
 use crate::instance_routes::instance_routes;
+use crate::websocket_routes::websocket_routes;
 
 pub struct PanelServer {
     listen_address: SocketAddr,
@@ -107,6 +108,7 @@ fn router(state: PanelState) -> Router {
         .merge(auth_routes())
         .merge(core_routes())
         .merge(instance_routes())
+        .merge(websocket_routes())
         .with_state(state)
         .layer(middleware::from_fn(assign_request_id))
 }

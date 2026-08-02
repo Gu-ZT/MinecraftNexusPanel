@@ -28,8 +28,12 @@ mod secret_cipher;
 mod secret_cipher_error;
 mod session_response;
 mod user_response;
+mod websocket_routes;
+mod websocket_ticket;
+mod websocket_ticket_store;
 
 pub use auth_error::AuthError;
+pub(crate) use auth_routes::RequestCredential;
 pub(crate) use auth_service::AuthService;
 pub(crate) use client_type::ClientType;
 pub use core_connection::CoreConnection;
@@ -56,6 +60,8 @@ pub(crate) use secret_cipher::SecretCipher;
 pub(crate) use secret_cipher_error::SecretCipherError;
 pub(crate) use session_response::SessionResponse;
 pub(crate) use user_response::UserResponse;
+pub(crate) use websocket_ticket::WebSocketTicket;
+pub(crate) use websocket_ticket_store::WebSocketTicketStore;
 
 use nexus_config::PanelConfig;
 
