@@ -23,6 +23,8 @@ export type {
   FileBatchOperation,
   FileBatchTaskProgress,
   FileBatchTaskResult,
+  FileDownloadChunk,
+  FileDownloadStart,
   FileEntry,
   FileKind,
   FilePage,

@@ -454,6 +454,104 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
         "config/server/uploaded.properties"
     );
 
+    let started_download = send_json_request(
+        panel_address,
+        "POST",
+        &format!("/api/v1/cores/{core_id}/instances/panel-process/downloads"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        Some(json!({ "path": "config/server/uploaded.properties" })),
+    )
+    .await;
+    assert_eq!(started_download.status, 201);
+    assert_eq!(started_download.body["sizeBytes"], upload_content.len());
+    assert_eq!(started_download.body["sha256"], upload_sha256);
+    let download_id = started_download.body["transferId"]
+        .as_str()
+        .expect("download transfer ID is returned")
+        .to_owned();
+    let downloaded_part = send_raw_request(
+        panel_address,
+        "GET",
+        &format!("/api/v1/cores/{core_id}/downloads/{download_id}/parts/0"),
+        &[("Authorization", authorization.as_str())],
+        &[],
+    )
+    .await;
+    assert_eq!(downloaded_part.status, 200);
+    assert_eq!(downloaded_part.body, upload_content);
+    assert_eq!(
+        downloaded_part.headers.get("content-sha256"),
+        Some(&upload_sha256)
+    );
+    assert_eq!(
+        downloaded_part.headers.get("etag"),
+        Some(&format!("\"{upload_sha256}\""))
+    );
+    assert_eq!(
+        downloaded_part
+            .headers
+            .get("x-mcnp-file-transfer-next-offset"),
+        Some(&upload_content.len().to_string())
+    );
+    assert_eq!(
+        downloaded_part.headers.get("x-mcnp-file-eof"),
+        Some(&"true".to_owned())
+    );
+    let retried_part = send_raw_request(
+        panel_address,
+        "GET",
+        &format!("/api/v1/cores/{core_id}/downloads/{download_id}/parts/0"),
+        &[("Authorization", authorization.as_str())],
+        &[],
+    )
+    .await;
+    assert_eq!(retried_part.status, 200);
+    assert_eq!(retried_part.body, upload_content);
+    let completed_download = send_json_request(
+        panel_address,
+        "POST",
+        &format!("/api/v1/cores/{core_id}/downloads/{download_id}/complete"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        None,
+    )
+    .await;
+    assert_eq!(completed_download.status, 204);
+
+    let aborted_download = send_json_request(
+        panel_address,
+        "POST",
+        &format!("/api/v1/cores/{core_id}/instances/panel-process/downloads"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        Some(json!({ "path": "config/server/uploaded.properties" })),
+    )
+    .await;
+    assert_eq!(aborted_download.status, 201);
+    let aborted_download_id = aborted_download.body["transferId"]
+        .as_str()
+        .expect("second download transfer ID is returned")
+        .to_owned();
+    let abort_download = send_json_request(
+        panel_address,
+        "DELETE",
+        &format!("/api/v1/cores/{core_id}/downloads/{aborted_download_id}"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        None,
+    )
+    .await;
+    assert_eq!(abort_download.status, 204);
+
     let non_recursive_delete = send_json_request(
         panel_address,
         "DELETE",

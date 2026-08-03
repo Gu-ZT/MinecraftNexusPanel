@@ -823,6 +823,24 @@ impl CoreRegistry {
             .await?)
     }
 
+    pub async fn begin_file_download(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        path: &str,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .begin_file_download(instance_id, path, idempotency_key)
+            .await?)
+    }
+
     pub async fn upload_file_chunk(
         &self,
         core_id: CoreId,
@@ -840,6 +858,23 @@ impl CoreRegistry {
 
         Ok(connection
             .upload_file_chunk(transfer_id, offset, content, Some(sha256), idempotency_key)
+            .await?)
+    }
+
+    pub async fn read_file_download_chunk(
+        &self,
+        core_id: CoreId,
+        transfer_id: &TaskId,
+        offset: u64,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .read_file_download_chunk(transfer_id, offset)
             .await?)
     }
 
@@ -875,6 +910,42 @@ impl CoreRegistry {
         Ok(connection
             .abort_file_upload(transfer_id, idempotency_key)
             .await?)
+    }
+
+    pub async fn commit_file_download(
+        &self,
+        core_id: CoreId,
+        transfer_id: &TaskId,
+        idempotency_key: &str,
+    ) -> Result<(), CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        connection
+            .commit_file_download(transfer_id, idempotency_key)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn abort_file_download(
+        &self,
+        core_id: CoreId,
+        transfer_id: &TaskId,
+        idempotency_key: &str,
+    ) -> Result<(), CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        connection
+            .abort_file_download(transfer_id, idempotency_key)
+            .await?;
+        Ok(())
     }
 
     async fn find(&self, core_id: CoreId) -> Result<Arc<ManagedCore>, CoreRegistryError> {

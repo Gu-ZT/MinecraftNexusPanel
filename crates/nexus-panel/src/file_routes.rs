@@ -20,6 +20,8 @@ use axum::routing::delete;
 use axum::routing::get;
 use axum::routing::post;
 use axum::routing::put;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use nexus_domain::CoreId;
 use nexus_domain::FileContent;
 use nexus_domain::FileEntry;
@@ -74,6 +76,10 @@ pub(crate) fn file_routes() -> Router<PanelState> {
             post(begin_file_upload),
         )
         .route(
+            "/api/v1/cores/{core_id}/instances/{instance_id}/downloads",
+            post(begin_file_download),
+        )
+        .route(
             "/api/v1/cores/{core_id}/uploads/{transfer_id}/parts/{part_number}",
             put(upload_file_part),
         )
@@ -84,6 +90,18 @@ pub(crate) fn file_routes() -> Router<PanelState> {
         .route(
             "/api/v1/cores/{core_id}/uploads/{transfer_id}",
             delete(abort_file_upload),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/downloads/{transfer_id}/parts/{part_number}",
+            get(read_file_download_part),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/downloads/{transfer_id}/complete",
+            post(complete_file_download),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/downloads/{transfer_id}",
+            delete(abort_file_download),
         )
         .route(
             "/api/v1/cores/{core_id}/instances/{instance_id}/file-content",
@@ -393,6 +411,76 @@ async fn upload_file_part(
     }
 }
 
+async fn begin_file_download(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, instance_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    payload: Result<Json<Value>, JsonRejection>,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, false, request_id).await {
+        return response;
+    }
+    let Json(payload) = match payload {
+        Ok(payload) => payload,
+        Err(_) => return validation_error(request_id),
+    };
+    let Some(path) = payload
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+    else {
+        return validation_error(request_id);
+    };
+    let Some(idempotency_key) = idempotency_key(&headers) else {
+        return precondition_required_response(request_id);
+    };
+    let Some((core_id, instance_id)) = parse_ids(&core_id, &instance_id) else {
+        return validation_error(request_id);
+    };
+
+    match state
+        .cores()
+        .begin_file_download(core_id, &instance_id, path, idempotency_key)
+        .await
+    {
+        Ok(download) => (StatusCode::CREATED, Json(download)).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn read_file_download_part(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, transfer_id, part_number)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, false, request_id).await {
+        return response;
+    }
+    let Ok(part_number) = part_number.parse::<u64>() else {
+        return validation_error(request_id);
+    };
+    let Some(offset) = part_number.checked_mul(FILE_TRANSFER_CHUNK_BYTES) else {
+        return validation_error(request_id);
+    };
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return validation_error(request_id);
+    };
+    let Some(transfer_id) = parse_transfer_id(&transfer_id) else {
+        return validation_error(request_id);
+    };
+
+    match state
+        .cores()
+        .read_file_download_chunk(core_id, &transfer_id, offset)
+        .await
+    {
+        Ok(chunk) => file_download_chunk_response(chunk, request_id),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
 async fn complete_file_upload(
     State(state): State<PanelState>,
     Extension(request_id): Extension<RequestId>,
@@ -444,6 +532,64 @@ async fn abort_file_upload(
     match state
         .cores()
         .abort_file_upload(core_id, &transfer_id, idempotency_key)
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn complete_file_download(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, transfer_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Some(idempotency_key) = idempotency_key(&headers) else {
+        return precondition_required_response(request_id);
+    };
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return validation_error(request_id);
+    };
+    let Some(transfer_id) = parse_transfer_id(&transfer_id) else {
+        return validation_error(request_id);
+    };
+
+    match state
+        .cores()
+        .commit_file_download(core_id, &transfer_id, idempotency_key)
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn abort_file_download(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, transfer_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Some(idempotency_key) = idempotency_key(&headers) else {
+        return precondition_required_response(request_id);
+    };
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return validation_error(request_id);
+    };
+    let Some(transfer_id) = parse_transfer_id(&transfer_id) else {
+        return validation_error(request_id);
+    };
+
+    match state
+        .cores()
+        .abort_file_download(core_id, &transfer_id, idempotency_key)
         .await
     {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
@@ -687,10 +833,92 @@ fn file_content_response(content: FileContent, request_id: RequestId) -> Respons
     response
 }
 
-fn decode_content(content: &FileContent) -> Result<Vec<u8>, ()> {
-    use base64::Engine;
-    use base64::engine::general_purpose::STANDARD;
+fn file_download_chunk_response(chunk: Value, request_id: RequestId) -> Response {
+    let Some(data_base64) = chunk.get("dataBase64").and_then(Value::as_str) else {
+        return invalid_file_download_response(request_id);
+    };
+    let Ok(bytes) = STANDARD.decode(data_base64) else {
+        return invalid_file_download_response(request_id);
+    };
+    let Some(sha256) = chunk.get("sha256").and_then(Value::as_str) else {
+        return invalid_file_download_response(request_id);
+    };
+    let Some(file_sha256) = chunk.get("fileSha256").and_then(Value::as_str) else {
+        return invalid_file_download_response(request_id);
+    };
+    let Some(offset) = chunk.get("offset").and_then(Value::as_u64) else {
+        return invalid_file_download_response(request_id);
+    };
+    let Some(next_offset) = chunk.get("nextOffset").and_then(Value::as_u64) else {
+        return invalid_file_download_response(request_id);
+    };
+    let Some(size_bytes) = chunk.get("sizeBytes").and_then(Value::as_u64) else {
+        return invalid_file_download_response(request_id);
+    };
+    let Some(eof) = chunk.get("eof").and_then(Value::as_bool) else {
+        return invalid_file_download_response(request_id);
+    };
+    let end_offset = offset.saturating_add(bytes.len() as u64);
+    if !is_sha256(sha256)
+        || !is_sha256(file_sha256)
+        || sha256_hex(&bytes) != sha256.to_ascii_lowercase()
+        || next_offset < offset
+        || next_offset > size_bytes
+        || end_offset > size_bytes
+        || eof != (end_offset == size_bytes)
+    {
+        return invalid_file_download_response(request_id);
+    }
 
+    let Ok(etag) = HeaderValue::from_str(&format!("\"{file_sha256}\"")) else {
+        return invalid_file_download_response(request_id);
+    };
+    let Ok(chunk_hash) = HeaderValue::from_str(sha256) else {
+        return invalid_file_download_response(request_id);
+    };
+    let Ok(offset_header) = HeaderValue::from_str(&offset.to_string()) else {
+        return invalid_file_download_response(request_id);
+    };
+    let Ok(next_offset_header) = HeaderValue::from_str(&next_offset.to_string()) else {
+        return invalid_file_download_response(request_id);
+    };
+    let Ok(size_header) = HeaderValue::from_str(&size_bytes.to_string()) else {
+        return invalid_file_download_response(request_id);
+    };
+    let Ok(eof_header) = HeaderValue::from_str(if eof { "true" } else { "false" }) else {
+        return invalid_file_download_response(request_id);
+    };
+
+    let mut response = (StatusCode::OK, Body::from(bytes)).into_response();
+    response.headers_mut().insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static("application/octet-stream"),
+    );
+    response.headers_mut().insert(ETAG, etag);
+    response.headers_mut().insert("content-sha256", chunk_hash);
+    response
+        .headers_mut()
+        .insert("x-mcnp-file-transfer-offset", offset_header);
+    response
+        .headers_mut()
+        .insert("x-mcnp-file-transfer-next-offset", next_offset_header);
+    response
+        .headers_mut()
+        .insert("x-mcnp-file-transfer-size", size_header);
+    response.headers_mut().insert("x-mcnp-file-eof", eof_header);
+    response
+}
+
+fn invalid_file_download_response(request_id: RequestId) -> Response {
+    error_response(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "INTERNAL_ERROR",
+        "Core returned invalid download content",
+        request_id,
+    )
+}
+
+fn decode_content(content: &FileContent) -> Result<Vec<u8>, ()> {
     STANDARD.decode(content.data_base64()).map_err(|_| ())
 }
 

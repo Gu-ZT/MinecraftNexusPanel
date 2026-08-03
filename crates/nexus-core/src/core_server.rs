@@ -1544,9 +1544,6 @@ fn transfer_chunk_response(
     idempotency_key: Option<&str>,
     state: &CoreRequestState,
 ) -> WireMessage {
-    if idempotency_key.is_none() {
-        return missing_idempotency_key_response(request_id);
-    }
     let Some(transfer_id) = params
         .get("transferId")
         .and_then(Value::as_str)

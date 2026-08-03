@@ -797,6 +797,24 @@ impl CoreConnection {
         .await
     }
 
+    pub async fn begin_file_download(
+        &mut self,
+        instance_id: &InstanceId,
+        path: &str,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreConnectionError> {
+        self.request_with_idempotency(
+            "transfer.begin",
+            json!({
+                "instanceId": instance_id,
+                "path": path,
+                "mode": "DOWNLOAD",
+            }),
+            Some(idempotency_key),
+        )
+        .await
+    }
+
     pub async fn upload_file_chunk(
         &mut self,
         transfer_id: &TaskId,
@@ -817,6 +835,21 @@ impl CoreConnection {
             .await
     }
 
+    pub async fn read_file_download_chunk(
+        &mut self,
+        transfer_id: &TaskId,
+        offset: u64,
+    ) -> Result<Value, CoreConnectionError> {
+        self.request(
+            "transfer.chunk",
+            json!({
+                "transferId": transfer_id,
+                "offset": offset,
+            }),
+        )
+        .await
+    }
+
     pub async fn commit_file_upload(
         &mut self,
         transfer_id: &TaskId,
@@ -834,6 +867,34 @@ impl CoreConnection {
     }
 
     pub async fn abort_file_upload(
+        &mut self,
+        transfer_id: &TaskId,
+        idempotency_key: &str,
+    ) -> Result<(), CoreConnectionError> {
+        self.request_with_idempotency(
+            "transfer.abort",
+            json!({ "transferId": transfer_id }),
+            Some(idempotency_key),
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn commit_file_download(
+        &mut self,
+        transfer_id: &TaskId,
+        idempotency_key: &str,
+    ) -> Result<(), CoreConnectionError> {
+        self.request_with_idempotency(
+            "transfer.commit",
+            json!({ "transferId": transfer_id }),
+            Some(idempotency_key),
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn abort_file_download(
         &mut self,
         transfer_id: &TaskId,
         idempotency_key: &str,

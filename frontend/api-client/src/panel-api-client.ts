@@ -231,6 +231,24 @@ export interface FileReadResult {
   eof: boolean;
 }
 
+export interface FileDownloadStart {
+  transferId: string;
+  chunkSize: number;
+  nextOffset: number;
+  sizeBytes: number;
+  sha256: string;
+}
+
+export interface FileDownloadChunk {
+  data: ArrayBuffer;
+  offset: number;
+  nextOffset: number;
+  sizeBytes: number;
+  sha256: string;
+  etag: string;
+  eof: boolean;
+}
+
 export interface FileUploadStart {
   transferId: string;
   chunkSize: number;
@@ -466,6 +484,11 @@ export interface PanelApiClient {
     sizeBytes: number,
     sha256: string,
   ): Promise<FileUploadStart>;
+  beginFileDownload(
+    coreId: string,
+    instanceId: string,
+    path: string,
+  ): Promise<FileDownloadStart>;
   uploadFilePart(
     coreId: string,
     transferId: string,
@@ -473,8 +496,15 @@ export interface PanelApiClient {
     content: FileBytes,
     sha256: string,
   ): Promise<FileUploadPart>;
+  downloadFilePart(
+    coreId: string,
+    transferId: string,
+    partNumber: number,
+  ): Promise<FileDownloadChunk>;
   completeFileUpload(coreId: string, transferId: string): Promise<FileEntry>;
   abortFileUpload(coreId: string, transferId: string): Promise<void>;
+  completeFileDownload(coreId: string, transferId: string): Promise<void>;
+  abortFileDownload(coreId: string, transferId: string): Promise<void>;
   batchInstanceFiles(
     coreId: string,
     instanceId: string,
@@ -579,6 +609,10 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
       return {
         data: await response.arrayBuffer(),
         etag: response.headers.get('ETag'),
+        contentSha256: response.headers.get('Content-SHA256'),
+        offset: parseResponseNumber(response, 'x-mcnp-file-transfer-offset'),
+        nextOffset: parseResponseNumber(response, 'x-mcnp-file-transfer-next-offset'),
+        sizeBytes: parseResponseNumber(response, 'x-mcnp-file-transfer-size'),
         eof: response.headers.get('x-mcnp-file-eof') === 'true',
       } as T;
     }
@@ -748,6 +782,21 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
         },
       );
     },
+    beginFileDownload(coreId, instanceId, path) {
+      return request<FileDownloadStart>(
+        '/api/v1/cores/' +
+          encodeURIComponent(coreId) +
+          '/instances/' +
+          encodeURIComponent(instanceId) +
+          '/downloads',
+        {
+          method: 'POST',
+          body: { path },
+          csrf: true,
+          idempotent: true,
+        },
+      );
+    },
     uploadFilePart(coreId, transferId, partNumber, content, sha256) {
       return request<FileUploadPart>(
         '/api/v1/cores/' +
@@ -765,6 +814,35 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
         },
       );
     },
+    async downloadFilePart(coreId, transferId, partNumber) {
+      const response = await request<BinaryFileResponse>(
+        '/api/v1/cores/' +
+          encodeURIComponent(coreId) +
+          '/downloads/' +
+          encodeURIComponent(transferId) +
+          '/parts/' +
+          encodeURIComponent(String(partNumber)),
+        { accept: 'application/octet-stream', responseType: 'arrayBuffer' },
+      );
+      if (
+        response.etag === null ||
+        response.contentSha256 === null ||
+        response.offset === null ||
+        response.nextOffset === null ||
+        response.sizeBytes === null
+      ) {
+        throw new Error('File download response did not include transfer metadata');
+      }
+      return {
+        data: response.data,
+        offset: response.offset,
+        nextOffset: response.nextOffset,
+        sizeBytes: response.sizeBytes,
+        sha256: response.contentSha256,
+        etag: response.etag,
+        eof: response.eof,
+      };
+    },
     completeFileUpload(coreId, transferId) {
       return request<FileEntry>(
         '/api/v1/cores/' +
@@ -780,6 +858,25 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
         '/api/v1/cores/' +
           encodeURIComponent(coreId) +
           '/uploads/' +
+          encodeURIComponent(transferId),
+        { method: 'DELETE', csrf: true, idempotent: true },
+      );
+    },
+    completeFileDownload(coreId, transferId) {
+      return request<void>(
+        '/api/v1/cores/' +
+          encodeURIComponent(coreId) +
+          '/downloads/' +
+          encodeURIComponent(transferId) +
+          '/complete',
+        { method: 'POST', csrf: true, idempotent: true },
+      );
+    },
+    abortFileDownload(coreId, transferId) {
+      return request<void>(
+        '/api/v1/cores/' +
+          encodeURIComponent(coreId) +
+          '/downloads/' +
           encodeURIComponent(transferId),
         { method: 'DELETE', csrf: true, idempotent: true },
       );
@@ -882,7 +979,20 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
 interface BinaryFileResponse {
   data: ArrayBuffer;
   etag: string | null;
+  contentSha256: string | null;
+  offset: number | null;
+  nextOffset: number | null;
+  sizeBytes: number | null;
   eof: boolean;
+}
+
+function parseResponseNumber(response: Response, name: string): number | null {
+  const value = response.headers.get(name);
+  if (value === null) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function isBinaryBody(value: unknown): boolean {
