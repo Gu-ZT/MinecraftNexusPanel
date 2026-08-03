@@ -207,6 +207,40 @@ export interface BedrockManagementProfile {
   extensionKind: ExtensionKind | null;
 }
 
+export type ConfigFormat = 'PROPERTIES' | 'YAML' | 'JSON' | 'TOML' | 'PROVIDER_SPECIFIC';
+
+export interface ConfigDocumentSummary {
+  documentId: string;
+  path: string;
+  format: ConfigFormat;
+  revision: string;
+  contentHash: string;
+  lossy: boolean;
+}
+
+export interface ConfigDocumentPage {
+  documents: ConfigDocumentSummary[];
+}
+
+export interface ConfigDocument {
+  documentId: string;
+  path: string;
+  format: ConfigFormat;
+  schema: Record<string, unknown>;
+  uiSchema: Record<string, unknown>;
+  values: Record<string, unknown>;
+  revision: string;
+  contentHash: string;
+  unmapped: string[];
+  lossy: boolean;
+}
+
+export interface RawConfigResult {
+  data: ArrayBuffer;
+  etag: string;
+  sha256: string;
+}
+
 export type FileKind = 'FILE' | 'DIRECTORY' | 'SYMLINK' | 'OTHER';
 export type FileBytes = ArrayBuffer | Blob | Uint8Array;
 
@@ -443,6 +477,29 @@ export interface PanelApiClient {
   verifyRuntime(coreId: string, runtimeId: string): Promise<RuntimeOperation>;
   deleteRuntime(coreId: string, runtimeId: string): Promise<TaskAccepted>;
   getBedrockProfile(coreId: string, instanceId: string): Promise<BedrockManagementProfile>;
+  listConfigDocuments(coreId: string, instanceId: string): Promise<ConfigDocumentPage>;
+  scanConfigDocuments(coreId: string, instanceId: string): Promise<ConfigDocumentPage>;
+  getConfigDocument(coreId: string, instanceId: string, documentId: string): Promise<ConfigDocument>;
+  patchConfigDocument(
+    coreId: string,
+    instanceId: string,
+    documentId: string,
+    revision: string,
+    patch: Record<string, unknown>,
+    allowLossy?: boolean,
+  ): Promise<ConfigDocument>;
+  readRawConfig(
+    coreId: string,
+    instanceId: string,
+    documentId: string,
+  ): Promise<RawConfigResult>;
+  writeRawConfig(
+    coreId: string,
+    instanceId: string,
+    documentId: string,
+    content: FileBytes,
+    expectedSha256?: string,
+  ): Promise<ConfigDocument>;
   listInstanceFiles(
     coreId: string,
     instanceId: string,
@@ -702,6 +759,62 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     getBedrockProfile(coreId, instanceId) {
       return request<BedrockManagementProfile>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/bedrock-profile`,
+      );
+    },
+    listConfigDocuments(coreId, instanceId) {
+      return request<ConfigDocumentPage>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/config-documents`,
+      );
+    },
+    scanConfigDocuments(coreId, instanceId) {
+      return request<ConfigDocumentPage>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/config-documents:scan`,
+        { method: 'POST' },
+      );
+    },
+    getConfigDocument(coreId, instanceId, documentId) {
+      return request<ConfigDocument>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/config-documents/${encodeURIComponent(documentId)}`,
+      );
+    },
+    patchConfigDocument(coreId, instanceId, documentId, revision, patch, allowLossy = false) {
+      return request<ConfigDocument>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/config-documents/${encodeURIComponent(documentId)}/values`,
+        {
+          method: 'PATCH',
+          body: { revision, patch, allowLossy },
+          csrf: true,
+          idempotent: true,
+        },
+      );
+    },
+    async readRawConfig(coreId, instanceId, documentId) {
+      const response = await request<BinaryFileResponse>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/config-documents/${encodeURIComponent(documentId)}/raw`,
+        { accept: 'text/plain', responseType: 'arrayBuffer' },
+      );
+      if (response.etag === null) {
+        throw new Error('Configuration response did not include an ETag');
+      }
+      return {
+        data: response.data,
+        etag: response.etag,
+        sha256: response.etag.replace(/^"|"$/g, ''),
+      };
+    },
+    writeRawConfig(coreId, instanceId, documentId, content, expectedSha256) {
+      const requestOptions: RequestOptions = {
+        method: 'PUT',
+        body: content,
+        csrf: true,
+        idempotent: true,
+      };
+      if (expectedSha256 !== undefined) {
+        requestOptions.ifMatch = expectedSha256;
+      }
+      return request<ConfigDocument>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/config-documents/${encodeURIComponent(documentId)}/raw`,
+        requestOptions,
       );
     },
     listInstanceFiles(coreId, instanceId, path = '', cursor, limit) {
