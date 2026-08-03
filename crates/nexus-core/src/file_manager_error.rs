@@ -54,4 +54,6 @@ pub enum FileManagerError {
     AlreadyExists { path: PathBuf },
     #[error("directory is not empty: {path}")]
     DirectoryNotEmpty { path: PathBuf },
+    #[error("file task store is unavailable")]
+    TaskStorePoisoned,
 }

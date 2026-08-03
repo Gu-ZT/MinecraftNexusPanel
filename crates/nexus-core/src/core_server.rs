@@ -453,6 +453,8 @@ async fn request_response(
         "file.read" => file_read_response(request_id, params, state),
         "file.mkdir" => file_mkdir_response(request_id, params, idempotency_key, state),
         "file.move" => file_move_response(request_id, params, idempotency_key, state),
+        "file.delete" => file_delete_response(request_id, params, idempotency_key, state),
+        "file.task.get" => file_task_response(request_id, params, state),
         "file.write" => file_write_response(request_id, params, idempotency_key, state),
         "instance.start" => {
             instance_start_response(request_id, params, idempotency_key, state.processes()).await
@@ -1249,6 +1251,89 @@ fn file_move_response(
     }
 }
 
+fn file_delete_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    state: &CoreRequestState,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.delete requires a valid instanceId",
+        );
+    };
+    let Some(path) = params
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+    else {
+        return error_response(request_id, "BAD_REQUEST", "file.delete requires a path");
+    };
+    if params.get("confirmation").and_then(Value::as_str) != Some("DELETE") {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.delete requires DELETE confirmation",
+        );
+    }
+    let recursive = match params.get("recursive") {
+        None => false,
+        Some(Value::Bool(recursive)) => *recursive,
+        Some(_) => {
+            return error_response(
+                request_id,
+                "BAD_REQUEST",
+                "file.delete recursive is invalid",
+            );
+        }
+    };
+    let instance = match state.instances().get(&instance_id) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            return error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist");
+        }
+        Err(error) => return repository_failure_response(request_id, &error),
+    };
+
+    match state.files().start_delete(&instance, path, recursive) {
+        Ok(task_id) => task_accepted_response(request_id, task_id),
+        Err(error) => file_manager_error_response(request_id, error),
+    }
+}
+
+fn file_task_response(
+    request_id: RequestId,
+    params: &Value,
+    state: &CoreRequestState,
+) -> WireMessage {
+    let Some(task_id) = params
+        .get("taskId")
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse::<TaskId>().ok())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.task.get requires a valid taskId",
+        );
+    };
+
+    match state.files().task(task_id) {
+        Ok(Some(task)) => success_response(request_id, task),
+        Ok(None) => error_response(
+            request_id,
+            "FILE_TASK_NOT_FOUND",
+            "File task does not exist",
+        ),
+        Err(error) => file_manager_error_response(request_id, error),
+    }
+}
+
 fn file_manager_error_response(request_id: RequestId, error: FileManagerError) -> WireMessage {
     match error {
         FileManagerError::InvalidPath { .. } | FileManagerError::InvalidHash { .. } => {
@@ -1295,6 +1380,13 @@ fn file_manager_error_response(request_id: RequestId, error: FileManagerError) -
             request_id,
             "FILE_DIRECTORY_NOT_EMPTY",
             "Target directory is not empty",
+        ),
+        FileManagerError::TaskStorePoisoned => error_response_with_details(
+            request_id,
+            "FILE_OPERATION_FAILED",
+            "File operation failed",
+            true,
+            None,
         ),
         error => {
             tracing::error!(%error, "Core file operation failed");

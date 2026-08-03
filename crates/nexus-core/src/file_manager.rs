@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::ErrorKind;
@@ -8,6 +9,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -16,11 +18,16 @@ use nexus_domain::FileEntry;
 use nexus_domain::FileKind;
 use nexus_domain::FilePage;
 use nexus_domain::Instance;
+use nexus_domain::TaskId;
+use serde_json::Value;
+use serde_json::json;
 use sha2::Digest;
 use sha2::Sha256;
 use tempfile::NamedTempFile;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
+use tokio::spawn;
+use tokio::task::spawn_blocking;
 
 use crate::FileManagerError;
 
@@ -32,6 +39,7 @@ const MAXIMUM_FILE_LIST_LIMIT: usize = 200;
 #[derive(Clone)]
 pub struct FileManager {
     data_directory: Arc<PathBuf>,
+    tasks: Arc<Mutex<HashMap<TaskId, Value>>>,
 }
 
 impl FileManager {
@@ -39,6 +47,7 @@ impl FileManager {
     pub fn new(data_directory: &Path) -> Self {
         Self {
             data_directory: Arc::new(data_directory.to_path_buf()),
+            tasks: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -416,6 +425,163 @@ impl FileManager {
         relative_file_entry(&root, &target)
     }
 
+    pub fn start_delete(
+        &self,
+        instance: &Instance,
+        relative_path: &str,
+        recursive: bool,
+    ) -> Result<TaskId, FileManagerError> {
+        self.validate_delete_target(instance, relative_path, recursive)?;
+        let task_id = TaskId::new();
+        {
+            let mut tasks = self
+                .tasks
+                .lock()
+                .map_err(|_| FileManagerError::TaskStorePoisoned)?;
+            if tasks.len() >= 512 {
+                tasks.clear();
+            }
+            tasks.insert(
+                task_id,
+                json!({
+                    "taskId": task_id,
+                    "kind": "FILE_DELETE",
+                    "state": "RUNNING",
+                    "progress": null,
+                }),
+            );
+        }
+
+        let manager = self.clone();
+        let worker = manager.clone();
+        let instance = instance.clone();
+        let relative_path = relative_path.to_owned();
+        let task_path = relative_path.clone();
+        spawn(async move {
+            let result =
+                spawn_blocking(move || worker.delete_sync(&instance, &relative_path, recursive))
+                    .await;
+            let result = match result {
+                Ok(Ok(())) => Ok(json!({ "path": task_path, "deleted": true })),
+                Ok(Err(error)) => Err(error.to_string()),
+                Err(error) => Err(error.to_string()),
+            };
+            manager.finish_delete_task(task_id, result);
+        });
+
+        Ok(task_id)
+    }
+
+    pub fn task(&self, task_id: TaskId) -> Result<Option<Value>, FileManagerError> {
+        let tasks = self
+            .tasks
+            .lock()
+            .map_err(|_| FileManagerError::TaskStorePoisoned)?;
+        Ok(tasks.get(&task_id).cloned())
+    }
+
+    fn validate_delete_target(
+        &self,
+        instance: &Instance,
+        relative_path: &str,
+        recursive: bool,
+    ) -> Result<(), FileManagerError> {
+        let root = self.instance_root(instance)?;
+        let relative = parse_relative_path(relative_path, false)?;
+        let path = root.join(relative);
+        let metadata = fs::symlink_metadata(&path).map_err(|source| {
+            if source.kind() == ErrorKind::NotFound {
+                FileManagerError::NotFound { path: path.clone() }
+            } else {
+                FileManagerError::Io {
+                    operation: "read delete target metadata for",
+                    path: path.clone(),
+                    source,
+                }
+            }
+        })?;
+        if metadata.file_type().is_symlink() {
+            return Err(FileManagerError::SymlinkNotAllowed { path });
+        }
+        if metadata.is_dir() && !recursive && directory_has_entries(&path)? {
+            return Err(FileManagerError::DirectoryNotEmpty { path });
+        }
+        let canonical = fs::canonicalize(&path).map_err(|source| FileManagerError::Io {
+            operation: "resolve delete target",
+            path: path.clone(),
+            source,
+        })?;
+        if !canonical.starts_with(&root) {
+            return Err(FileManagerError::PathEscapes { path: canonical });
+        }
+
+        Ok(())
+    }
+
+    fn delete_sync(
+        &self,
+        instance: &Instance,
+        relative_path: &str,
+        recursive: bool,
+    ) -> Result<(), FileManagerError> {
+        self.validate_delete_target(instance, relative_path, recursive)?;
+        let root = self.instance_root(instance)?;
+        let path = root.join(parse_relative_path(relative_path, false)?);
+        let metadata = fs::symlink_metadata(&path).map_err(|source| FileManagerError::Io {
+            operation: "read delete target metadata for",
+            path: path.clone(),
+            source,
+        })?;
+        if metadata.is_dir() {
+            if recursive {
+                fs::remove_dir_all(&path).map_err(|source| FileManagerError::Io {
+                    operation: "delete directory",
+                    path,
+                    source,
+                })?;
+            } else {
+                fs::remove_dir(&path).map_err(|source| FileManagerError::Io {
+                    operation: "delete directory",
+                    path,
+                    source,
+                })?;
+            }
+        } else if metadata.is_file() {
+            fs::remove_file(&path).map_err(|source| FileManagerError::Io {
+                operation: "delete file",
+                path,
+                source,
+            })?;
+        } else {
+            return Err(FileManagerError::NotFile { path });
+        }
+
+        Ok(())
+    }
+
+    fn finish_delete_task(&self, task_id: TaskId, result: Result<Value, String>) {
+        let Ok(mut tasks) = self.tasks.lock() else {
+            return;
+        };
+        let Some(task) = tasks.get_mut(&task_id) else {
+            return;
+        };
+        match result {
+            Ok(result) => {
+                task["state"] = json!("SUCCEEDED");
+                if let Some(object) = result.as_object() {
+                    for (key, value) in object {
+                        task[key] = value.clone();
+                    }
+                }
+            }
+            Err(error) => {
+                task["state"] = json!("FAILED");
+                task["error"] = json!(error);
+            }
+        }
+    }
+
     fn instance_root(&self, instance: &Instance) -> Result<PathBuf, FileManagerError> {
         let data_directory = fs::canonicalize(self.data_directory.as_ref()).map_err(|source| {
             FileManagerError::CanonicalizeDataDirectory {
@@ -606,6 +772,23 @@ fn relative_file_entry(root: &Path, path: &Path) -> Result<FileEntry, FileManage
     file_entry(path, relative_path)
 }
 
+fn directory_has_entries(path: &Path) -> Result<bool, FileManagerError> {
+    fs::read_dir(path)
+        .map_err(|source| FileManagerError::Io {
+            operation: "read directory",
+            path: path.to_path_buf(),
+            source,
+        })?
+        .next()
+        .map_or(Ok(false), |entry| {
+            entry.map(|_| true).map_err(|source| FileManagerError::Io {
+                operation: "read directory entry",
+                path: path.to_path_buf(),
+                source,
+            })
+        })
+}
+
 fn hash_file(path: &Path) -> Result<String, FileManagerError> {
     let mut file = File::open(path).map_err(|source| FileManagerError::Io {
         operation: "open",
@@ -658,6 +841,7 @@ fn current_timestamp() -> String {
 mod tests {
     use std::collections::BTreeMap;
     use std::fs;
+    use std::time::Duration;
 
     use nexus_domain::FileKind;
     use nexus_domain::Instance;
@@ -665,7 +849,11 @@ mod tests {
     use nexus_domain::InstanceId;
     use nexus_domain::InstanceKind;
     use nexus_domain::LaunchConfig;
+    use nexus_domain::TaskId;
+    use serde_json::Value;
     use tempfile::tempdir;
+    use tokio::time::sleep;
+    use tokio::time::timeout;
 
     use super::FileManager;
     use super::FileManagerError;
@@ -783,6 +971,61 @@ mod tests {
             manager.mkdir(&instance, "config/server/server.properties/logs", true),
             Err(FileManagerError::NotDirectory { .. })
         ));
+    }
+
+    #[tokio::test]
+    async fn deletes_files_and_recursive_directories_as_tasks() {
+        let directory = tempdir().expect("temporary directory is created");
+        let instance = instance();
+        let instance_directory = directory.path().join(instance.directory());
+        fs::create_dir_all(instance_directory.join("nested")).expect("directories are created");
+        fs::write(instance_directory.join("delete-me.txt"), b"delete me").expect("file is written");
+        fs::write(
+            instance_directory.join("nested/child.txt"),
+            b"delete recursively",
+        )
+        .expect("nested file is written");
+        let manager = FileManager::new(directory.path());
+
+        let file_task_id = manager
+            .start_delete(&instance, "delete-me.txt", false)
+            .expect("file deletion task is accepted");
+        let file_task = wait_for_task(&manager, file_task_id).await;
+        assert_eq!(file_task["kind"], "FILE_DELETE");
+        assert_eq!(file_task["state"], "SUCCEEDED");
+        assert_eq!(file_task["path"], "delete-me.txt");
+        assert_eq!(file_task["deleted"], true);
+        assert!(!instance_directory.join("delete-me.txt").exists());
+
+        assert!(matches!(
+            manager.start_delete(&instance, "nested", false),
+            Err(FileManagerError::DirectoryNotEmpty { .. })
+        ));
+
+        let directory_task_id = manager
+            .start_delete(&instance, "nested", true)
+            .expect("recursive directory deletion task is accepted");
+        let directory_task = wait_for_task(&manager, directory_task_id).await;
+        assert_eq!(directory_task["state"], "SUCCEEDED");
+        assert_eq!(directory_task["path"], "nested");
+        assert!(!instance_directory.join("nested").exists());
+    }
+
+    async fn wait_for_task(manager: &FileManager, task_id: TaskId) -> Value {
+        timeout(Duration::from_secs(2), async {
+            loop {
+                let task = manager
+                    .task(task_id)
+                    .expect("file task state is readable")
+                    .expect("file task is present");
+                if task["state"] != "RUNNING" {
+                    return task;
+                }
+                sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("file task finishes before the timeout")
     }
 
     fn instance() -> Instance {
