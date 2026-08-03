@@ -139,8 +139,10 @@ impl InstanceProcessSupervisor {
     }
 
     async fn write_command(&mut self, command: &str) -> Result<(), io::Error> {
-        self.stdin.write_all(command.as_bytes()).await?;
-        self.stdin.write_all(LINE_ENDING).await?;
+        let mut input = Vec::with_capacity(command.len() + LINE_ENDING.len());
+        input.extend_from_slice(command.as_bytes());
+        input.extend_from_slice(LINE_ENDING);
+        self.stdin.write_all(&input).await?;
         self.stdin.flush().await
     }
 

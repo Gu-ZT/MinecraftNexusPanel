@@ -1,4 +1,7 @@
 use std::collections::BTreeMap;
+#[cfg(windows)]
+use std::fs;
+use std::path::Path;
 use std::time::Duration;
 
 use nexus_config::CoreConfig;
@@ -65,7 +68,8 @@ async fn starts_stops_and_kills_a_safe_test_process_with_state_events() {
     let create_request_id = send_request(
         &mut transport,
         "instance.create",
-        to_value(instance_create(&instance_id)).expect("instance definition is serializable"),
+        to_value(instance_create(&instance_id, data_directory.path()))
+            .expect("instance definition is serializable"),
         None,
     )
     .await;
@@ -675,13 +679,13 @@ fn console_line(message: &WireMessage) -> Option<String> {
     data["line"].as_str().map(str::to_owned)
 }
 
-fn instance_create(instance_id: &InstanceId) -> InstanceCreate {
+fn instance_create(instance_id: &InstanceId, data_directory: &Path) -> InstanceCreate {
     InstanceCreate::new(
         instance_id.clone(),
         "Safe process".to_owned(),
         InstanceKind::Paper,
         format!("instances/{instance_id}"),
-        test_launch_config(),
+        test_launch_config(data_directory),
     )
     .expect("test instance is valid")
 }
@@ -698,15 +702,20 @@ fn crashing_process_create(instance_id: &InstanceId) -> InstanceCreate {
 }
 
 #[cfg(windows)]
-fn test_launch_config() -> LaunchConfig {
+fn test_launch_config(data_directory: &Path) -> LaunchConfig {
+    let script_path = data_directory.join("safe-process.cmd");
+    fs::write(
+        &script_path,
+        b"@echo off\r\nsetlocal EnableDelayedExpansion\r\necho ready\r\n>&2 echo warning\r\n:read\r\nset /p \"line=\"\r\nif errorlevel 1 exit /b 0\r\nif /i \"!line!\"==\"stop\" exit /b 0\r\necho received:!line!\r\ngoto read\r\n",
+    )
+    .expect("Windows test process script is created");
     LaunchConfig::new(
-        "powershell.exe".to_owned(),
+        "cmd.exe".to_owned(),
         vec![
-            "-NoLogo".to_owned(),
-            "-NoProfile".to_owned(),
-            "-NonInteractive".to_owned(),
-            "-Command".to_owned(),
-            "$ErrorActionPreference='Stop'; [Console]::Out.WriteLine('ready'); [Console]::Error.WriteLine('warning'); while (($line = [Console]::In.ReadLine()) -ne $null) { if ($line -eq 'stop') { exit 0 }; [Console]::Out.WriteLine(\"received:$line\") }".to_owned(),
+            "/D".to_owned(),
+            "/Q".to_owned(),
+            "/C".to_owned(),
+            script_path.to_string_lossy().into_owned(),
         ],
         BTreeMap::new(),
         "stop".to_owned(),
@@ -731,7 +740,7 @@ fn crashing_process_launch_config() -> LaunchConfig {
 }
 
 #[cfg(not(windows))]
-fn test_launch_config() -> LaunchConfig {
+fn test_launch_config(_data_directory: &Path) -> LaunchConfig {
     LaunchConfig::new(
         "/bin/sh".to_owned(),
         vec![
