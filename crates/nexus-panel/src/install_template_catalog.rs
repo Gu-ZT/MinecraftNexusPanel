@@ -99,8 +99,34 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             )],
         )
         .with_extension_layouts(mod_layout()),
-        java_server("bukkit", "Bukkit", InstanceKind::Bukkit, plugin_layout()),
-        java_server("spigot", "Spigot", InstanceKind::Spigot, plugin_layout()),
+        template(
+            "bukkit",
+            "Bukkit",
+            InstanceKind::Bukkit,
+            InstallTemplateFamily::JavaServer,
+            InstallRuntimeRequirement::Java,
+            ProxyTopology::None,
+            vec![provider(
+                "bukkit-jenkins-rss",
+                "Bukkit Jenkins RSS",
+                "https://hub.spigotmc.org/jenkins/job/Bukkit-RSS/rssAll",
+            )],
+        )
+        .with_extension_layouts(plugin_layout()),
+        template(
+            "spigot",
+            "Spigot",
+            InstanceKind::Spigot,
+            InstallTemplateFamily::JavaServer,
+            InstallRuntimeRequirement::Java,
+            ProxyTopology::None,
+            vec![provider(
+                "spigot-jenkins-rss",
+                "Spigot Jenkins RSS",
+                "https://hub.spigotmc.org/jenkins/job/Spigot-RSS/rssAll",
+            )],
+        )
+        .with_extension_layouts(plugin_layout()),
         template(
             "purpur",
             "Purpur",
@@ -518,6 +544,24 @@ mod tests {
                 .metadata_providers()[0]
                 .url(),
             "https://files.minecraftforge.net/net/minecraftforge/forge/maven-metadata.json"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "bukkit")
+                .expect("Bukkit template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://hub.spigotmc.org/jenkins/job/Bukkit-RSS/rssAll"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "spigot")
+                .expect("Spigot template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://hub.spigotmc.org/jenkins/job/Spigot-RSS/rssAll"
         );
         assert_eq!(
             templates

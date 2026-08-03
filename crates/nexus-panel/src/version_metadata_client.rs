@@ -9,6 +9,7 @@ use nexus_domain::PRODUCT_NAME;
 use nexus_domain::PRODUCT_VERSION;
 use nexus_domain::VersionMetadataProvider;
 use quick_xml::Reader;
+use quick_xml::events::BytesStart;
 use quick_xml::events::Event;
 use reqwest::Client;
 use reqwest::redirect::Policy;
@@ -26,6 +27,8 @@ const MOJANG_PROVIDER_ID: &str = "mojang-version-manifest";
 const PAPER_PROVIDER_ID: &str = "paper-downloads-service";
 const NEOFORGE_PROVIDER_ID: &str = "neoforge-maven-service";
 const FORGE_PROVIDER_ID: &str = "forge-version-service";
+const BUKKIT_PROVIDER_ID: &str = "bukkit-jenkins-rss";
+const SPIGOT_PROVIDER_ID: &str = "spigot-jenkins-rss";
 const PURPUR_PROVIDER_ID: &str = "purpur-version-service";
 const PUFFERFISH_PROVIDER_IDS: [&str; 5] = [
     "pufferfish-1.21-jenkins-service",
@@ -103,6 +106,18 @@ impl VersionMetadataClient {
                 let metadata = self.fetch(provider).await?;
 
                 parse_forge_versions(provider, &metadata)
+            }
+            "bukkit" => {
+                let provider = provider(template, BUKKIT_PROVIDER_ID)?;
+                let metadata = self.fetch_bytes(provider).await?;
+
+                parse_jenkins_rss_versions(provider, &metadata)
+            }
+            "spigot" => {
+                let provider = provider(template, SPIGOT_PROVIDER_ID)?;
+                let metadata = self.fetch_bytes(provider).await?;
+
+                parse_jenkins_rss_versions(provider, &metadata)
             }
             "purpur" => {
                 let provider = provider(template, PURPUR_PROVIDER_ID)?;
@@ -503,6 +518,88 @@ fn parse_bungeecord_versions(
         })
 }
 
+fn parse_jenkins_rss_versions(
+    provider: &VersionMetadataProvider,
+    metadata: &[u8],
+) -> Result<Vec<InstallTemplateVersion>, VersionMetadataError> {
+    let metadata = str::from_utf8(metadata).map_err(|_| invalid_response(provider))?;
+    let mut reader = Reader::from_str(metadata);
+    reader.config_mut().trim_text(true);
+    let mut versions = Vec::new();
+    let mut in_entry = false;
+    let mut title = None;
+    let mut metadata_url = None;
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(event)) if event.name().as_ref() == b"entry" => {
+                in_entry = true;
+                title = None;
+                metadata_url = None;
+            }
+            Ok(Event::Start(event)) if in_entry && event.name().as_ref() == b"title" => {
+                title = Some(
+                    reader
+                        .read_text(event.name())
+                        .map_err(|_| invalid_response(provider))?
+                        .into_owned(),
+                );
+            }
+            Ok(Event::Start(event)) if in_entry && event.name().as_ref() == b"link" => {
+                metadata_url = rss_link_url(&event);
+            }
+            Ok(Event::Empty(event)) if in_entry && event.name().as_ref() == b"link" => {
+                metadata_url = rss_link_url(&event);
+            }
+            Ok(Event::End(event)) if event.name().as_ref() == b"entry" => {
+                let title = title.take().ok_or_else(|| invalid_response(provider))?;
+                let id = jenkins_rss_build_id(provider, &title)?;
+                let metadata_url = metadata_url
+                    .take()
+                    .ok_or_else(|| invalid_response(provider))?;
+                versions.push(InstallTemplateVersion::new(
+                    id,
+                    provider.id().to_owned(),
+                    InstallTemplateVersionKind::Server,
+                    title.ends_with("(stable)"),
+                    Some(metadata_url),
+                ));
+                in_entry = false;
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => return Err(invalid_response(provider)),
+            _ => {}
+        }
+    }
+
+    if versions.is_empty() {
+        Err(invalid_response(provider))
+    } else {
+        Ok(versions)
+    }
+}
+
+fn rss_link_url(event: &BytesStart<'_>) -> Option<String> {
+    event
+        .attributes()
+        .filter_map(Result::ok)
+        .find(|attribute| attribute.key.as_ref() == b"href")
+        .and_then(|attribute| String::from_utf8(attribute.value.into_owned()).ok())
+        .filter(|value| !value.is_empty())
+}
+
+fn jenkins_rss_build_id(
+    provider: &VersionMetadataProvider,
+    title: &str,
+) -> Result<String, VersionMetadataError> {
+    title
+        .rsplit_once('#')
+        .and_then(|(_, value)| value.split_whitespace().next())
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| invalid_response(provider))
+}
+
 fn parse_geyser_versions(
     provider: &VersionMetadataProvider,
     metadata: &Value,
@@ -804,6 +901,7 @@ mod tests {
     use super::parse_forge_versions;
     use super::parse_geyser_versions;
     use super::parse_github_release_versions;
+    use super::parse_jenkins_rss_versions;
     use super::parse_mojang_versions;
     use super::parse_neoforge_versions;
     use super::parse_paper_versions;
@@ -919,6 +1017,46 @@ mod tests {
         assert_eq!(
             versions[0].metadata_url(),
             Some("https://example.invalid/2085/")
+        );
+    }
+
+    #[test]
+    fn parses_bukkit_and_spigot_jenkins_rss_versions() {
+        let bukkit = parse_jenkins_rss_versions(
+            &provider("bukkit-jenkins-rss"),
+            br#"<?xml version="1.0" encoding="UTF-8"?>
+                <feed xmlns="http://www.w3.org/2005/Atom">
+                    <entry>
+                        <title>Bukkit-RSS #1452 (stable)</title>
+                        <link rel="alternate" href="https://example.invalid/bukkit/1452/" />
+                    </entry>
+                    <entry>
+                        <title>Bukkit-RSS #1451 (unstable)</title>
+                        <link rel="alternate" href="https://example.invalid/bukkit/1451/" />
+                    </entry>
+                </feed>"#,
+        )
+        .expect("Bukkit RSS metadata is valid");
+        let spigot = parse_jenkins_rss_versions(
+            &provider("spigot-jenkins-rss"),
+            br#"<feed xmlns="http://www.w3.org/2005/Atom">
+                    <entry>
+                        <title>Spigot-RSS #719 (stable)</title>
+                        <link rel="alternate" href="https://example.invalid/spigot/719/" />
+                    </entry>
+                </feed>"#,
+        )
+        .expect("Spigot RSS metadata is valid");
+
+        assert_eq!(bukkit.len(), 2);
+        assert_eq!(bukkit[0].id(), "1452");
+        assert!(bukkit[0].stable());
+        assert!(!bukkit[1].stable());
+        assert_eq!(bukkit[0].kind(), InstallTemplateVersionKind::Server);
+        assert_eq!(spigot[0].id(), "719");
+        assert_eq!(
+            spigot[0].metadata_url(),
+            Some("https://example.invalid/spigot/719/")
         );
     }
 
