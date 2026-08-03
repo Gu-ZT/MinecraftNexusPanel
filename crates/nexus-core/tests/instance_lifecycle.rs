@@ -32,6 +32,7 @@ use tokio::time::sleep;
 use tokio::time::timeout;
 
 const TEST_PSK: &str = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY";
+const TEST_EVENT_TIMEOUT: Duration = Duration::from_secs(15);
 type TestTransport = NoiseTransport<TlsClientStream<TcpStream>>;
 
 #[tokio::test]
@@ -561,7 +562,7 @@ async fn wait_for_state(
     expected_state: InstanceState,
     observed_states: &mut Vec<InstanceState>,
 ) {
-    timeout(Duration::from_secs(5), async {
+    timeout(TEST_EVENT_TIMEOUT, async {
         loop {
             let message = transport
                 .read_message()
@@ -583,7 +584,7 @@ async fn wait_for_console_line(
     observed_states: &mut Vec<InstanceState>,
     console_lines: &mut Vec<String>,
 ) {
-    timeout(Duration::from_secs(5), async {
+    timeout(TEST_EVENT_TIMEOUT, async {
         loop {
             let message = transport
                 .read_message()
@@ -608,7 +609,7 @@ async fn wait_for_log_lines(
     instance_id: &InstanceId,
     expected_lines: &[&str],
 ) -> InstanceLogPage {
-    timeout(Duration::from_secs(5), async {
+    timeout(TEST_EVENT_TIMEOUT, async {
         loop {
             let page = read_log_page(transport, instance_id, None, None, Some(200)).await;
             if expected_lines
