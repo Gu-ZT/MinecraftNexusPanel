@@ -7,6 +7,7 @@ interface RequestOptions {
   method?: HttpMethod;
   body?: unknown;
   csrf?: boolean;
+  headers?: Record<string, string>;
   ifMatch?: number | string;
   idempotent?: boolean;
   accept?: string;
@@ -230,6 +231,19 @@ export interface FileReadResult {
   eof: boolean;
 }
 
+export interface FileUploadStart {
+  transferId: string;
+  chunkSize: number;
+  nextOffset: number;
+  sizeBytes: number;
+}
+
+export interface FileUploadPart {
+  transferId: string;
+  nextOffset: number;
+  sizeBytes: number;
+}
+
 export type FileBatchOperation =
   | { kind: 'MKDIR'; path: string; recursive?: boolean }
   | { kind: 'MOVE'; from: string; to: string; overwrite?: boolean }
@@ -444,6 +458,22 @@ export interface PanelApiClient {
     to: string,
     overwrite?: boolean,
   ): Promise<FileEntry>;
+  beginFileUpload(
+    coreId: string,
+    instanceId: string,
+    path: string,
+    sizeBytes: number,
+    sha256: string,
+  ): Promise<FileUploadStart>;
+  uploadFilePart(
+    coreId: string,
+    transferId: string,
+    partNumber: number,
+    content: FileBytes,
+    sha256: string,
+  ): Promise<FileUploadPart>;
+  completeFileUpload(coreId: string, transferId: string): Promise<FileEntry>;
+  abortFileUpload(coreId: string, transferId: string): Promise<void>;
   batchInstanceFiles(
     coreId: string,
     instanceId: string,
@@ -499,6 +529,11 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     }
     if (csrfToken) {
       headers.set('X-CSRF-Token', csrfToken);
+    }
+    if (requestOptions.headers) {
+      for (const [name, value] of Object.entries(requestOptions.headers)) {
+        headers.set(name, value);
+      }
     }
     if (requestOptions.idempotent) {
       headers.set('Idempotency-Key', createRequestId());
@@ -689,6 +724,57 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
           csrf: true,
           idempotent: true,
         },
+      );
+    },
+    beginFileUpload(coreId, instanceId, path, sizeBytes, sha256) {
+      return request<FileUploadStart>(
+        '/api/v1/cores/' +
+          encodeURIComponent(coreId) +
+          '/instances/' +
+          encodeURIComponent(instanceId) +
+          '/uploads',
+        {
+          method: 'POST',
+          body: { path, sizeBytes, sha256 },
+          csrf: true,
+          idempotent: true,
+        },
+      );
+    },
+    uploadFilePart(coreId, transferId, partNumber, content, sha256) {
+      return request<FileUploadPart>(
+        '/api/v1/cores/' +
+          encodeURIComponent(coreId) +
+          '/uploads/' +
+          encodeURIComponent(transferId) +
+          '/parts/' +
+          encodeURIComponent(String(partNumber)),
+        {
+          method: 'PUT',
+          body: content,
+          headers: { 'Content-SHA256': sha256 },
+          csrf: true,
+          idempotent: true,
+        },
+      );
+    },
+    completeFileUpload(coreId, transferId) {
+      return request<FileEntry>(
+        '/api/v1/cores/' +
+          encodeURIComponent(coreId) +
+          '/uploads/' +
+          encodeURIComponent(transferId) +
+          '/complete',
+        { method: 'POST', csrf: true, idempotent: true },
+      );
+    },
+    abortFileUpload(coreId, transferId) {
+      return request<void>(
+        '/api/v1/cores/' +
+          encodeURIComponent(coreId) +
+          '/uploads/' +
+          encodeURIComponent(transferId),
+        { method: 'DELETE', csrf: true, idempotent: true },
       );
     },
     batchInstanceFiles(coreId, instanceId, operations) {

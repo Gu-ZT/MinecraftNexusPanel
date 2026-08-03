@@ -29,6 +29,8 @@ export type {
   FileReadResult,
   FileTask,
   FileTaskState,
+  FileUploadPart,
+  FileUploadStart,
   InstallRuntimeRequirement,
   InstallTemplate,
   InstallTemplateExtensionLayout,
