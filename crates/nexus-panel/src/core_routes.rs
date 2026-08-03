@@ -268,6 +268,19 @@ pub(crate) fn registry_error_response(error: CoreRegistryError, request_id: Requ
             )
         }
         CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if matches!(
+                code.as_str(),
+                "FILE_ALREADY_EXISTS" | "FILE_DIRECTORY_NOT_EMPTY"
+            ) =>
+        {
+            error_response(
+                StatusCode::CONFLICT,
+                code.as_str(),
+                "File target cannot be replaced",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
             if code == "PAYLOAD_TOO_LARGE" =>
         {
             error_response(

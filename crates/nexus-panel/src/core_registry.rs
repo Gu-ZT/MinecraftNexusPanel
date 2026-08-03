@@ -691,6 +691,45 @@ impl CoreRegistry {
             .await?)
     }
 
+    pub async fn create_instance_directory(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        path: &str,
+        recursive: bool,
+        idempotency_key: &str,
+    ) -> Result<FileEntry, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .create_instance_directory(instance_id, path, recursive, idempotency_key)
+            .await?)
+    }
+
+    pub async fn move_instance_file(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        from: &str,
+        to: &str,
+        overwrite: bool,
+        idempotency_key: &str,
+    ) -> Result<FileEntry, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .move_instance_file(instance_id, from, to, overwrite, idempotency_key)
+            .await?)
+    }
+
     async fn find(&self, core_id: CoreId) -> Result<Arc<ManagedCore>, CoreRegistryError> {
         self.entries
             .read()

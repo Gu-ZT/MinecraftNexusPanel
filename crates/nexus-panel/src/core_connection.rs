@@ -654,6 +654,52 @@ impl CoreConnection {
         from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "fileEntry" })
     }
 
+    pub async fn create_instance_directory(
+        &mut self,
+        instance_id: &InstanceId,
+        path: &str,
+        recursive: bool,
+        idempotency_key: &str,
+    ) -> Result<FileEntry, CoreConnectionError> {
+        let result = self
+            .request_with_idempotency(
+                "file.mkdir",
+                json!({
+                    "instanceId": instance_id,
+                    "path": path,
+                    "recursive": recursive,
+                }),
+                Some(idempotency_key),
+            )
+            .await?;
+
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "fileEntry" })
+    }
+
+    pub async fn move_instance_file(
+        &mut self,
+        instance_id: &InstanceId,
+        from: &str,
+        to: &str,
+        overwrite: bool,
+        idempotency_key: &str,
+    ) -> Result<FileEntry, CoreConnectionError> {
+        let result = self
+            .request_with_idempotency(
+                "file.move",
+                json!({
+                    "instanceId": instance_id,
+                    "from": from,
+                    "to": to,
+                    "overwrite": overwrite,
+                }),
+                Some(idempotency_key),
+            )
+            .await?;
+
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "fileEntry" })
+    }
+
     async fn request(&mut self, method: &str, params: Value) -> Result<Value, CoreConnectionError> {
         self.request_with_idempotency(method, params, None).await
     }

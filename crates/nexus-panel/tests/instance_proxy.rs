@@ -289,6 +289,40 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     .await;
     assert_eq!(stale_file.status, 412);
 
+    let created_directory = send_json_request(
+        panel_address,
+        "POST",
+        &format!("/api/v1/cores/{core_id}/instances/panel-process/directories"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        Some(json!({ "path": "config/server", "recursive": true })),
+    )
+    .await;
+    assert_eq!(created_directory.status, 200);
+    assert_eq!(created_directory.body["kind"], "DIRECTORY");
+    assert_eq!(created_directory.body["path"], "config/server");
+
+    let moved_file = send_json_request(
+        panel_address,
+        "POST",
+        &format!("/api/v1/cores/{core_id}/instances/panel-process/file-actions/move"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        Some(json!({
+            "from": "server.properties",
+            "to": "config/server/server.properties",
+            "overwrite": false,
+        })),
+    )
+    .await;
+    assert_eq!(moved_file.status, 200);
+    assert_eq!(moved_file.body["kind"], "FILE");
+    assert_eq!(moved_file.body["path"], "config/server/server.properties");
+
     let invalid_file = send_json_request(
         panel_address,
         "GET",

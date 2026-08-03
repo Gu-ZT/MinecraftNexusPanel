@@ -108,6 +108,27 @@ async fn connects_to_a_core_and_reads_its_system_info() {
         .expect("Core reads an instance file chunk");
     assert_eq!(content.data_base64(), "bW90ZA==");
     assert!(!content.eof());
+    let directory = connection
+        .create_instance_directory(
+            definition.id(),
+            "config/server",
+            true,
+            &RequestId::new().to_string(),
+        )
+        .await
+        .expect("Core creates a recursive instance directory");
+    assert_eq!(directory.kind(), FileKind::Directory);
+    let moved = connection
+        .move_instance_file(
+            definition.id(),
+            "server.properties",
+            "config/server/server.properties",
+            false,
+            &RequestId::new().to_string(),
+        )
+        .await
+        .expect("Core moves an instance file");
+    assert_eq!(moved.path(), "config/server/server.properties");
     let invalid_path = connection
         .list_instance_files(definition.id(), "../outside", None, None)
         .await

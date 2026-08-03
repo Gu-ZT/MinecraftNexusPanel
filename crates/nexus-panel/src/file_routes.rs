@@ -8,6 +8,7 @@ use axum::extract::Extension;
 use axum::extract::Path;
 use axum::extract::Query;
 use axum::extract::State;
+use axum::extract::rejection::JsonRejection;
 use axum::http::HeaderMap;
 use axum::http::HeaderValue;
 use axum::http::StatusCode;
@@ -16,11 +17,13 @@ use axum::http::header::ETAG;
 use axum::response::IntoResponse;
 use axum::response::Response;
 use axum::routing::get;
+use axum::routing::post;
 use nexus_domain::CoreId;
 use nexus_domain::FileContent;
 use nexus_domain::FileEntry;
 use nexus_domain::InstanceId;
 use nexus_domain::RequestId;
+use serde_json::Value;
 
 use crate::PanelState;
 use crate::auth_routes::error_response;
@@ -37,6 +40,14 @@ pub(crate) fn file_routes() -> Router<PanelState> {
         .route(
             "/api/v1/cores/{core_id}/instances/{instance_id}/files",
             get(list_instance_files),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/instances/{instance_id}/directories",
+            post(create_instance_directory),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/instances/{instance_id}/file-actions/move",
+            post(move_instance_file),
         )
         .route(
             "/api/v1/cores/{core_id}/instances/{instance_id}/file-content",
@@ -180,6 +191,97 @@ async fn write_instance_file(
     }
 }
 
+async fn create_instance_directory(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, instance_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    payload: Result<Json<Value>, JsonRejection>,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Json(payload) = match payload {
+        Ok(payload) => payload,
+        Err(_) => return validation_error(request_id),
+    };
+    let Some(path) = payload
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+    else {
+        return validation_error(request_id);
+    };
+    let recursive = match optional_boolean(&payload, "recursive") {
+        Ok(value) => value.unwrap_or(false),
+        Err(()) => return validation_error(request_id),
+    };
+    let Some(idempotency_key) = idempotency_key(&headers) else {
+        return precondition_required_response(request_id);
+    };
+    let Some((core_id, instance_id)) = parse_ids(&core_id, &instance_id) else {
+        return validation_error(request_id);
+    };
+
+    match state
+        .cores()
+        .create_instance_directory(core_id, &instance_id, path, recursive, idempotency_key)
+        .await
+    {
+        Ok(entry) => file_entry_response(entry),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn move_instance_file(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, instance_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    payload: Result<Json<Value>, JsonRejection>,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Json(payload) = match payload {
+        Ok(payload) => payload,
+        Err(_) => return validation_error(request_id),
+    };
+    let Some(from) = payload
+        .get("from")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+    else {
+        return validation_error(request_id);
+    };
+    let Some(to) = payload
+        .get("to")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+    else {
+        return validation_error(request_id);
+    };
+    let overwrite = match optional_boolean(&payload, "overwrite") {
+        Ok(value) => value.unwrap_or(false),
+        Err(()) => return validation_error(request_id),
+    };
+    let Some(idempotency_key) = idempotency_key(&headers) else {
+        return precondition_required_response(request_id);
+    };
+    let Some((core_id, instance_id)) = parse_ids(&core_id, &instance_id) else {
+        return validation_error(request_id);
+    };
+
+    match state
+        .cores()
+        .move_instance_file(core_id, &instance_id, from, to, overwrite, idempotency_key)
+        .await
+    {
+        Ok(entry) => file_entry_response(entry),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
 fn file_entry_response(entry: FileEntry) -> Response {
     let mut response = Json(&entry).into_response();
     if let Some(sha256) = entry.sha256()
@@ -244,6 +346,14 @@ fn optional_limit(query: &HashMap<String, String>) -> Option<Option<usize>> {
             .filter(|value| (1..=200).contains(value))
             .map(Some),
         None => Some(None),
+    }
+}
+
+fn optional_boolean(payload: &Value, name: &str) -> Result<Option<bool>, ()> {
+    match payload.get(name) {
+        None => Ok(None),
+        Some(Value::Bool(value)) => Ok(Some(*value)),
+        Some(_) => Err(()),
     }
 }
 

@@ -386,6 +386,19 @@ export interface PanelApiClient {
     content: FileBytes,
     expectedSha256?: string,
   ): Promise<FileEntry>;
+  createInstanceDirectory(
+    coreId: string,
+    instanceId: string,
+    path: string,
+    recursive?: boolean,
+  ): Promise<FileEntry>;
+  moveInstanceFile(
+    coreId: string,
+    instanceId: string,
+    from: string,
+    to: string,
+    overwrite?: boolean,
+  ): Promise<FileEntry>;
   listProxySubservers(coreId: string, proxyInstanceId: string): Promise<ProxySubserverPage>;
   upsertProxySubserver(
     coreId: string,
@@ -597,6 +610,28 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
       return request<FileEntry>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/file-content?${query.toString()}`,
         requestOptions,
+      );
+    },
+    createInstanceDirectory(coreId, instanceId, path, recursive = false) {
+      return request<FileEntry>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/directories`,
+        {
+          method: 'POST',
+          body: { path, recursive },
+          csrf: true,
+          idempotent: true,
+        },
+      );
+    },
+    moveInstanceFile(coreId, instanceId, from, to, overwrite = false) {
+      return request<FileEntry>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/file-actions/move`,
+        {
+          method: 'POST',
+          body: { from, to, overwrite },
+          csrf: true,
+          idempotent: true,
+        },
       );
     },
     listProxySubservers(coreId, proxyInstanceId) {
