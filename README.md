@@ -10,6 +10,25 @@ English | [简体中文](README.zh_CN.md)
 
 </div>
 
+## Current M2 Scope
+
+The current M2 domain and template catalog model 29 server, proxy, and Bedrock-facing profiles:
+
+| Profile | Types |
+|---------|-------|
+| Java vanilla | Vanilla |
+| Java modded | NeoForge, Forge, Fabric |
+| Java plugins | Bukkit, Spigot, Paper, Purpur, Pufferfish, Folia, Leaf |
+| Java hybrid | Mohist, Magma, Sponge, Arclight, Youer, AsyncYouer, Silkard, CatServer, Lingshu |
+| Proxies | Velocity, Waterfall, BungeeCord, Lightfall, Geyser |
+| Bedrock servers | Bedrock Dedicated Server, PocketMine-MP, Nukkit, Cloudburst Nukkit |
+
+The catalog distinguishes a server profile from a verified installer. Version metadata and installation validation currently cover the initial Vanilla, Paper, Velocity, and Fabric providers; the remaining profiles are modeled for incremental provider and recipe support.
+
+- Hybrid servers manage plugins and mods separately, with extension directories declared by the template and version rather than assumed globally.
+- Velocity, Waterfall, BungeeCord, and Lightfall use one-to-many backend topology; Geyser uses one-to-one topology and has dedicated Bedrock-facing management.
+- Bedrock Dedicated Server, PocketMine-MP, Nukkit, Cloudburst Nukkit, and Geyser expose dedicated management profiles for RakNet UDP, default port `19132`, configuration files, and extension capabilities.
+
 ## Project Layout
 
 ```text

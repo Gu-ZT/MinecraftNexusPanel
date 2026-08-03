@@ -10,6 +10,25 @@
 
 </div>
 
+## 当前 M2 能力范围
+
+当前 M2 领域模型和模板目录已覆盖 29 类服务端、代理端与面向基岩版的运行画像：
+
+| 分类 | 类型 |
+|------|------|
+| Java 原版端 | Vanilla |
+| Java 模组端 | NeoForge、Forge、Fabric |
+| Java 插件端 | Bukkit、Spigot、Paper、Purpur、Pufferfish、Folia、Leaf |
+| Java 混合端 | Mohist、Magma、Sponge、Arclight、Youer、AsyncYouer、Silkard、CatServer、Lingshu |
+| 反向代理端 | Velocity、Waterfall、BungeeCord、Lightfall、Geyser |
+| 基岩版服务端 | Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit |
+
+模板目录与已验证安装器是两个层次：当前已为 Vanilla、Paper、Velocity、Fabric 接入首批版本元数据提供方；其余类型已完成领域建模，后续逐项补充官方元数据和安装配方。
+
+- 混合端的插件与模组分别管理，扩展目录由模板和版本声明，不能使用全局固定路径。
+- Velocity、Waterfall、BungeeCord、Lightfall 使用一对多后端拓扑；Geyser 使用一对一拓扑，并提供专门的基岩版管理能力。
+- Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit 与 Geyser 使用专门画像管理 RakNet UDP、默认端口 `19132`、配置文件和扩展能力。
+
 ## 工程布局
 
 ```text
