@@ -1,14 +1,16 @@
 import type { ApiClientOptions } from './api-client-options';
 import { createApiUrl } from './create-api-url';
 
-type HttpMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST';
+type HttpMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT';
 
 interface RequestOptions {
   method?: HttpMethod;
   body?: unknown;
   csrf?: boolean;
-  ifMatch?: number;
+  ifMatch?: number | string;
   idempotent?: boolean;
+  accept?: string;
+  responseType?: 'arrayBuffer' | 'json';
 }
 
 interface ErrorBody {
@@ -204,6 +206,30 @@ export interface BedrockManagementProfile {
   extensionKind: ExtensionKind | null;
 }
 
+export type FileKind = 'FILE' | 'DIRECTORY' | 'SYMLINK' | 'OTHER';
+export type FileBytes = ArrayBuffer | Blob | Uint8Array;
+
+export interface FileEntry {
+  name: string;
+  path: string;
+  kind: FileKind;
+  size: number;
+  modifiedAt: string;
+  sha256: string | null;
+}
+
+export interface FilePage {
+  items: FileEntry[];
+  nextCursor: string | null;
+}
+
+export interface FileReadResult {
+  data: ArrayBuffer;
+  etag: string;
+  sha256: string;
+  eof: boolean;
+}
+
 export interface VersionMetadataProvider {
   id: string;
   name: string;
@@ -339,6 +365,27 @@ export interface PanelApiClient {
   verifyRuntime(coreId: string, runtimeId: string): Promise<RuntimeOperation>;
   deleteRuntime(coreId: string, runtimeId: string): Promise<TaskAccepted>;
   getBedrockProfile(coreId: string, instanceId: string): Promise<BedrockManagementProfile>;
+  listInstanceFiles(
+    coreId: string,
+    instanceId: string,
+    path?: string,
+    cursor?: string,
+    limit?: number,
+  ): Promise<FilePage>;
+  readInstanceFile(
+    coreId: string,
+    instanceId: string,
+    path: string,
+    offset?: number,
+    length?: number,
+  ): Promise<FileReadResult>;
+  writeInstanceFile(
+    coreId: string,
+    instanceId: string,
+    path: string,
+    content: FileBytes,
+    expectedSha256?: string,
+  ): Promise<FileEntry>;
   listProxySubservers(coreId: string, proxyInstanceId: string): Promise<ProxySubserverPage>;
   upsertProxySubserver(
     coreId: string,
@@ -374,7 +421,7 @@ export class ApiRequestError extends Error {
 export function createPanelApiClient(options: ApiClientOptions): PanelApiClient {
   async function request<T>(path: string, requestOptions: RequestOptions = {}): Promise<T> {
     const method = requestOptions.method ?? 'GET';
-    const headers = new Headers({ Accept: 'application/json' });
+    const headers = new Headers({ Accept: requestOptions.accept ?? 'application/json' });
     const accessToken = options.getAccessToken?.();
     const csrfToken = requestOptions.csrf ? options.getCsrfToken?.() : undefined;
     if (accessToken) {
@@ -387,10 +434,14 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
       headers.set('Idempotency-Key', createRequestId());
     }
     if (requestOptions.ifMatch !== undefined) {
-      headers.set('If-Match', `"${requestOptions.ifMatch}"`);
+      const value = String(requestOptions.ifMatch);
+      headers.set('If-Match', value.startsWith('"') ? value : `"${value}"`);
     }
     if (requestOptions.body !== undefined) {
-      headers.set('Content-Type', 'application/json');
+      headers.set(
+        'Content-Type',
+        isBinaryBody(requestOptions.body) ? 'application/octet-stream' : 'application/json',
+      );
     }
 
     const init: RequestInit = {
@@ -399,7 +450,9 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
       credentials: 'same-origin',
     };
     if (requestOptions.body !== undefined) {
-      init.body = JSON.stringify(requestOptions.body);
+      init.body = isBinaryBody(requestOptions.body)
+        ? (requestOptions.body as BodyInit)
+        : JSON.stringify(requestOptions.body);
     }
 
     const response = await fetch(createApiUrl(options.baseUrl, path), init);
@@ -408,6 +461,14 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     }
     if (response.status === 204) {
       return undefined as T;
+    }
+
+    if (requestOptions.responseType === 'arrayBuffer') {
+      return {
+        data: await response.arrayBuffer(),
+        etag: response.headers.get('ETag'),
+        eof: response.headers.get('x-mcnp-file-eof') === 'true',
+      } as T;
     }
 
     return response.json() as Promise<T>;
@@ -497,6 +558,47 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
         `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/bedrock-profile`,
       );
     },
+    listInstanceFiles(coreId, instanceId, path = '', cursor, limit) {
+      const query = new URLSearchParams({ path });
+      if (cursor !== undefined) {
+        query.set('cursor', cursor);
+      }
+      if (limit !== undefined) {
+        query.set('limit', String(limit));
+      }
+      return request<FilePage>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/files?${query.toString()}`,
+      );
+    },
+    async readInstanceFile(coreId, instanceId, path, offset = 0, length = 32 * 1024) {
+      const query = new URLSearchParams({ path, offset: String(offset), length: String(length) });
+      const response = await request<BinaryFileResponse>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/file-content?${query.toString()}`,
+        { accept: 'application/octet-stream', responseType: 'arrayBuffer' },
+      );
+      const etag = response.etag;
+      if (etag === null) {
+        throw new Error('File response did not include an ETag');
+      }
+      const sha256 = etag.replace(/^"|"$/g, '');
+      return { data: response.data, etag, sha256, eof: response.eof };
+    },
+    writeInstanceFile(coreId, instanceId, path, content, expectedSha256) {
+      const query = new URLSearchParams({ path });
+      const requestOptions: RequestOptions = {
+        method: 'PUT',
+        body: content,
+        csrf: true,
+        idempotent: true,
+      };
+      if (expectedSha256 !== undefined) {
+        requestOptions.ifMatch = expectedSha256;
+      }
+      return request<FileEntry>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/file-content?${query.toString()}`,
+        requestOptions,
+      );
+    },
     listProxySubservers(coreId, proxyInstanceId) {
       return request<ProxySubserverPage>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(proxyInstanceId)}/proxy-subservers`,
@@ -553,6 +655,20 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
       );
     },
   };
+}
+
+interface BinaryFileResponse {
+  data: ArrayBuffer;
+  etag: string | null;
+  eof: boolean;
+}
+
+function isBinaryBody(value: unknown): boolean {
+  return (
+    (typeof Blob !== 'undefined' && value instanceof Blob) ||
+    (typeof ArrayBuffer !== 'undefined' && value instanceof ArrayBuffer) ||
+    (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(value))
+  );
 }
 
 async function createRequestError(response: Response): Promise<ApiRequestError> {

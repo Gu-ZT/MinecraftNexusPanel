@@ -1,7 +1,12 @@
 use std::net::SocketAddr;
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use nexus_domain::BedrockManagementProfile;
 use nexus_domain::CoreId;
+use nexus_domain::FileContent;
+use nexus_domain::FileEntry;
+use nexus_domain::FilePage;
 use nexus_domain::Instance;
 use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
@@ -33,8 +38,9 @@ use tokio::net::TcpStream;
 use crate::CoreConnectionError;
 use crate::CoreEndpoint;
 
-const PANEL_CAPABILITIES: [&str; 7] = [
+const PANEL_CAPABILITIES: [&str; 8] = [
     "events",
+    "files",
     "instances",
     "metrics",
     "proxy-subservers",
@@ -577,6 +583,75 @@ impl CoreConnection {
         let series = response_field(&result, "series")?;
 
         from_value(series).map_err(|_| CoreConnectionError::InvalidResponse { field: "series" })
+    }
+
+    pub async fn list_instance_files(
+        &mut self,
+        instance_id: &InstanceId,
+        path: &str,
+        cursor: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<FilePage, CoreConnectionError> {
+        let mut params = json!({
+            "instanceId": instance_id,
+            "path": path,
+        });
+        if let Some(cursor) = cursor {
+            params["cursor"] = json!(cursor);
+        }
+        if let Some(limit) = limit {
+            params["limit"] = json!(limit);
+        }
+        let result = self.request("file.list", params).await?;
+
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "filePage" })
+    }
+
+    pub async fn read_instance_file(
+        &mut self,
+        instance_id: &InstanceId,
+        path: &str,
+        offset: u64,
+        length: usize,
+    ) -> Result<FileContent, CoreConnectionError> {
+        let result = self
+            .request(
+                "file.read",
+                json!({
+                    "instanceId": instance_id,
+                    "path": path,
+                    "offset": offset,
+                    "length": length,
+                }),
+            )
+            .await?;
+
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse {
+            field: "fileContent",
+        })
+    }
+
+    pub async fn write_instance_file(
+        &mut self,
+        instance_id: &InstanceId,
+        path: &str,
+        content: &[u8],
+        expected_sha256: Option<&str>,
+        idempotency_key: &str,
+    ) -> Result<FileEntry, CoreConnectionError> {
+        let mut params = json!({
+            "instanceId": instance_id,
+            "path": path,
+            "dataBase64": STANDARD.encode(content),
+        });
+        if let Some(expected_sha256) = expected_sha256 {
+            params["expectedSha256"] = json!(expected_sha256);
+        }
+        let result = self
+            .request_with_idempotency("file.write", params, Some(idempotency_key))
+            .await?;
+
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "fileEntry" })
     }
 
     async fn request(&mut self, method: &str, params: Value) -> Result<Value, CoreConnectionError> {

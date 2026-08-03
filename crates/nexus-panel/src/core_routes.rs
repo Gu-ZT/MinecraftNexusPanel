@@ -228,6 +228,66 @@ pub(crate) fn registry_error_response(error: CoreRegistryError, request_id: Requ
             )
         }
         CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "FILE_NOT_FOUND" =>
+        {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "FILE_NOT_FOUND",
+                "File does not exist",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if matches!(code.as_str(), "FILE_NOT_DIRECTORY" | "FILE_NOT_REGULAR") =>
+        {
+            error_response(
+                StatusCode::CONFLICT,
+                code.as_str(),
+                "File path type does not allow this operation",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "FILE_PATH_FORBIDDEN" =>
+        {
+            error_response(
+                StatusCode::FORBIDDEN,
+                "FILE_PATH_FORBIDDEN",
+                "File path is not allowed",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "FILE_REVISION_MISMATCH" =>
+        {
+            error_response(
+                StatusCode::PRECONDITION_FAILED,
+                "FILE_REVISION_MISMATCH",
+                "File hash does not match",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "PAYLOAD_TOO_LARGE" =>
+        {
+            error_response(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "PAYLOAD_TOO_LARGE",
+                "File content exceeds the maximum size",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "FILE_OPERATION_FAILED" =>
+        {
+            error_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "FILE_OPERATION_FAILED",
+                "File operation failed",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
             if code == "RUNTIME_NOT_FOUND" =>
         {
             error_response(

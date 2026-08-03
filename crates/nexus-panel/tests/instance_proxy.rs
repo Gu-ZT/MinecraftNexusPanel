@@ -11,6 +11,7 @@ use nexus_domain::RequestId;
 use nexus_panel::PanelError;
 use nexus_panel::PanelServer;
 use serde_json::Value;
+use serde_json::from_slice;
 use serde_json::from_str;
 use serde_json::json;
 use tempfile::TempDir;
@@ -218,6 +219,86 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
         created.headers.get("etag").map(String::as_str),
         Some("\"1\"")
     );
+
+    let listed_files = send_json_request(
+        panel_address,
+        "GET",
+        &format!("/api/v1/cores/{core_id}/instances/panel-process/files?path="),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(listed_files.status, 200);
+    assert_eq!(listed_files.body["items"].as_array().map(Vec::len), Some(0));
+
+    let written_file = send_raw_request(
+        panel_address,
+        "PUT",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/panel-process/file-content?path=server.properties"
+        ),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        b"motd=Panel",
+    )
+    .await;
+    assert_eq!(written_file.status, 200);
+    let written_file_body: Value =
+        from_slice(&written_file.body).expect("file write response is JSON");
+    let file_etag = written_file
+        .headers
+        .get("etag")
+        .cloned()
+        .expect("file write returns an ETag");
+    assert_eq!(written_file_body["kind"], "FILE");
+    assert_eq!(written_file_body["path"], "server.properties");
+
+    let read_file = send_raw_request(
+        panel_address,
+        "GET",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/panel-process/file-content?path=server.properties&offset=0&length=32"
+        ),
+        &[("Authorization", authorization.as_str())],
+        &[],
+    )
+    .await;
+    assert_eq!(read_file.status, 200);
+    assert_eq!(read_file.body, b"motd=Panel");
+    assert_eq!(read_file.headers.get("etag"), Some(&file_etag));
+    assert_eq!(
+        read_file.headers.get("x-mcnp-file-eof"),
+        Some(&"true".to_owned())
+    );
+
+    let stale_file = send_raw_request(
+        panel_address,
+        "PUT",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/panel-process/file-content?path=server.properties"
+        ),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+            ("If-Match", &format!("\"{}\"", "0".repeat(64))),
+        ],
+        b"motd=Stale",
+    )
+    .await;
+    assert_eq!(stale_file.status, 412);
+
+    let invalid_file = send_json_request(
+        panel_address,
+        "GET",
+        &format!("/api/v1/cores/{core_id}/instances/panel-process/files?path=../outside"),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(invalid_file.status, 400);
+    assert_eq!(invalid_file.body["error"]["code"], "VALIDATION_FAILED");
 
     let updated = send_json_request(
         panel_address,
@@ -594,6 +675,45 @@ async fn send_json_request(
     TestHttpResponse::parse(&response)
 }
 
+async fn send_raw_request(
+    address: SocketAddr,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: &[u8],
+) -> TestRawHttpResponse {
+    let request_id = RequestId::new();
+    let mut request = format!(
+        "{method} {path} HTTP/1.1\r\nHost: localhost\r\nX-Request-Id: {request_id}\r\nConnection: close\r\n"
+    );
+    for (name, value) in headers {
+        request.push_str(&format!("{name}: {value}\r\n"));
+    }
+    if !body.is_empty() {
+        request.push_str("Content-Type: application/octet-stream\r\n");
+    }
+    request.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
+
+    let mut stream = TcpStream::connect(address)
+        .await
+        .expect("HTTP client connects");
+    stream
+        .write_all(request.as_bytes())
+        .await
+        .expect("HTTP request headers are sent");
+    stream
+        .write_all(body)
+        .await
+        .expect("HTTP request body is sent");
+    let mut response = Vec::new();
+    stream
+        .read_to_end(&mut response)
+        .await
+        .expect("HTTP response is read");
+
+    TestRawHttpResponse::parse(&response)
+}
+
 fn safe_process_create(identifier: &str) -> Value {
     json!({
         "id": identifier,
@@ -672,6 +792,38 @@ impl TestHttpResponse {
             status,
             headers,
             body,
+        }
+    }
+}
+
+struct TestRawHttpResponse {
+    status: u16,
+    headers: HashMap<String, String>,
+    body: Vec<u8>,
+}
+
+impl TestRawHttpResponse {
+    fn parse(response: &[u8]) -> Self {
+        let boundary = response
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .expect("HTTP response has a header boundary");
+        let head = String::from_utf8_lossy(&response[..boundary]);
+        let mut lines = head.lines();
+        let status = lines
+            .next()
+            .and_then(|line| line.split_whitespace().nth(1))
+            .and_then(|status| status.parse().ok())
+            .expect("HTTP response has a numeric status");
+        let headers = lines
+            .filter_map(|line| line.split_once(':'))
+            .map(|(name, value)| (name.to_ascii_lowercase(), value.trim().to_owned()))
+            .collect();
+
+        Self {
+            status,
+            headers,
+            body: response[boundary + 4..].to_vec(),
         }
     }
 }

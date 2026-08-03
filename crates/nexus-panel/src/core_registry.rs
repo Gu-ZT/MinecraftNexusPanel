@@ -6,6 +6,9 @@ use std::time::Instant;
 
 use nexus_config::LocalCoreConfig;
 use nexus_domain::CoreId;
+use nexus_domain::FileContent;
+use nexus_domain::FileEntry;
+use nexus_domain::FilePage;
 use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
 use nexus_domain::InstanceState;
@@ -628,6 +631,64 @@ impl CoreRegistry {
             .await?;
 
         Ok(json!({ "series": series }))
+    }
+
+    pub async fn list_instance_files(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        path: &str,
+        cursor: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<FilePage, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .list_instance_files(instance_id, path, cursor, limit)
+            .await?)
+    }
+
+    pub async fn read_instance_file(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        path: &str,
+        offset: u64,
+        length: usize,
+    ) -> Result<FileContent, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .read_instance_file(instance_id, path, offset, length)
+            .await?)
+    }
+
+    pub async fn write_instance_file(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        path: &str,
+        content: &[u8],
+        expected_sha256: Option<&str>,
+        idempotency_key: &str,
+    ) -> Result<FileEntry, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .write_instance_file(instance_id, path, content, expected_sha256, idempotency_key)
+            .await?)
     }
 
     async fn find(&self, core_id: CoreId) -> Result<Arc<ManagedCore>, CoreRegistryError> {

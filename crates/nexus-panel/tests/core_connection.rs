@@ -6,6 +6,7 @@ use nexus_config::CoreConfig;
 use nexus_core::CoreServer;
 use nexus_domain::BedrockManagementKind;
 use nexus_domain::BedrockTransport;
+use nexus_domain::FileKind;
 use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
 use nexus_domain::InstanceKind;
@@ -14,6 +15,7 @@ use nexus_domain::InstanceLogStream;
 use nexus_domain::InstanceState;
 use nexus_domain::LaunchConfig;
 use nexus_domain::ProxySubserver;
+use nexus_domain::RequestId;
 use nexus_panel::CoreConnection;
 use nexus_panel::CoreConnectionError;
 use nexus_protocol::PresharedKey;
@@ -81,6 +83,39 @@ async fn connects_to_a_core_and_reads_its_system_info() {
     assert_eq!(instances.items().first(), Some(&created));
     assert_eq!(instances.next_cursor(), None);
     assert_eq!(fetched, created);
+
+    let written = connection
+        .write_instance_file(
+            definition.id(),
+            "server.properties",
+            b"motd=MCNP",
+            None,
+            &RequestId::new().to_string(),
+        )
+        .await
+        .expect("Core writes an instance file");
+    assert_eq!(written.kind(), FileKind::File);
+    assert_eq!(written.path(), "server.properties");
+    let files = connection
+        .list_instance_files(definition.id(), "", None, None)
+        .await
+        .expect("Core lists instance files");
+    assert_eq!(files.items().len(), 1);
+    assert_eq!(files.items()[0].path(), "server.properties");
+    let content = connection
+        .read_instance_file(definition.id(), "server.properties", 0, 4)
+        .await
+        .expect("Core reads an instance file chunk");
+    assert_eq!(content.data_base64(), "bW90ZA==");
+    assert!(!content.eof());
+    let invalid_path = connection
+        .list_instance_files(definition.id(), "../outside", None, None)
+        .await
+        .expect_err("Core rejects an escaping file path");
+    assert!(matches!(
+        invalid_path,
+        CoreConnectionError::Rejected { code } if code == "BAD_REQUEST"
+    ));
 
     let proxy = instance_create_with_kind("geyser", InstanceKind::Geyser);
     let first_target = instance_create_with_kind("java-backend", InstanceKind::Paper);
