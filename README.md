@@ -23,7 +23,7 @@ The current M2 domain and template catalog model 29 server, proxy, and Bedrock-f
 | Proxies | Velocity, Waterfall, BungeeCord, Lightfall, Geyser |
 | Bedrock servers | Bedrock Dedicated Server, PocketMine-MP, Nukkit, Cloudburst Nukkit |
 
-The catalog distinguishes a server profile from a verified installer. Version metadata currently covers Vanilla, Paper, Velocity, Fabric, Forge, Purpur, Folia, and Waterfall providers; archive layouts, launch recipes, and installation validation remain incremental for every profile.
+The catalog distinguishes a server profile from a verified installer. Version metadata currently covers Vanilla, Paper, Velocity, Fabric, Forge, Purpur, Folia, Waterfall, BungeeCord, and Geyser providers; archive layouts, launch recipes, and installation validation remain incremental for every profile.
 
 - Hybrid servers manage plugins and mods separately, with extension directories declared by the template and version rather than assumed globally.
 - Velocity, Waterfall, BungeeCord, and Lightfall use one-to-many backend topology; Geyser uses one-to-one topology and has dedicated Bedrock-facing management.
