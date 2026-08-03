@@ -230,15 +230,48 @@ export interface FileReadResult {
   eof: boolean;
 }
 
+export type FileBatchOperation =
+  | { kind: 'MKDIR'; path: string; recursive?: boolean }
+  | { kind: 'MOVE'; from: string; to: string; overwrite?: boolean }
+  | {
+      kind: 'WRITE';
+      path: string;
+      dataBase64: string;
+      expectedSha256?: string;
+    }
+  | {
+      kind: 'DELETE';
+      path: string;
+      recursive?: boolean;
+      confirmation: 'DELETE';
+    };
+
 export type FileTaskState = 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+export interface FileBatchTaskProgress {
+  completed: number;
+  total: number;
+}
+
+export interface FileBatchTaskResult {
+  index: number;
+  state: 'SUCCEEDED' | 'FAILED';
+  result?: {
+    entry?: FileEntry;
+    path?: string;
+    deleted?: boolean;
+  };
+  error?: string;
+}
 
 export interface FileTask {
   taskId: string;
-  kind: 'FILE_DELETE';
+  kind: 'FILE_DELETE' | 'FILE_BATCH';
   state: FileTaskState;
-  progress: number | null;
+  progress: number | null | FileBatchTaskProgress;
   path?: string;
   deleted?: boolean;
+  failedIndex?: number;
+  results?: FileBatchTaskResult[];
   error?: string;
 }
 
@@ -411,6 +444,11 @@ export interface PanelApiClient {
     to: string,
     overwrite?: boolean,
   ): Promise<FileEntry>;
+  batchInstanceFiles(
+    coreId: string,
+    instanceId: string,
+    operations: FileBatchOperation[],
+  ): Promise<TaskAccepted>;
   deleteInstanceFile(
     coreId: string,
     instanceId: string,
@@ -648,6 +686,17 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
         {
           method: 'POST',
           body: { from, to, overwrite },
+          csrf: true,
+          idempotent: true,
+        },
+      );
+    },
+    batchInstanceFiles(coreId, instanceId, operations) {
+      return request<TaskAccepted>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/file-actions/batch`,
+        {
+          method: 'POST',
+          body: { operations },
           csrf: true,
           idempotent: true,
         },
