@@ -10,6 +10,7 @@ use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
 use nexus_domain::InstanceState;
 use nexus_domain::InstanceUpdate;
+use nexus_domain::ManagedRuntime;
 use nexus_domain::PRODUCT_NAME;
 use nexus_domain::TaskId;
 use nexus_protocol::PresharedKey;
@@ -281,6 +282,17 @@ impl CoreRegistry {
         let instance = connection.get_instance(instance_id).await?;
 
         Ok(instance_json(core_id, &json!(instance)))
+    }
+
+    pub async fn list_managed_runtimes(&self, core_id: CoreId) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let runtimes: Vec<ManagedRuntime> = connection.list_managed_runtimes().await?;
+
+        Ok(json!({ "items": runtimes }))
     }
 
     pub async fn update_instance(

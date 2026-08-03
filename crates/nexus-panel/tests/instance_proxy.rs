@@ -46,6 +46,17 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     let authorization = format!("Bearer {access_token}");
     let core_id = register_core(panel_address, &authorization, core_address).await;
 
+    let runtimes = send_json_request(
+        panel_address,
+        "GET",
+        &format!("/api/v1/cores/{core_id}/environments"),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(runtimes.status, 200);
+    assert!(runtimes.body["items"].is_array());
+
     let created = send_json_request(
         panel_address,
         "POST",

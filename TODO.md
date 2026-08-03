@@ -46,7 +46,9 @@
 
 ## M2：环境与一键搭建
 
-- [ ] Java、Node.js、Python 受管环境发现、安装、校验、删除与缓存。
+- [ ] Java、Node.js、Python 受管环境管理。
+  - [x] 发现系统与受管目录中的 Java、Node.js、Python，并校验可执行文件和版本。
+  - [ ] 受管环境安装、删除与缓存。
 - [ ] 可信下载清单、SHA-256 校验、平台/架构校验和取消机制。
 - [ ] Vanilla、Paper、Velocity、Fabric 安装模板与版本元数据提供方。
 - [ ] Direct 与 MCDR 进程包装配置及审计任务。

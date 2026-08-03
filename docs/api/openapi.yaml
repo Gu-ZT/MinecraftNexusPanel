@@ -365,6 +365,26 @@ paths:
           $ref: '#/components/responses/NotFound'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /cores/{coreId}/environments:
+    get:
+      tags: [ Environments ]
+      operationId: listManagedRuntimes
+      summary: Discover Java, Node.js, and Python runtimes on a Core
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+      responses:
+        '200':
+          description: Discovered managed and system runtimes with validation state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagedRuntimePage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /cores/{coreId}/instances:
     parameters:
       - $ref: '#/components/parameters/CoreId'
@@ -1243,6 +1263,37 @@ components:
             $ref: '#/components/schemas/Core'
         nextCursor:
           type: [ string, 'null' ]
+    RuntimeKind:
+      type: string
+      enum: [ JAVA, NODE_JS, PYTHON ]
+    RuntimeSource:
+      type: string
+      enum: [ MANAGED, SYSTEM ]
+    RuntimeValidation:
+      type: string
+      enum: [ VALID, INVALID ]
+    ManagedRuntime:
+      type: object
+      required: [ kind, source, executable, version, validation ]
+      properties:
+        kind:
+          $ref: '#/components/schemas/RuntimeKind'
+        source:
+          $ref: '#/components/schemas/RuntimeSource'
+        executable:
+          type: string
+        version:
+          type: [ string, 'null' ]
+        validation:
+          $ref: '#/components/schemas/RuntimeValidation'
+    ManagedRuntimePage:
+      type: object
+      required: [ items ]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ManagedRuntime'
     InstanceKind:
       type: string
       enum: [ VANILLA, PAPER, VELOCITY, FABRIC, CUSTOM, UNKNOWN ]

@@ -17,8 +17,13 @@ export type {
   LogPage,
   LogStream,
   LoginResponse,
+  ManagedRuntime,
+  ManagedRuntimePage,
   PanelApiClient,
   SessionTokens,
+  RuntimeKind,
+  RuntimeSource,
+  RuntimeValidation,
   TaskAccepted,
   User,
 } from './panel-api-client';

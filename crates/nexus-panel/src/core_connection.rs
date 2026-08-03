@@ -9,6 +9,7 @@ use nexus_domain::InstanceMetricSample;
 use nexus_domain::InstancePage;
 use nexus_domain::InstanceState;
 use nexus_domain::InstanceUpdate;
+use nexus_domain::ManagedRuntime;
 use nexus_domain::PRODUCT_VERSION;
 use nexus_domain::RequestId;
 use nexus_domain::TaskId;
@@ -28,7 +29,8 @@ use tokio::net::TcpStream;
 use crate::CoreConnectionError;
 use crate::CoreEndpoint;
 
-const PANEL_CAPABILITIES: [&str; 4] = ["events", "instances", "metrics", "settings"];
+const PANEL_CAPABILITIES: [&str; 5] =
+    ["environments", "events", "instances", "metrics", "settings"];
 
 pub struct CoreConnection {
     capabilities: Vec<String>,
@@ -180,6 +182,17 @@ impl CoreConnection {
 
     pub async fn system_info(&mut self) -> Result<Value, CoreConnectionError> {
         self.request("system.info", json!({})).await
+    }
+
+    pub async fn list_managed_runtimes(
+        &mut self,
+    ) -> Result<Vec<ManagedRuntime>, CoreConnectionError> {
+        let result = self.request("environment.list", json!({})).await?;
+        let items = response_field(&result, "items")?;
+
+        from_value(items).map_err(|_| CoreConnectionError::InvalidResponse {
+            field: "managedRuntimes",
+        })
     }
 
     pub async fn create_instance(

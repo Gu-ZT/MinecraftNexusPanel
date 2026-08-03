@@ -24,6 +24,9 @@ export type CoreStatus = 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'INCOMPATIBLE' | 'A
 export type InstanceKind = 'VANILLA' | 'PAPER' | 'VELOCITY' | 'FABRIC' | 'CUSTOM' | 'UNKNOWN';
 export type InstanceState = 'CREATED' | 'STARTING' | 'RUNNING' | 'STOPPING' | 'STOPPED' | 'FAILED' | 'UNKNOWN';
 export type LogStream = 'stdout' | 'stderr' | 'system';
+export type RuntimeKind = 'JAVA' | 'NODE_JS' | 'PYTHON';
+export type RuntimeSource = 'MANAGED' | 'SYSTEM';
+export type RuntimeValidation = 'VALID' | 'INVALID';
 
 export interface User {
   id: string;
@@ -69,6 +72,18 @@ export interface Core {
 export interface CorePage {
   items: Core[];
   nextCursor: string | null;
+}
+
+export interface ManagedRuntime {
+  kind: RuntimeKind;
+  source: RuntimeSource;
+  executable: string;
+  version: string | null;
+  validation: RuntimeValidation;
+}
+
+export interface ManagedRuntimePage {
+  items: ManagedRuntime[];
 }
 
 export interface LaunchConfig {
@@ -145,6 +160,7 @@ export interface PanelApiClient {
   getCurrentUser(): Promise<User>;
   logout(): Promise<void>;
   listCores(): Promise<CorePage>;
+  listManagedRuntimes(coreId: string): Promise<ManagedRuntimePage>;
   listInstances(coreId: string): Promise<InstancePage>;
   updateInstance(coreId: string, instanceId: string, update: InstanceUpdate, revision: number): Promise<Instance>;
   getInstanceLogs(coreId: string, instanceId: string): Promise<LogPage>;
@@ -227,6 +243,11 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     },
     listCores() {
       return request<CorePage>('/api/v1/cores?limit=50');
+    },
+    listManagedRuntimes(coreId) {
+      return request<ManagedRuntimePage>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/environments`,
+      );
     },
     listInstances(coreId) {
       return request<InstancePage>(`/api/v1/cores/${encodeURIComponent(coreId)}/instances?limit=50`);

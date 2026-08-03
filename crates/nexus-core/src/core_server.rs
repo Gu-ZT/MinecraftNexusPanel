@@ -40,8 +40,9 @@ use crate::InstanceProcessError;
 use crate::InstanceProcessManager;
 use crate::InstanceRepository;
 use crate::InstanceRepositoryError;
+use crate::RuntimeDiscovery;
 
-const CORE_CAPABILITIES: [&str; 4] = ["events", "instances", "metrics", "settings"];
+const CORE_CAPABILITIES: [&str; 5] = ["environments", "events", "instances", "metrics", "settings"];
 const CORE_ID_FILE_NAME: &str = "core-id";
 const EVENT_TOPICS: [&str; 2] = ["instance.console", "instance.state"];
 const HEARTBEAT_SECONDS: u64 = 20;
@@ -58,6 +59,7 @@ pub struct CoreServer {
     pre_shared_key: PresharedKey,
     instances: InstanceRepository,
     processes: InstanceProcessManager,
+    runtimes: RuntimeDiscovery,
     tls_acceptor: TlsAcceptor,
 }
 
@@ -83,6 +85,7 @@ impl CoreServer {
         let instances = InstanceRepository::new();
         let processes =
             InstanceProcessManager::new(config.data_directory().to_path_buf(), instances.clone());
+        let runtimes = RuntimeDiscovery::new(config.data_directory());
 
         Ok(Self {
             core_id,
@@ -92,6 +95,7 @@ impl CoreServer {
             pre_shared_key,
             instances,
             processes,
+            runtimes,
             tls_acceptor: tls_identity.acceptor(),
         })
     }
@@ -130,6 +134,7 @@ impl CoreServer {
             let pre_shared_key = self.pre_shared_key.clone();
             let instances = self.instances.clone();
             let processes = self.processes.clone();
+            let runtimes = self.runtimes.clone();
             let tls_acceptor = self.tls_acceptor.clone();
 
             spawn(async move {
@@ -147,6 +152,7 @@ impl CoreServer {
                     &certificate_sha256,
                     instances,
                     processes,
+                    runtimes,
                 )
                 .await
                 .is_err()
@@ -169,6 +175,7 @@ async fn handle_connection<S>(
     certificate_sha256: &str,
     instances: InstanceRepository,
     processes: InstanceProcessManager,
+    runtimes: RuntimeDiscovery,
 ) -> Result<(), CoreError>
 where
     S: AsyncRead + AsyncWrite + Unpin,
@@ -186,7 +193,7 @@ where
         return Ok(());
     }
 
-    let mut request_state = CoreRequestState::new(core_id, instances, processes);
+    let mut request_state = CoreRequestState::new(core_id, instances, processes, runtimes);
     let mut event_receiver = request_state.processes().subscribe();
 
     loop {
@@ -345,6 +352,7 @@ async fn request_response(
             }),
         ),
         "system.ping" => success_response(request_id, json!({ "receivedAt": current_timestamp() })),
+        "environment.list" => environment_list_response(request_id, state.runtimes()).await,
         "instance.command" => {
             instance_command_response(request_id, params, state.processes()).await
         }
@@ -371,6 +379,13 @@ async fn request_response(
             "The requested Core method is not supported",
         ),
     }
+}
+
+async fn environment_list_response(
+    request_id: RequestId,
+    runtimes: &RuntimeDiscovery,
+) -> WireMessage {
+    success_response(request_id, json!({ "items": runtimes.discover().await }))
 }
 
 async fn instance_command_response(

@@ -16,8 +16,12 @@ mod instance_state;
 mod instance_update;
 mod instance_update_error;
 mod launch_config;
+mod managed_runtime;
 mod patch_field;
 mod request_id;
+mod runtime_kind;
+mod runtime_source;
+mod runtime_validation;
 mod task_id;
 
 pub use core_id::CoreId;
@@ -38,8 +42,12 @@ pub use instance_state::InstanceState;
 pub use instance_update::InstanceUpdate;
 pub use instance_update_error::InstanceUpdateError;
 pub use launch_config::LaunchConfig;
+pub use managed_runtime::ManagedRuntime;
 pub use patch_field::PatchField;
 pub use request_id::RequestId;
+pub use runtime_kind::RuntimeKind;
+pub use runtime_source::RuntimeSource;
+pub use runtime_validation::RuntimeValidation;
 pub use task_id::TaskId;
 
 pub const API_VERSION: &str = "v1";
