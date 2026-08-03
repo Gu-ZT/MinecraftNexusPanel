@@ -24,6 +24,8 @@ const PURPUR_PROVIDER_ID: &str = "purpur-version-service";
 const VELOCITY_PROVIDER_ID: &str = "velocity-downloads-service";
 const FOLIA_PROVIDER_ID: &str = "folia-downloads-service";
 const WATERFALL_PROVIDER_ID: &str = "waterfall-downloads-service";
+const BUNGEECORD_PROVIDER_ID: &str = "bungeecord-jenkins-service";
+const GEYSER_PROVIDER_ID: &str = "geyser-version-service";
 const FABRIC_GAME_PROVIDER_ID: &str = "fabric-game-versions";
 const FABRIC_LOADER_PROVIDER_ID: &str = "fabric-loader-versions";
 const PAPERMC_CONTACT_URL: &str = "https://github.com/Gu-ZT/MinecraftNexusPanel";
@@ -96,6 +98,18 @@ impl VersionMetadataClient {
                 let metadata = self.fetch(provider).await?;
 
                 parse_velocity_versions(provider, &metadata)
+            }
+            "bungeecord" => {
+                let provider = provider(template, BUNGEECORD_PROVIDER_ID)?;
+                let metadata = self.fetch(provider).await?;
+
+                parse_bungeecord_versions(provider, &metadata)
+            }
+            "geyser" => {
+                let provider = provider(template, GEYSER_PROVIDER_ID)?;
+                let metadata = self.fetch(provider).await?;
+
+                parse_geyser_versions(provider, &metadata)
             }
             "fabric" => {
                 let game_provider = provider(template, FABRIC_GAME_PROVIDER_ID)?;
@@ -248,6 +262,59 @@ fn parse_purpur_versions(
     provider: &VersionMetadataProvider,
     metadata: &Value,
 ) -> Result<Vec<InstallTemplateVersion>, VersionMetadataError> {
+    parse_string_versions(provider, metadata, InstallTemplateVersionKind::Game)
+}
+
+fn parse_bungeecord_versions(
+    provider: &VersionMetadataProvider,
+    metadata: &Value,
+) -> Result<Vec<InstallTemplateVersion>, VersionMetadataError> {
+    let entries = metadata
+        .get("builds")
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid_response(provider))?;
+
+    entries
+        .iter()
+        .filter(|entry| entry.get("result").and_then(Value::as_str) == Some("SUCCESS"))
+        .map(|entry| {
+            let id = entry
+                .get("number")
+                .and_then(Value::as_u64)
+                .map(|number| number.to_string())
+                .ok_or_else(|| invalid_response(provider))?;
+            let metadata_url = required_string(provider, entry, "url")?;
+
+            Ok(InstallTemplateVersion::new(
+                id,
+                provider.id().to_owned(),
+                InstallTemplateVersionKind::Server,
+                true,
+                Some(metadata_url),
+            ))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .and_then(|versions| {
+            if versions.is_empty() {
+                Err(invalid_response(provider))
+            } else {
+                Ok(versions)
+            }
+        })
+}
+
+fn parse_geyser_versions(
+    provider: &VersionMetadataProvider,
+    metadata: &Value,
+) -> Result<Vec<InstallTemplateVersion>, VersionMetadataError> {
+    parse_string_versions(provider, metadata, InstallTemplateVersionKind::Server)
+}
+
+fn parse_string_versions(
+    provider: &VersionMetadataProvider,
+    metadata: &Value,
+    kind: InstallTemplateVersionKind,
+) -> Result<Vec<InstallTemplateVersion>, VersionMetadataError> {
     let entries = metadata
         .get("versions")
         .and_then(Value::as_array)
@@ -265,7 +332,7 @@ fn parse_purpur_versions(
             Ok(InstallTemplateVersion::new(
                 id.clone(),
                 provider.id().to_owned(),
-                InstallTemplateVersionKind::Game,
+                kind,
                 is_stable_version(&id),
                 None,
             ))
@@ -405,8 +472,10 @@ mod tests {
     use nexus_domain::VersionMetadataProvider;
     use serde_json::json;
 
+    use super::parse_bungeecord_versions;
     use super::parse_fabric_versions;
     use super::parse_forge_versions;
+    use super::parse_geyser_versions;
     use super::parse_mojang_versions;
     use super::parse_paper_versions;
     use super::parse_purpur_versions;
@@ -473,6 +542,42 @@ mod tests {
             .find(|version| version.id() == "1.21.8-58.1.20")
             .expect("Forge build is present");
         assert_eq!(latest.kind(), InstallTemplateVersionKind::Server);
+        assert!(versions.iter().all(|version| version.stable()));
+    }
+
+    #[test]
+    fn parses_bungeecord_build_versions() {
+        let versions = parse_bungeecord_versions(
+            &provider("bungeecord-jenkins-service"),
+            &json!({
+                "builds": [
+                    { "number": 2085, "result": "SUCCESS", "url": "https://example.invalid/2085/" },
+                    { "number": 2084, "result": "FAILURE", "url": "https://example.invalid/2084/" },
+                    { "number": 2083, "result": "SUCCESS", "url": "https://example.invalid/2083/" }
+                ]
+            }),
+        )
+        .expect("BungeeCord metadata is valid");
+
+        assert_eq!(versions.len(), 2);
+        assert_eq!(versions[0].id(), "2085");
+        assert_eq!(versions[0].kind(), InstallTemplateVersionKind::Server);
+        assert_eq!(
+            versions[0].metadata_url(),
+            Some("https://example.invalid/2085/")
+        );
+    }
+
+    #[test]
+    fn parses_geyser_server_versions() {
+        let versions = parse_geyser_versions(
+            &provider("geyser-version-service"),
+            &json!({ "versions": ["2.11.0", "2.10.1"] }),
+        )
+        .expect("Geyser metadata is valid");
+
+        assert_eq!(versions.len(), 2);
+        assert_eq!(versions[0].kind(), InstallTemplateVersionKind::Server);
         assert!(versions.iter().all(|version| version.stable()));
     }
 

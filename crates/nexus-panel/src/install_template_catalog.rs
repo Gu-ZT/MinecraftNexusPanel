@@ -161,7 +161,11 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             "bungeecord",
             "BungeeCord",
             InstanceKind::BungeeCord,
-            Vec::new(),
+            vec![provider(
+                "bungeecord-jenkins-service",
+                "BungeeCord Jenkins service",
+                "https://hub.spigotmc.org/jenkins/job/BungeeCord/api/json?tree=builds[number,url,result]",
+            )],
         ),
         java_proxy(
             "lightfall",
@@ -176,7 +180,11 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             InstallTemplateFamily::BedrockProxy,
             InstallRuntimeRequirement::Java,
             ProxyTopology::OneToOne,
-            Vec::new(),
+            vec![provider(
+                "geyser-version-service",
+                "Geyser version service",
+                "https://download.geysermc.org/v2/projects/geyser",
+            )],
         ),
         template(
             "bedrock-dedicated-server",
@@ -392,6 +400,24 @@ mod tests {
                 .metadata_providers()[0]
                 .url(),
             "https://files.minecraftforge.net/net/minecraftforge/forge/maven-metadata.json"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "bungeecord")
+                .expect("BungeeCord template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://hub.spigotmc.org/jenkins/job/BungeeCord/api/json?tree=builds[number,url,result]"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "geyser")
+                .expect("Geyser template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://download.geysermc.org/v2/projects/geyser"
         );
         assert!(
             templates[..4]
