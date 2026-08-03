@@ -54,9 +54,10 @@ The first configuration provider is now available through Core TCP and the Panel
 - JSON Schema/UI Schema values with stable path-derived document IDs and SHA-256 revisions;
 - lossless top-level scalar Merge Patch updates for properties files that preserve comments, ordering, and line endings;
 - JSON object discovery with typed JSON Schema/UI Schema and nested top-level Merge Patch updates; normalized writes require explicit `allowLossy=true`;
+- YAML/YML and TOML object discovery with typed JSON Schema/UI Schema and normalized top-level Merge Patch updates; writes require explicit `allowLossy=true`;
 - raw text reads and writes with the same sandbox, ETag, If-Match, and idempotency protections as file management.
 
-YAML, TOML, provider-specific schemas, and cross-file validation remain planned M3 work.
+Provider-specific schemas and cross-file validation remain planned M3 work.
 
 ## Project Layout
 

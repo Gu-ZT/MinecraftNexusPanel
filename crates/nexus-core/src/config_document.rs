@@ -4,10 +4,16 @@ use serde_json::Map;
 use serde_json::Value;
 use serde_json::from_slice;
 use serde_json::json;
+use serde_json::to_value;
 use serde_json::to_vec_pretty;
+use serde_yaml::from_slice as yaml_from_slice;
+use serde_yaml::to_string as yaml_to_string;
 use sha2::Digest;
 use sha2::Sha256;
 use thiserror::Error;
+use toml::Value as TomlValue;
+use toml::from_str as toml_from_str;
+use toml::to_string_pretty as toml_to_string_pretty;
 
 #[derive(Debug, Error)]
 pub(crate) enum ConfigDocumentError {
@@ -27,6 +33,8 @@ pub(crate) enum ConfigDocumentError {
 enum ConfigFormat {
     Properties,
     Json,
+    Yaml,
+    Toml,
 }
 
 struct PropertyLine {
@@ -41,7 +49,11 @@ pub(crate) fn is_supported_path(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| {
-            extension.eq_ignore_ascii_case("properties") || extension.eq_ignore_ascii_case("json")
+            extension.eq_ignore_ascii_case("properties")
+                || extension.eq_ignore_ascii_case("json")
+                || extension.eq_ignore_ascii_case("yaml")
+                || extension.eq_ignore_ascii_case("yml")
+                || extension.eq_ignore_ascii_case("toml")
         })
 }
 
@@ -52,7 +64,7 @@ pub(crate) fn document_id(path: &str) -> String {
 pub(crate) fn document(path: &str, content: &[u8]) -> Result<Value, ConfigDocumentError> {
     match config_format(path) {
         Some(ConfigFormat::Properties) => properties_document(path, content),
-        Some(ConfigFormat::Json) => json_document(path, content),
+        Some(format) => structured_document(path, content, format),
         None => Err(ConfigDocumentError::UnsupportedFormat),
     }
 }
@@ -105,11 +117,14 @@ fn properties_document(path: &str, content: &[u8]) -> Result<Value, ConfigDocume
     }))
 }
 
-fn json_document(path: &str, content: &[u8]) -> Result<Value, ConfigDocumentError> {
-    let content_value: Value = from_slice(content)
-        .map_err(|error| ConfigDocumentError::InvalidDocument(error.to_string()))?;
+fn structured_document(
+    path: &str,
+    content: &[u8],
+    format: ConfigFormat,
+) -> Result<Value, ConfigDocumentError> {
+    let content_value = parse_structured_value(content, format)?;
     let values = content_value.as_object().ok_or_else(|| {
-        ConfigDocumentError::InvalidDocument("JSON configuration root must be an object".to_owned())
+        ConfigDocumentError::InvalidDocument(format.root_must_be_object_message().to_owned())
     })?;
     let mut schema_properties = Map::new();
     let mut ui_properties = Map::new();
@@ -122,7 +137,7 @@ fn json_document(path: &str, content: &[u8]) -> Result<Value, ConfigDocumentErro
     Ok(json!({
         "documentId": document_id(path),
         "path": path,
-        "format": "JSON",
+        "format": format.name(),
         "schema": {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",
@@ -160,7 +175,7 @@ pub(crate) fn patch(
 ) -> Result<Vec<u8>, ConfigDocumentError> {
     match config_format(path) {
         Some(ConfigFormat::Properties) => properties_patch(content, patch),
-        Some(ConfigFormat::Json) => json_patch(content, patch, allow_lossy),
+        Some(format) => structured_patch(content, patch, format, allow_lossy),
         None => Err(ConfigDocumentError::UnsupportedFormat),
     }
 }
@@ -216,19 +231,19 @@ fn properties_patch(content: &[u8], patch: &Value) -> Result<Vec<u8>, ConfigDocu
     Ok(output.into_bytes())
 }
 
-fn json_patch(
+fn structured_patch(
     content: &[u8],
     patch: &Value,
+    format: ConfigFormat,
     allow_lossy: bool,
 ) -> Result<Vec<u8>, ConfigDocumentError> {
     if !allow_lossy {
         return Err(ConfigDocumentError::LossyPatch);
     }
-    let mut content_value: Value = from_slice(content)
-        .map_err(|error| ConfigDocumentError::InvalidDocument(error.to_string()))?;
+    let mut content_value = parse_structured_value(content, format)?;
     let Some(content_object) = content_value.as_object_mut() else {
         return Err(ConfigDocumentError::InvalidDocument(
-            "JSON configuration root must be an object".to_owned(),
+            format.root_must_be_object_message().to_owned(),
         ));
     };
     let patch = patch.as_object().ok_or_else(|| {
@@ -240,15 +255,12 @@ fn json_patch(
             continue;
         }
         let current = content_object.entry(key.clone()).or_insert(Value::Null);
-        apply_json_merge_patch(current, value);
+        apply_merge_patch(current, value);
     }
-    let mut output = to_vec_pretty(&content_value)
-        .map_err(|error| ConfigDocumentError::InvalidDocument(error.to_string()))?;
-    output.push(b'\n');
-    Ok(output)
+    serialize_structured_value(&content_value, format)
 }
 
-fn apply_json_merge_patch(target: &mut Value, patch: &Value) {
+fn apply_merge_patch(target: &mut Value, patch: &Value) {
     let Some(patch_object) = patch.as_object() else {
         *target = patch.clone();
         return;
@@ -264,7 +276,7 @@ fn apply_json_merge_patch(target: &mut Value, patch: &Value) {
             target_object.remove(key);
         } else {
             let current = target_object.entry(key.clone()).or_insert(Value::Null);
-            apply_json_merge_patch(current, value);
+            apply_merge_patch(current, value);
         }
     }
 }
@@ -275,8 +287,73 @@ fn config_format(path: &str) -> Option<ConfigFormat> {
         Some(ConfigFormat::Properties)
     } else if extension.eq_ignore_ascii_case("json") {
         Some(ConfigFormat::Json)
+    } else if extension.eq_ignore_ascii_case("yaml") || extension.eq_ignore_ascii_case("yml") {
+        Some(ConfigFormat::Yaml)
+    } else if extension.eq_ignore_ascii_case("toml") {
+        Some(ConfigFormat::Toml)
     } else {
         None
+    }
+}
+
+impl ConfigFormat {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Properties => "PROPERTIES",
+            Self::Json => "JSON",
+            Self::Yaml => "YAML",
+            Self::Toml => "TOML",
+        }
+    }
+
+    fn root_must_be_object_message(self) -> &'static str {
+        match self {
+            Self::Properties => "properties configuration root must be an object",
+            Self::Json => "JSON configuration root must be an object",
+            Self::Yaml => "YAML configuration root must be an object",
+            Self::Toml => "TOML configuration root must be an object",
+        }
+    }
+}
+
+fn parse_structured_value(
+    content: &[u8],
+    format: ConfigFormat,
+) -> Result<Value, ConfigDocumentError> {
+    match format {
+        ConfigFormat::Json => from_slice(content)
+            .map_err(|error| ConfigDocumentError::InvalidDocument(error.to_string())),
+        ConfigFormat::Yaml => yaml_from_slice(content)
+            .map_err(|error| ConfigDocumentError::InvalidDocument(error.to_string())),
+        ConfigFormat::Toml => {
+            let content =
+                std::str::from_utf8(content).map_err(|_| ConfigDocumentError::InvalidUtf8)?;
+            let value: TomlValue = toml_from_str(content)
+                .map_err(|error| ConfigDocumentError::InvalidDocument(error.to_string()))?;
+            to_value(value).map_err(|error| ConfigDocumentError::InvalidDocument(error.to_string()))
+        }
+        ConfigFormat::Properties => Err(ConfigDocumentError::UnsupportedFormat),
+    }
+}
+
+fn serialize_structured_value(
+    value: &Value,
+    format: ConfigFormat,
+) -> Result<Vec<u8>, ConfigDocumentError> {
+    match format {
+        ConfigFormat::Json => {
+            let mut output = to_vec_pretty(value)
+                .map_err(|error| ConfigDocumentError::InvalidDocument(error.to_string()))?;
+            output.push(b'\n');
+            Ok(output)
+        }
+        ConfigFormat::Yaml => yaml_to_string(value)
+            .map(String::into_bytes)
+            .map_err(|error| ConfigDocumentError::InvalidDocument(error.to_string())),
+        ConfigFormat::Toml => toml_to_string_pretty(value)
+            .map(String::into_bytes)
+            .map_err(|error| ConfigDocumentError::InvalidDocument(error.to_string())),
+        ConfigFormat::Properties => Err(ConfigDocumentError::UnsupportedFormat),
     }
 }
 
@@ -582,5 +659,43 @@ mod tests {
         assert_eq!(updated["nested"]["debug"], true);
         assert_eq!(updated["nested"]["level"], 2);
         assert!(updated.get("removed").is_none());
+    }
+
+    #[test]
+    fn recognizes_yaml_and_toml_and_normalizes_lossy_patches() {
+        let cases: [(&str, &[u8]); 2] = [
+            ("settings.yml", b"enabled: true\nnested:\n  debug: false\n"),
+            (
+                "settings.toml",
+                b"enabled = true\n\n[nested]\ndebug = false\n",
+            ),
+        ];
+
+        for (path, content) in cases {
+            let parsed_document =
+                document(path, content).expect("structured configuration is parsed");
+            assert_eq!(
+                parsed_document["format"],
+                if path.ends_with("yml") {
+                    "YAML"
+                } else {
+                    "TOML"
+                }
+            );
+            assert_eq!(parsed_document["values"]["enabled"], true);
+            assert_eq!(parsed_document["values"]["nested"]["debug"], false);
+            assert_eq!(parsed_document["lossy"], true);
+
+            let patch_value = json!({ "enabled": false, "nested": { "debug": true } });
+            assert!(matches!(
+                patch(path, content, &patch_value, false),
+                Err(ConfigDocumentError::LossyPatch)
+            ));
+            let updated = patch(path, content, &patch_value, true)
+                .expect("structured configuration patch is applied");
+            let updated = document(path, &updated).expect("normalized configuration remains valid");
+            assert_eq!(updated["values"]["enabled"], false);
+            assert_eq!(updated["values"]["nested"]["debug"], true);
+        }
     }
 }

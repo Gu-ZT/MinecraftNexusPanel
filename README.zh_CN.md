@@ -54,9 +54,10 @@ ZIP 归档生成和会话化大文件下载已经完成；跨 Core 重启续传�
 - 返回 JSON Schema、UI Schema、稳定的路径派生文档 ID 和 SHA-256 revision；
 - 支持顶层标量 JSON Merge Patch，并保留注释、键顺序和换行风格；
 - 支持 JSON 对象扫描、类型化 JSON Schema/UI Schema 和嵌套顶层 Merge Patch；规范化写入必须显式设置 `allowLossy=true`；
+- 支持 YAML/YML 和 TOML 对象扫描、类型化 JSON Schema/UI Schema 和规范化顶层 Merge Patch；写入必须显式设置 `allowLossy=true`；
 - 提供原文读写，并复用文件沙箱、ETag、If-Match 和幂等键保护。
 
-YAML、TOML、provider-specific Schema 和跨文件校验仍属于 M3 后续工作。
+provider-specific Schema 和跨文件校验仍属于 M3 后续工作。
 
 ## 工程布局
 

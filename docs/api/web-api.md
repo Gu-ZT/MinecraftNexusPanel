@@ -296,10 +296,10 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 | GET    | `.../{instanceId}/config-documents/{documentId}/raw`                   | `file.read`    | 读取最多 1 MiB 的 UTF-8 原文  |
 | PUT    | `.../{instanceId}/config-documents/{documentId}/raw`                   | `file.write`  | 原子替换配置原文             |
 
-当前实现识别 `.properties` 和 `.json` 文件。`documentId` 是相对路径的 SHA-256，结构化写入请求体为
+当前实现识别 `.properties`、`.json`、`.yaml`/`.yml` 和 `.toml` 文件。`documentId` 是相对路径的 SHA-256，结构化写入请求体为
 `{ "revision": "...", "patch": { "motd": "Nexus" }, "allowLossy": false }`；revision 必须等于当前内容 SHA-256。properties 补丁只允许顶层字符串、布尔、数字或
-`null`，并保留注释、键顺序和换行；JSON 支持嵌套顶层 Merge Patch，但必须把 `allowLossy` 设置为 `true` 才会规范化写回。raw PUT 使用 `If-Match` 时同样按文件 SHA-256 做并发保护，并必须携带 `Idempotency-Key`。
-YAML、TOML 和跨文件校验尚未实现。
+`null`，并保留注释、键顺序和换行；JSON/YAML/TOML 支持嵌套顶层 Merge Patch，但必须把 `allowLossy` 设置为 `true` 才会规范化写回。raw PUT 使用 `If-Match` 时同样按文件 SHA-256 做并发保护，并必须携带 `Idempotency-Key`。
+provider-specific Schema 和跨文件校验尚未实现。
 
 ### 5.5 任务、用户和审计
 

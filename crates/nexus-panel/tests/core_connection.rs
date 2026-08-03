@@ -116,6 +116,26 @@ async fn connects_to_a_core_and_reads_its_system_info() {
         )
         .await
         .expect("Core writes a JSON configuration file");
+    connection
+        .write_instance_file(
+            definition.id(),
+            "settings.yaml",
+            b"enabled: true\nnested:\n  debug: false\n",
+            None,
+            &RequestId::new().to_string(),
+        )
+        .await
+        .expect("Core writes a YAML configuration file");
+    connection
+        .write_instance_file(
+            definition.id(),
+            "settings.toml",
+            b"enabled = true\n\n[nested]\ndebug = false\n",
+            None,
+            &RequestId::new().to_string(),
+        )
+        .await
+        .expect("Core writes a TOML configuration file");
     let config_scan = connection
         .scan_config_documents(definition.id())
         .await
@@ -189,6 +209,19 @@ async fn connects_to_a_core_and_reads_its_system_info() {
         .expect("Core applies JSON patch after lossy confirmation");
     assert_eq!(patched_json["values"]["enabled"], false);
     assert_eq!(patched_json["values"]["nested"]["debug"], true);
+    for (path, format) in [("settings.yaml", "YAML"), ("settings.toml", "TOML")] {
+        let document_id = config_scan["documents"]
+            .as_array()
+            .and_then(|documents| documents.iter().find(|document| document["path"] == path))
+            .and_then(|document| document["documentId"].as_str())
+            .expect("structured configuration document ID is returned");
+        let document = connection
+            .get_config_document(definition.id(), document_id)
+            .await
+            .expect("Core returns a structured configuration document");
+        assert_eq!(document["format"], format);
+        assert_eq!(document["lossy"], true);
+    }
     let batch_task_id = connection
         .batch_instance_files(
             definition.id(),
@@ -230,19 +263,15 @@ async fn connects_to_a_core_and_reads_its_system_info() {
         .list_instance_files(definition.id(), "", None, None)
         .await
         .expect("Core lists instance files");
-    assert_eq!(files.items().len(), 2);
-    assert!(
-        files
-            .items()
-            .iter()
-            .any(|entry| entry.path() == "server.properties")
-    );
-    assert!(
-        files
-            .items()
-            .iter()
-            .any(|entry| entry.path() == "settings.json")
-    );
+    assert_eq!(files.items().len(), 4);
+    for path in [
+        "server.properties",
+        "settings.json",
+        "settings.toml",
+        "settings.yaml",
+    ] {
+        assert!(files.items().iter().any(|entry| entry.path() == path));
+    }
     let content = connection
         .read_instance_file(definition.id(), "server.properties", 0, 4)
         .await
