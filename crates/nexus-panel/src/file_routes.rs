@@ -16,8 +16,10 @@ use axum::http::header::CONTENT_TYPE;
 use axum::http::header::ETAG;
 use axum::response::IntoResponse;
 use axum::response::Response;
+use axum::routing::delete;
 use axum::routing::get;
 use axum::routing::post;
+use axum::routing::put;
 use nexus_domain::CoreId;
 use nexus_domain::FileContent;
 use nexus_domain::FileEntry;
@@ -25,6 +27,8 @@ use nexus_domain::InstanceId;
 use nexus_domain::RequestId;
 use nexus_domain::TaskId;
 use serde_json::Value;
+use sha2::Digest;
+use sha2::Sha256;
 
 use crate::PanelState;
 use crate::auth_routes::error_response;
@@ -36,6 +40,7 @@ use crate::core_routes::registry_error_response;
 const MAXIMUM_FILE_READ_BYTES: usize = 32 * 1024;
 const MAXIMUM_FILE_WRITE_BYTES: usize = 1024 * 1024;
 const MAXIMUM_FILE_BATCH_OPERATIONS: usize = 64;
+const FILE_TRANSFER_CHUNK_BYTES: u64 = 1024 * 1024;
 
 pub(crate) fn file_routes() -> Router<PanelState> {
     Router::new()
@@ -58,6 +63,22 @@ pub(crate) fn file_routes() -> Router<PanelState> {
         .route(
             "/api/v1/cores/{core_id}/file-tasks/{task_id}",
             get(get_file_task),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/instances/{instance_id}/uploads",
+            post(begin_file_upload),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/uploads/{transfer_id}/parts/{part_number}",
+            put(upload_file_part),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/uploads/{transfer_id}/complete",
+            post(complete_file_upload),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/uploads/{transfer_id}",
+            delete(abort_file_upload),
         )
         .route(
             "/api/v1/cores/{core_id}/instances/{instance_id}/file-content",
@@ -193,6 +214,183 @@ async fn batch_instance_files(
         .await
     {
         Ok(task) => (StatusCode::ACCEPTED, Json(task)).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn begin_file_upload(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, instance_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    payload: Result<Json<Value>, JsonRejection>,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Json(payload) = match payload {
+        Ok(payload) => payload,
+        Err(_) => return validation_error(request_id),
+    };
+    let Some(path) = payload
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+    else {
+        return validation_error(request_id);
+    };
+    let Some(size_bytes) = payload.get("sizeBytes").and_then(Value::as_u64) else {
+        return validation_error(request_id);
+    };
+    let Some(sha256) = payload
+        .get("sha256")
+        .and_then(Value::as_str)
+        .filter(|value| is_sha256(value))
+    else {
+        return validation_error(request_id);
+    };
+    let Some(idempotency_key) = idempotency_key(&headers) else {
+        return precondition_required_response(request_id);
+    };
+    let Some((core_id, instance_id)) = parse_ids(&core_id, &instance_id) else {
+        return validation_error(request_id);
+    };
+
+    match state
+        .cores()
+        .begin_file_upload(
+            core_id,
+            &instance_id,
+            path,
+            size_bytes,
+            sha256,
+            idempotency_key,
+        )
+        .await
+    {
+        Ok(upload) => (StatusCode::CREATED, Json(upload)).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn upload_file_part(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, transfer_id, part_number)): Path<(String, String, String)>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    if body.is_empty() || body.len() > MAXIMUM_FILE_WRITE_BYTES {
+        return error_response(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "PAYLOAD_TOO_LARGE",
+            "File transfer chunk exceeds the maximum size",
+            request_id,
+        );
+    }
+    let Ok(part_number) = part_number.parse::<u64>() else {
+        return validation_error(request_id);
+    };
+    let Some(offset) = part_number.checked_mul(FILE_TRANSFER_CHUNK_BYTES) else {
+        return validation_error(request_id);
+    };
+    let Some(sha256) = header_text(&headers, "content-sha256").filter(|value| is_sha256(value))
+    else {
+        return validation_error(request_id);
+    };
+    let actual_sha256 = sha256_hex(&body);
+    if !sha256.eq_ignore_ascii_case(&actual_sha256) {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "FILE_TRANSFER_HASH_MISMATCH",
+            "File transfer chunk hash does not match",
+            request_id,
+        );
+    }
+    let Some(idempotency_key) = idempotency_key(&headers) else {
+        return precondition_required_response(request_id);
+    };
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return validation_error(request_id);
+    };
+    let Some(transfer_id) = parse_transfer_id(&transfer_id) else {
+        return validation_error(request_id);
+    };
+
+    match state
+        .cores()
+        .upload_file_chunk(
+            core_id,
+            &transfer_id,
+            offset,
+            &body,
+            sha256,
+            idempotency_key,
+        )
+        .await
+    {
+        Ok(result) => Json(result).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn complete_file_upload(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, transfer_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Some(idempotency_key) = idempotency_key(&headers) else {
+        return precondition_required_response(request_id);
+    };
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return validation_error(request_id);
+    };
+    let Some(transfer_id) = parse_transfer_id(&transfer_id) else {
+        return validation_error(request_id);
+    };
+
+    match state
+        .cores()
+        .commit_file_upload(core_id, &transfer_id, idempotency_key)
+        .await
+    {
+        Ok(entry) => file_entry_response(entry),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn abort_file_upload(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, transfer_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Some(idempotency_key) = idempotency_key(&headers) else {
+        return precondition_required_response(request_id);
+    };
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return validation_error(request_id);
+    };
+    let Some(transfer_id) = parse_transfer_id(&transfer_id) else {
+        return validation_error(request_id);
+    };
+
+    match state
+        .cores()
+        .abort_file_upload(core_id, &transfer_id, idempotency_key)
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => registry_error_response(error, request_id),
     }
 }
@@ -442,6 +640,21 @@ fn decode_content(content: &FileContent) -> Result<Vec<u8>, ()> {
 
 fn parse_ids(core_id: &str, instance_id: &str) -> Option<(CoreId, InstanceId)> {
     Some((parse_core_id(core_id)?, instance_id.parse().ok()?))
+}
+
+fn parse_transfer_id(value: &str) -> Option<TaskId> {
+    value.parse().ok()
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn sha256_hex(content: &[u8]) -> String {
+    Sha256::digest(content)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn optional_limit(query: &HashMap<String, String>) -> Option<Option<usize>> {

@@ -783,6 +783,80 @@ impl CoreRegistry {
         Ok(connection.get_file_task(task_id).await?)
     }
 
+    pub async fn begin_file_upload(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        path: &str,
+        size_bytes: u64,
+        sha256: &str,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .begin_file_upload(instance_id, path, size_bytes, sha256, idempotency_key)
+            .await?)
+    }
+
+    pub async fn upload_file_chunk(
+        &self,
+        core_id: CoreId,
+        transfer_id: &TaskId,
+        offset: u64,
+        content: &[u8],
+        sha256: &str,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .upload_file_chunk(transfer_id, offset, content, Some(sha256), idempotency_key)
+            .await?)
+    }
+
+    pub async fn commit_file_upload(
+        &self,
+        core_id: CoreId,
+        transfer_id: &TaskId,
+        idempotency_key: &str,
+    ) -> Result<FileEntry, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .commit_file_upload(transfer_id, idempotency_key)
+            .await?)
+    }
+
+    pub async fn abort_file_upload(
+        &self,
+        core_id: CoreId,
+        transfer_id: &TaskId,
+        idempotency_key: &str,
+    ) -> Result<(), CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .abort_file_upload(transfer_id, idempotency_key)
+            .await?)
+    }
+
     async fn find(&self, core_id: CoreId) -> Result<Arc<ManagedCore>, CoreRegistryError> {
         self.entries
             .read()

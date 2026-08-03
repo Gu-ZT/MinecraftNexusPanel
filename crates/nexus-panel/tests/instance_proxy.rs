@@ -14,6 +14,8 @@ use serde_json::Value;
 use serde_json::from_slice;
 use serde_json::from_str;
 use serde_json::json;
+use sha2::Digest;
+use sha2::Sha256;
 use tempfile::TempDir;
 use tempfile::tempdir;
 use tokio::io::AsyncReadExt;
@@ -370,6 +372,62 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     assert_eq!(batch_task["state"], "SUCCEEDED");
     assert_eq!(batch_task["progress"]["completed"], 5);
     assert_eq!(batch_task["results"].as_array().map(Vec::len), Some(5));
+
+    let upload_content = b"panel chunked upload";
+    let upload_sha256 = sha256_hex(upload_content);
+    let started_upload = send_json_request(
+        panel_address,
+        "POST",
+        &format!("/api/v1/cores/{core_id}/instances/panel-process/uploads"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        Some(json!({
+            "path": "config/server/uploaded.properties",
+            "sizeBytes": upload_content.len(),
+            "sha256": upload_sha256.clone(),
+        })),
+    )
+    .await;
+    assert_eq!(started_upload.status, 201);
+    assert_eq!(started_upload.body["chunkSize"], 1024 * 1024);
+    let transfer_id = started_upload.body["transferId"]
+        .as_str()
+        .expect("upload transfer ID is returned")
+        .to_owned();
+    let uploaded_part = send_raw_request(
+        panel_address,
+        "PUT",
+        &format!("/api/v1/cores/{core_id}/uploads/{transfer_id}/parts/0"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+            ("Content-SHA256", &upload_sha256),
+        ],
+        upload_content,
+    )
+    .await;
+    assert_eq!(uploaded_part.status, 200);
+    let uploaded_part_body: Value =
+        from_slice(&uploaded_part.body).expect("upload part response is JSON");
+    assert_eq!(uploaded_part_body["nextOffset"], upload_content.len());
+    let completed_upload = send_json_request(
+        panel_address,
+        "POST",
+        &format!("/api/v1/cores/{core_id}/uploads/{transfer_id}/complete"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        None,
+    )
+    .await;
+    assert_eq!(completed_upload.status, 200);
+    assert_eq!(
+        completed_upload.body["path"],
+        "config/server/uploaded.properties"
+    );
 
     let non_recursive_delete = send_json_request(
         panel_address,
@@ -911,6 +969,13 @@ fn safe_process_create(identifier: &str) -> Value {
         "directory": format!("instances/{identifier}"),
         "launch": safe_process_launch_config(),
     })
+}
+
+fn sha256_hex(content: &[u8]) -> String {
+    Sha256::digest(content)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn instance_create_with_kind(identifier: &str, kind: &str) -> Value {

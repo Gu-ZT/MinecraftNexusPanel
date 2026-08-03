@@ -311,6 +311,41 @@ pub(crate) fn registry_error_response(error: CoreRegistryError, request_id: Requ
             )
         }
         CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "FILE_TRANSFER_NOT_FOUND" =>
+        {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "FILE_TRANSFER_NOT_FOUND",
+                "File transfer does not exist",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if matches!(
+                code.as_str(),
+                "FILE_TRANSFER_OFFSET_MISMATCH"
+                    | "FILE_TRANSFER_SIZE_MISMATCH"
+                    | "FILE_TRANSFER_HASH_MISMATCH"
+            ) =>
+        {
+            error_response(
+                StatusCode::CONFLICT,
+                code.as_str(),
+                "File transfer state does not allow this operation",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "FILE_TRANSFER_LIMIT_REACHED" =>
+        {
+            error_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "FILE_TRANSFER_LIMIT_REACHED",
+                "The Core has reached its active file transfer limit",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
             if code == "RUNTIME_NOT_FOUND" =>
         {
             error_response(
