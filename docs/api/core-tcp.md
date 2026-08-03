@@ -370,6 +370,11 @@ Core 只允许 `VELOCITY`、`WATERFALL`、`BUNGEECORD`、`LIGHTFALL` 和 `GEYSER
 Panel 聚合内容源并完成依赖解析；Core 根据带摘要的 resolved plan 下载和原子替换。Core 不直接保存第三方 API Token，除非该凭据被配置为
 Core 侧 Secret 且协议仅传引用 ID。
 
+当前 Core 已实现 `PROPERTIES` 提供者：`config.scan` 递归发现 `.properties` 文件，`config.get` 返回 JSON Schema、UI Schema、字符串值、未映射文本、内容
+SHA-256 `revision`/`contentHash` 和稳定的路径派生 `documentId`。`config.patch` 要求幂等键和当前 revision，只接受顶层字符串、布尔、数字或 `null`，并通过
+原子文件替换保留注释、键顺序和换行；`allowLossy` 在该提供者上不会改变结果，因为补丁始终无损。Panel 可通过对应 raw 端点读取或替换最多 1 MiB 的 UTF-8 原文。
+YAML、JSON、TOML、provider-specific Schema 和跨文件校验仍需后续 provider。
+
 ### 5.7 Docker
 
 | 方法                 | 参数                                           | 结果                          |

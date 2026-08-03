@@ -29,6 +29,8 @@ tags:
     description: Bedrock server and bridge operations
   - name: Files
     description: Sandboxed instance file operations
+  - name: Configuration
+    description: Structured instance configuration documents and lossless patches
   - name: Tasks
     description: Long-running operation status and cancellation
 security:
@@ -1055,6 +1057,179 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /cores/{coreId}/instances/{instanceId}/config-documents:
+    get:
+      tags: [ Configuration ]
+      operationId: listConfigDocuments
+      summary: List recognized instance configuration documents
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+      responses:
+        '200':
+          description: Recognized configuration documents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigDocumentPage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /cores/{coreId}/instances/{instanceId}/config-documents:scan:
+    post:
+      tags: [ Configuration ]
+      operationId: scanConfigDocuments
+      summary: Rescan instance configuration documents
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+      responses:
+        '200':
+          description: Rescanned configuration documents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigDocumentPage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+  /cores/{coreId}/instances/{instanceId}/config-documents/{documentId}:
+    get:
+      tags: [ Configuration ]
+      operationId: getConfigDocument
+      summary: Read a structured configuration document
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: Structured configuration document
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigDocument'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /cores/{coreId}/instances/{instanceId}/config-documents/{documentId}/values:
+    patch:
+      tags: [ Configuration ]
+      operationId: patchConfigDocument
+      summary: Apply a lossless structured configuration patch
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/DocumentId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigPatchRequest'
+      responses:
+        '200':
+          description: Patched configuration document
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigDocument'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/instances/{instanceId}/config-documents/{documentId}/raw:
+    get:
+      tags: [ Configuration ]
+      operationId: readRawConfigDocument
+      summary: Read configuration document source text
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: UTF-8 configuration source text, at most 1 MiB
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            text/plain:
+              schema:
+                type: string
+                maxLength: 1048576
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [ Configuration ]
+      operationId: writeRawConfigDocument
+      summary: Atomically replace configuration source text
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/DocumentId'
+        - $ref: '#/components/parameters/FileIfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+              maxLength: 1048576
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              maxLength: 1048576
+      responses:
+        '200':
+          description: Updated structured configuration document
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigDocument'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instances/{instanceId}/directories:
     post:
       tags: [ Files ]
@@ -1755,6 +1930,13 @@ components:
       required: true
       schema:
         type: string
+    DocumentId:
+      name: documentId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[A-Fa-f0-9]{64}$'
     RuntimeId:
       name: runtimeId
       in: path
@@ -1882,6 +2064,12 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     Conflict:
       description: Resource or state conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: A recognized document cannot be parsed or represented safely
       content:
         application/json:
           schema:
@@ -2759,6 +2947,92 @@ components:
         uptimeSeconds:
           type: integer
           minimum: 0
+    ConfigFormat:
+      type: string
+      enum: [ PROPERTIES, YAML, JSON, TOML, PROVIDER_SPECIFIC ]
+    ConfigDocumentSummary:
+      type: object
+      required: [ documentId, path, format, revision, contentHash, lossy ]
+      properties:
+        documentId:
+          type: string
+          pattern: '^[A-Fa-f0-9]{64}$'
+        path:
+          type: string
+        format:
+          $ref: '#/components/schemas/ConfigFormat'
+        revision:
+          type: string
+          pattern: '^[A-Fa-f0-9]{64}$'
+        contentHash:
+          type: string
+          pattern: '^[A-Fa-f0-9]{64}$'
+        lossy:
+          type: boolean
+    ConfigDocumentPage:
+      type: object
+      required: [ documents ]
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfigDocumentSummary'
+    ConfigDocument:
+      type: object
+      required:
+        - documentId
+        - path
+        - format
+        - schema
+        - uiSchema
+        - values
+        - revision
+        - contentHash
+        - unmapped
+        - lossy
+      properties:
+        documentId:
+          type: string
+          pattern: '^[A-Fa-f0-9]{64}$'
+        path:
+          type: string
+        format:
+          $ref: '#/components/schemas/ConfigFormat'
+        schema:
+          type: object
+          additionalProperties: true
+        uiSchema:
+          type: object
+          additionalProperties: true
+        values:
+          type: object
+          additionalProperties: true
+        revision:
+          type: string
+          pattern: '^[A-Fa-f0-9]{64}$'
+        contentHash:
+          type: string
+          pattern: '^[A-Fa-f0-9]{64}$'
+        unmapped:
+          type: array
+          items:
+            type: string
+        lossy:
+          type: boolean
+    ConfigPatchRequest:
+      type: object
+      required: [ revision, patch ]
+      properties:
+        revision:
+          type: string
+          pattern: '^[A-Fa-f0-9]{64}$'
+        patch:
+          type: object
+          description: Top-level JSON Merge Patch values; null deletes a property.
+          additionalProperties: true
+        allowLossy:
+          type: boolean
+          default: false
     FileEntry:
       type: object
       required: [ name, path, kind, size, modifiedAt ]

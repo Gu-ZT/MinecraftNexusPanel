@@ -285,6 +285,22 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 `X-MCNP-File-Eof` 传递校验和游标。已读分片可以重试，跳过当前游标的分片会被拒绝；完成时 Core 会重新校验源文件摘要，
 放弃会释放会话。上传和下载会话状态目前都只保存在 Core 内存中，跨 Core 重启续传、快照和差异比较仍未实现。
 
+配置文档接口：
+
+| 方法   | 路径                                                                    | 权限         | 说明                         |
+|--------|-------------------------------------------------------------------------|--------------|------------------------------|
+| GET    | `.../{instanceId}/config-documents`                                    | `config.read`  | 列出已识别配置文档           |
+| POST   | `.../{instanceId}/config-documents:scan`                               | `config.read`  | 重新扫描配置文档             |
+| GET    | `.../{instanceId}/config-documents/{documentId}`                       | `config.read`  | Schema、UI Schema 与结构化值 |
+| PATCH  | `.../{instanceId}/config-documents/{documentId}/values`                 | `config.write` | 按 revision 应用 Merge Patch |
+| GET    | `.../{instanceId}/config-documents/{documentId}/raw`                   | `file.read`    | 读取最多 1 MiB 的 UTF-8 原文  |
+| PUT    | `.../{instanceId}/config-documents/{documentId}/raw`                   | `file.write`  | 原子替换配置原文             |
+
+当前实现识别 `.properties` 文件。`documentId` 是相对路径的 SHA-256，结构化写入请求体为
+`{ "revision": "...", "patch": { "motd": "Nexus" }, "allowLossy": false }`；revision 必须等于当前内容 SHA-256，补丁只允许顶层字符串、布尔、数字或
+`null`，并保留注释、键顺序和换行。raw PUT 使用 `If-Match` 时同样按文件 SHA-256 做并发保护，并必须携带 `Idempotency-Key`。
+YAML、JSON、TOML 和跨文件校验尚未实现。
+
 ### 5.5 任务、用户和审计
 
 | 方法             | 路径                             | 权限               | 说明               |

@@ -46,6 +46,17 @@ The first file-management slice is now available through the Core `files` capabi
 
 Archive creation and session-based large-file downloads are available. Cross-restart transfer resume, snapshots, difference comparison, and unified task-center progress remain planned M3 work.
 
+### Configuration Management Slice
+
+The first configuration provider is now available through Core TCP and the Panel API:
+
+- recursive discovery of UTF-8 `.properties` documents up to 1 MiB;
+- JSON Schema/UI Schema values with stable path-derived document IDs and SHA-256 revisions;
+- top-level scalar JSON Merge Patch updates that preserve comments, ordering, and line endings;
+- raw text reads and writes with the same sandbox, ETag, If-Match, and idempotency protections as file management.
+
+YAML, JSON, TOML, provider-specific schemas, and cross-file validation remain planned M3 work.
+
 ## Project Layout
 
 ```text

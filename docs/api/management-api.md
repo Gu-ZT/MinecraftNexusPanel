@@ -196,6 +196,10 @@ Cloudburst Nukkit 声明 `PLUGIN`，Geyser 使用 `config.yml` 并通过代理�
 
 结构化写入必须尽量保留注释、顺序、换行和未知字段；无法无损修改时 resolve 响应返回 `lossy=true`，要求用户显式确认。
 
+当前首个可验证 provider 是 `PROPERTIES`：Core 扫描最多 1 MiB 的 UTF-8 `.properties` 文件，使用相对路径 SHA-256 生成 `documentId`，并将内容 SHA-256
+同时作为 `revision` 和 `contentHash`。其结构化补丁仅处理顶层标量和删除键，始终 `lossy=false`；raw 读写用于保留 provider 尚未映射的文本区域。
+YAML、JSON、TOML、provider-specific Schema、敏感字段和跨文件校验仍属于后续 TODO。
+
 ## 6. 模组与插件
 
 统一类型为 `MOD | PLUGIN | MODPACK | DATAPACK`，来源适配器可支持 Modrinth、CurseForge、Hangar 等。每个适配器必须遵守来源
