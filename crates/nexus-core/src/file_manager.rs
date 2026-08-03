@@ -233,6 +233,189 @@ impl FileManager {
         ))
     }
 
+    pub fn mkdir(
+        &self,
+        instance: &Instance,
+        relative_path: &str,
+        recursive: bool,
+    ) -> Result<FileEntry, FileManagerError> {
+        let root = self.instance_root(instance)?;
+        let relative = parse_relative_path(relative_path, false)?;
+        let target = root.join(&relative);
+        let mut current = root.clone();
+
+        for component in relative.components() {
+            current.push(component.as_os_str());
+            match fs::symlink_metadata(&current) {
+                Ok(metadata) if metadata.file_type().is_symlink() => {
+                    return Err(FileManagerError::SymlinkNotAllowed { path: current });
+                }
+                Ok(metadata) if metadata.is_dir() => {}
+                Ok(_) => return Err(FileManagerError::NotDirectory { path: current }),
+                Err(error) if error.kind() == ErrorKind::NotFound && recursive => {
+                    fs::create_dir(&current).map_err(|source| FileManagerError::Io {
+                        operation: "create directory",
+                        path: current.clone(),
+                        source,
+                    })?;
+                }
+                Err(error) if error.kind() == ErrorKind::NotFound => {
+                    return Err(FileManagerError::NotFound {
+                        path: current.parent().unwrap_or(&root).to_path_buf(),
+                    });
+                }
+                Err(source) => {
+                    return Err(FileManagerError::Io {
+                        operation: "read directory metadata for",
+                        path: current,
+                        source,
+                    });
+                }
+            }
+        }
+
+        let canonical = fs::canonicalize(&target).map_err(|source| FileManagerError::Io {
+            operation: "resolve created directory",
+            path: target.clone(),
+            source,
+        })?;
+        if !canonical.starts_with(&root) {
+            return Err(FileManagerError::PathEscapes { path: canonical });
+        }
+
+        relative_file_entry(&root, &target)
+    }
+
+    pub fn move_entry(
+        &self,
+        instance: &Instance,
+        from: &str,
+        to: &str,
+        overwrite: bool,
+    ) -> Result<FileEntry, FileManagerError> {
+        let root = self.instance_root(instance)?;
+        let source_relative = parse_relative_path(from, false)?;
+        let target_relative = parse_relative_path(to, false)?;
+        let source = root.join(&source_relative);
+        let target = root.join(&target_relative);
+        if source == target {
+            return relative_file_entry(&root, &source);
+        }
+
+        let source_metadata = fs::symlink_metadata(&source).map_err(|source_error| {
+            if source_error.kind() == ErrorKind::NotFound {
+                FileManagerError::NotFound {
+                    path: source.clone(),
+                }
+            } else {
+                FileManagerError::Io {
+                    operation: "read source metadata for",
+                    path: source.clone(),
+                    source: source_error,
+                }
+            }
+        })?;
+        if source_metadata.file_type().is_symlink() {
+            return Err(FileManagerError::SymlinkNotAllowed { path: source });
+        }
+        let source_canonical =
+            fs::canonicalize(&source).map_err(|source_error| FileManagerError::Io {
+                operation: "resolve source",
+                path: source.clone(),
+                source: source_error,
+            })?;
+        if !source_canonical.starts_with(&root) {
+            return Err(FileManagerError::PathEscapes {
+                path: source_canonical,
+            });
+        }
+
+        let parent = target
+            .parent()
+            .ok_or_else(|| FileManagerError::InvalidPath {
+                path: to.to_owned(),
+            })?;
+        let canonical_parent = fs::canonicalize(parent).map_err(|source_error| {
+            if source_error.kind() == ErrorKind::NotFound {
+                FileManagerError::NotFound {
+                    path: parent.to_path_buf(),
+                }
+            } else {
+                FileManagerError::Io {
+                    operation: "resolve target directory",
+                    path: parent.to_path_buf(),
+                    source: source_error,
+                }
+            }
+        })?;
+        if !canonical_parent.starts_with(&root) {
+            return Err(FileManagerError::PathEscapes {
+                path: canonical_parent,
+            });
+        }
+        if !fs::metadata(parent)
+            .map_err(|source_error| FileManagerError::Io {
+                operation: "read target directory metadata for",
+                path: parent.to_path_buf(),
+                source: source_error,
+            })?
+            .is_dir()
+        {
+            return Err(FileManagerError::NotDirectory {
+                path: parent.to_path_buf(),
+            });
+        }
+        if canonical_parent.starts_with(&source_canonical) {
+            return Err(FileManagerError::InvalidPath {
+                path: to.to_owned(),
+            });
+        }
+
+        if let Ok(target_metadata) = fs::symlink_metadata(&target) {
+            if target_metadata.file_type().is_symlink() {
+                return Err(FileManagerError::SymlinkNotAllowed { path: target });
+            }
+            if !overwrite {
+                return Err(FileManagerError::AlreadyExists { path: target });
+            }
+            if source_metadata.is_dir() != target_metadata.is_dir() {
+                return Err(FileManagerError::AlreadyExists { path: target });
+            }
+            if target_metadata.is_dir() {
+                if fs::read_dir(&target)
+                    .map_err(|source| FileManagerError::Io {
+                        operation: "read target directory",
+                        path: target.clone(),
+                        source,
+                    })?
+                    .next()
+                    .is_some()
+                {
+                    return Err(FileManagerError::DirectoryNotEmpty { path: target });
+                }
+                fs::remove_dir(&target).map_err(|source| FileManagerError::Io {
+                    operation: "remove target directory",
+                    path: target.clone(),
+                    source,
+                })?;
+            } else {
+                fs::remove_file(&target).map_err(|source| FileManagerError::Io {
+                    operation: "remove target file",
+                    path: target.clone(),
+                    source,
+                })?;
+            }
+        }
+
+        fs::rename(&source, &target).map_err(|source_error| FileManagerError::Io {
+            operation: "move",
+            path: target.clone(),
+            source: source_error,
+        })?;
+
+        relative_file_entry(&root, &target)
+    }
+
     fn instance_root(&self, instance: &Instance) -> Result<PathBuf, FileManagerError> {
         let data_directory = fs::canonicalize(self.data_directory.as_ref()).map_err(|source| {
             FileManagerError::CanonicalizeDataDirectory {
@@ -418,6 +601,11 @@ fn file_entry(path: &Path, relative_path: String) -> Result<FileEntry, FileManag
     ))
 }
 
+fn relative_file_entry(root: &Path, path: &Path) -> Result<FileEntry, FileManagerError> {
+    let relative_path = relative_file_path(root, path)?;
+    file_entry(path, relative_path)
+}
+
 fn hash_file(path: &Path) -> Result<String, FileManagerError> {
     let mut file = File::open(path).map_err(|source| FileManagerError::Io {
         operation: "open",
@@ -556,6 +744,45 @@ mod tests {
         manager
             .write(&instance, "server.properties", b"motd=Changed", Some(&hash))
             .expect("matching hash permits replacement");
+    }
+
+    #[test]
+    fn creates_recursive_directories_and_moves_entries_safely() {
+        let directory = tempdir().expect("temporary directory is created");
+        let instance = instance();
+        let manager = FileManager::new(directory.path());
+
+        let directory_entry = manager
+            .mkdir(&instance, "config/server", true)
+            .expect("recursive directory is created");
+        assert_eq!(directory_entry.kind(), FileKind::Directory);
+        assert_eq!(directory_entry.path(), "config/server");
+        manager
+            .write(&instance, "config/server.properties", b"motd=MCNP", None)
+            .expect("source file is written");
+
+        let moved = manager
+            .move_entry(
+                &instance,
+                "config/server.properties",
+                "config/server/server.properties",
+                false,
+            )
+            .expect("file is moved");
+        assert_eq!(moved.path(), "config/server/server.properties");
+        assert!(matches!(
+            manager.move_entry(
+                &instance,
+                "config/server/server.properties",
+                "config/server/server.properties",
+                false,
+            ),
+            Ok(_)
+        ));
+        assert!(matches!(
+            manager.mkdir(&instance, "config/server/server.properties/logs", true),
+            Err(FileManagerError::NotDirectory { .. })
+        ));
     }
 
     fn instance() -> Instance {

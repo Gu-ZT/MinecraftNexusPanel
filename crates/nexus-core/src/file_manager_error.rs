@@ -50,4 +50,8 @@ pub enum FileManagerError {
     HashMismatch { expected: String, actual: String },
     #[error("file path is not valid UTF-8: {path}")]
     NonUtf8Path { path: PathBuf },
+    #[error("file path already exists: {path}")]
+    AlreadyExists { path: PathBuf },
+    #[error("directory is not empty: {path}")]
+    DirectoryNotEmpty { path: PathBuf },
 }

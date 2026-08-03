@@ -451,6 +451,8 @@ async fn request_response(
         "instance.metrics" => instance_metrics_response(request_id, params, state.processes()),
         "file.list" => file_list_response(request_id, params, state),
         "file.read" => file_read_response(request_id, params, state),
+        "file.mkdir" => file_mkdir_response(request_id, params, idempotency_key, state),
+        "file.move" => file_move_response(request_id, params, idempotency_key, state),
         "file.write" => file_write_response(request_id, params, idempotency_key, state),
         "instance.start" => {
             instance_start_response(request_id, params, idempotency_key, state.processes()).await
@@ -1152,6 +1154,101 @@ fn file_write_response(
     }
 }
 
+fn file_mkdir_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    state: &CoreRequestState,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.mkdir requires a valid instanceId",
+        );
+    };
+    let Some(path) = params
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+    else {
+        return error_response(request_id, "BAD_REQUEST", "file.mkdir requires a path");
+    };
+    let recursive = match params.get("recursive") {
+        None => false,
+        Some(Value::Bool(recursive)) => *recursive,
+        Some(_) => {
+            return error_response(request_id, "BAD_REQUEST", "file.mkdir recursive is invalid");
+        }
+    };
+    let instance = match state.instances().get(&instance_id) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            return error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist");
+        }
+        Err(error) => return repository_failure_response(request_id, &error),
+    };
+
+    match state.files().mkdir(&instance, path, recursive) {
+        Ok(entry) => success_response(request_id, json!(entry)),
+        Err(error) => file_manager_error_response(request_id, error),
+    }
+}
+
+fn file_move_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    state: &CoreRequestState,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.move requires a valid instanceId",
+        );
+    };
+    let Some(from) = params
+        .get("from")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+    else {
+        return error_response(request_id, "BAD_REQUEST", "file.move requires from");
+    };
+    let Some(to) = params
+        .get("to")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+    else {
+        return error_response(request_id, "BAD_REQUEST", "file.move requires to");
+    };
+    let overwrite = match params.get("overwrite") {
+        None => false,
+        Some(Value::Bool(overwrite)) => *overwrite,
+        Some(_) => {
+            return error_response(request_id, "BAD_REQUEST", "file.move overwrite is invalid");
+        }
+    };
+    let instance = match state.instances().get(&instance_id) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            return error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist");
+        }
+        Err(error) => return repository_failure_response(request_id, &error),
+    };
+
+    match state.files().move_entry(&instance, from, to, overwrite) {
+        Ok(entry) => success_response(request_id, json!(entry)),
+        Err(error) => file_manager_error_response(request_id, error),
+    }
+}
+
 fn file_manager_error_response(request_id: RequestId, error: FileManagerError) -> WireMessage {
     match error {
         FileManagerError::InvalidPath { .. } | FileManagerError::InvalidHash { .. } => {
@@ -1188,6 +1285,16 @@ fn file_manager_error_response(request_id: RequestId, error: FileManagerError) -
             "File hash does not match",
             false,
             Some(json!({ "expectedSha256": expected, "actualSha256": actual })),
+        ),
+        FileManagerError::AlreadyExists { .. } => error_response(
+            request_id,
+            "FILE_ALREADY_EXISTS",
+            "File target already exists",
+        ),
+        FileManagerError::DirectoryNotEmpty { .. } => error_response(
+            request_id,
+            "FILE_DIRECTORY_NOT_EMPTY",
+            "Target directory is not empty",
         ),
         error => {
             tracing::error!(%error, "Core file operation failed");
