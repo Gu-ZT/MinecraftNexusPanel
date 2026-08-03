@@ -56,6 +56,8 @@ export type InstanceKind =
 export type InstanceState = 'CREATED' | 'STARTING' | 'RUNNING' | 'STOPPING' | 'STOPPED' | 'FAILED' | 'UNKNOWN';
 export type LogStream = 'stdout' | 'stderr' | 'system';
 export type RuntimeKind = 'JAVA' | 'NODE_JS' | 'PYTHON';
+export type BedrockManagementKind = 'DEDICATED_SERVER' | 'POCKET_MINE' | 'NUKKIT' | 'GEYSER';
+export type BedrockTransport = 'RAKNET_UDP';
 export type InstallRuntimeRequirement = 'JAVA' | 'NODE_JS' | 'PYTHON' | 'PHP' | 'NATIVE';
 export type InstallTemplateFamily = 'JAVA_SERVER' | 'JAVA_PROXY' | 'BEDROCK_SERVER' | 'BEDROCK_PROXY';
 export type ProxyTopology = 'NONE' | 'ONE_TO_MANY' | 'ONE_TO_ONE';
@@ -124,6 +126,14 @@ export interface ManagedRuntime {
 
 export interface ManagedRuntimePage {
   items: ManagedRuntime[];
+}
+
+export interface BedrockManagementProfile {
+  managementKind: BedrockManagementKind;
+  transport: BedrockTransport;
+  defaultPort: number;
+  configurationFiles: string[];
+  extensionKind: ExtensionKind | null;
 }
 
 export interface VersionMetadataProvider {
@@ -249,6 +259,7 @@ export interface PanelApiClient {
   listInstallTemplates(): Promise<InstallTemplatePage>;
   listInstallTemplateVersions(templateId: string): Promise<InstallTemplateVersionPage>;
   listManagedRuntimes(coreId: string): Promise<ManagedRuntimePage>;
+  getBedrockProfile(coreId: string, instanceId: string): Promise<BedrockManagementProfile>;
   listProxySubservers(coreId: string, proxyInstanceId: string): Promise<ProxySubserverPage>;
   upsertProxySubserver(
     coreId: string,
@@ -350,6 +361,11 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     listManagedRuntimes(coreId) {
       return request<ManagedRuntimePage>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/environments`,
+      );
+    },
+    getBedrockProfile(coreId, instanceId) {
+      return request<BedrockManagementProfile>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/bedrock-profile`,
       );
     },
     listProxySubservers(coreId, proxyInstanceId) {

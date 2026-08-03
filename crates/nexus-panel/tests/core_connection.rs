@@ -4,6 +4,8 @@ use std::time::Duration;
 
 use nexus_config::CoreConfig;
 use nexus_core::CoreServer;
+use nexus_domain::BedrockManagementKind;
+use nexus_domain::BedrockTransport;
 use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
 use nexus_domain::InstanceKind;
@@ -95,6 +97,15 @@ async fn connects_to_a_core_and_reads_its_system_info() {
         .create_instance(&second_target)
         .await
         .expect("Core creates the second proxy target");
+    let profile = connection
+        .get_bedrock_profile(proxy.id())
+        .await
+        .expect("Core returns the Geyser Bedrock profile");
+    assert_eq!(profile.management_kind(), BedrockManagementKind::Geyser);
+    assert_eq!(profile.transport(), BedrockTransport::RaknetUdp);
+    assert_eq!(profile.default_port(), 19132);
+    assert_eq!(profile.configuration_files(), ["config.yml"]);
+    assert_eq!(profile.extension_kind(), None);
 
     let first_subserver = ProxySubserver::new(
         "default".to_owned(),

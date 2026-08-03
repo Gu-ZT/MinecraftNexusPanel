@@ -29,6 +29,7 @@ use crate::PanelState;
 use crate::SecretCipher;
 use crate::VersionMetadataClient;
 use crate::auth_routes::auth_routes;
+use crate::bedrock_routes::bedrock_routes;
 use crate::core_routes::core_routes;
 use crate::environment_routes::environment_routes;
 use crate::install_template_routes::install_template_routes;
@@ -112,6 +113,7 @@ fn router(state: PanelState) -> Router {
         .route("/api/v1/health/ready", get(readiness))
         .merge(auth_routes())
         .merge(core_routes())
+        .merge(bedrock_routes())
         .merge(environment_routes())
         .merge(instance_routes())
         .merge(proxy_routes())

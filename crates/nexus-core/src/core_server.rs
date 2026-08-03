@@ -379,6 +379,7 @@ async fn request_response(
         ),
         "system.ping" => success_response(request_id, json!({ "receivedAt": current_timestamp() })),
         "runtime.list" => environment_list_response(request_id, state.runtimes()).await,
+        "bedrock.profile" => bedrock_profile_response(request_id, params, state.instances()),
         "proxy.subserver.list" => proxy_subserver_list_response(
             request_id,
             params,
@@ -432,6 +433,36 @@ async fn environment_list_response(
     runtimes: &RuntimeDiscovery,
 ) -> WireMessage {
     success_response(request_id, json!({ "items": runtimes.discover().await }))
+}
+
+fn bedrock_profile_response(
+    request_id: RequestId,
+    params: &Value,
+    instances: &InstanceRepository,
+) -> WireMessage {
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "bedrock.profile requires a valid instanceId",
+        );
+    };
+    let instance = match instances.get(&instance_id) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            return error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist");
+        }
+        Err(error) => return repository_failure_response(request_id, &error),
+    };
+    let Some(profile) = instance.kind().bedrock_management_profile() else {
+        return error_response(
+            request_id,
+            "BEDROCK_PROFILE_UNSUPPORTED",
+            "The instance does not expose a Bedrock operations profile",
+        );
+    };
+
+    success_response(request_id, json!(profile))
 }
 
 fn proxy_subserver_list_response(

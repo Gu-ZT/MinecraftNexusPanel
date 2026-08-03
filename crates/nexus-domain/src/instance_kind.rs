@@ -1,6 +1,10 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::BedrockManagementKind;
+use crate::BedrockManagementProfile;
+use crate::BedrockTransport;
+use crate::ExtensionKind;
 use crate::ProxyTopology;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -74,5 +78,68 @@ impl InstanceKind {
             | Self::Custom
             | Self::Unknown => ProxyTopology::None,
         }
+    }
+
+    #[must_use]
+    pub fn bedrock_management_profile(self) -> Option<BedrockManagementProfile> {
+        let (management_kind, configuration_files, extension_kind) = match self {
+            Self::BedrockDedicatedServer => (
+                BedrockManagementKind::DedicatedServer,
+                vec!["server.properties".to_owned()],
+                None,
+            ),
+            Self::PocketMineMp => (
+                BedrockManagementKind::PocketMine,
+                vec!["server.properties".to_owned()],
+                Some(ExtensionKind::Plugin),
+            ),
+            Self::Nukkit | Self::CloudburstNukkit => (
+                BedrockManagementKind::Nukkit,
+                vec!["server.properties".to_owned()],
+                Some(ExtensionKind::Plugin),
+            ),
+            Self::Geyser => (
+                BedrockManagementKind::Geyser,
+                vec!["config.yml".to_owned()],
+                None,
+            ),
+            _ => return None,
+        };
+
+        Some(BedrockManagementProfile::new(
+            management_kind,
+            BedrockTransport::RaknetUdp,
+            19132,
+            configuration_files,
+            extension_kind,
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::InstanceKind;
+    use crate::BedrockManagementKind;
+    use crate::ExtensionKind;
+
+    #[test]
+    fn exposes_distinct_bedrock_management_profiles() {
+        let dedicated = InstanceKind::BedrockDedicatedServer
+            .bedrock_management_profile()
+            .expect("BDS has a Bedrock profile");
+        assert_eq!(
+            dedicated.management_kind(),
+            BedrockManagementKind::DedicatedServer
+        );
+        assert_eq!(dedicated.configuration_files(), ["server.properties"]);
+        assert_eq!(dedicated.extension_kind(), None);
+
+        let pocketmine = InstanceKind::PocketMineMp
+            .bedrock_management_profile()
+            .expect("PocketMine-MP has a Bedrock profile");
+        assert_eq!(pocketmine.extension_kind(), Some(ExtensionKind::Plugin));
+        assert_eq!(pocketmine.default_port(), 19132);
+
+        assert!(InstanceKind::Paper.bedrock_management_profile().is_none());
     }
 }

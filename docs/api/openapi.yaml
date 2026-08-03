@@ -25,6 +25,8 @@ tags:
     description: Minecraft instance configuration and lifecycle
   - name: Proxy
     description: Proxy backend and subserver relationships
+  - name: Bedrock
+    description: Bedrock server and bridge operations
   - name: Files
     description: Sandboxed instance file operations
   - name: Tasks
@@ -431,6 +433,27 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /cores/{coreId}/instances/{instanceId}/bedrock-profile:
+    parameters:
+      - $ref: '#/components/parameters/CoreId'
+      - $ref: '#/components/parameters/InstanceId'
+    get:
+      tags: [ Bedrock ]
+      operationId: getBedrockProfile
+      summary: Get the Bedrock operations profile for an instance
+      responses:
+        '200':
+          description: Bedrock transport, configuration and extension capabilities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BedrockManagementProfile'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instances:
     parameters:
       - $ref: '#/components/parameters/CoreId'
@@ -1536,6 +1559,32 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/InstallTemplateVersion'
+    BedrockManagementKind:
+      type: string
+      enum: [ DEDICATED_SERVER, POCKET_MINE, NUKKIT, GEYSER ]
+    BedrockTransport:
+      type: string
+      enum: [ RAKNET_UDP ]
+    BedrockManagementProfile:
+      type: object
+      required: [ managementKind, transport, defaultPort, configurationFiles, extensionKind ]
+      properties:
+        managementKind:
+          $ref: '#/components/schemas/BedrockManagementKind'
+        transport:
+          $ref: '#/components/schemas/BedrockTransport'
+        defaultPort:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        configurationFiles:
+          type: array
+          items:
+            type: string
+        extensionKind:
+          oneOf:
+            - $ref: '#/components/schemas/ExtensionKind'
+            - type: 'null'
     ProxySubserver:
       type: object
       required: [ id, name, targetInstanceId, host, port, enabled ]

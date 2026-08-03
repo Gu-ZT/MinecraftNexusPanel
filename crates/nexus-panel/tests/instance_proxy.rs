@@ -112,6 +112,21 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
         assert_eq!(response.status, 201);
     }
 
+    let bedrock_profile = send_json_request(
+        panel_address,
+        "GET",
+        &format!("/api/v1/cores/{core_id}/instances/geyser-proxy/bedrock-profile"),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(bedrock_profile.status, 200);
+    assert_eq!(bedrock_profile.body["managementKind"], "GEYSER");
+    assert_eq!(bedrock_profile.body["transport"], "RAKNET_UDP");
+    assert_eq!(bedrock_profile.body["defaultPort"], 19132);
+    assert_eq!(bedrock_profile.body["configurationFiles"][0], "config.yml");
+    assert!(bedrock_profile.body["extensionKind"].is_null());
+
     let proxy_path = format!("/api/v1/cores/{core_id}/instances/geyser-proxy/proxy-subservers");
     let first_subserver = send_json_request(
         panel_address,

@@ -296,6 +296,21 @@ impl CoreRegistry {
         Ok(json!({ "items": runtimes }))
     }
 
+    pub async fn get_bedrock_profile(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let profile = connection.get_bedrock_profile(instance_id).await?;
+
+        Ok(json!(profile))
+    }
+
     pub async fn list_proxy_subservers(
         &self,
         core_id: CoreId,

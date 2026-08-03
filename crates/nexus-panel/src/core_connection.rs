@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 
+use nexus_domain::BedrockManagementProfile;
 use nexus_domain::CoreId;
 use nexus_domain::Instance;
 use nexus_domain::InstanceCreate;
@@ -199,6 +200,19 @@ impl CoreConnection {
 
         from_value(items).map_err(|_| CoreConnectionError::InvalidResponse {
             field: "managedRuntimes",
+        })
+    }
+
+    pub async fn get_bedrock_profile(
+        &mut self,
+        instance_id: &InstanceId,
+    ) -> Result<BedrockManagementProfile, CoreConnectionError> {
+        let result = self
+            .request("bedrock.profile", json!({ "instanceId": instance_id }))
+            .await?;
+
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse {
+            field: "bedrockProfile",
         })
     }
 

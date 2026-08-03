@@ -99,7 +99,16 @@ provision；Catalog 变化导致 hash 失效时必须重新确认。
 后端记录包含 `targetInstanceId`、监听目标地址、端口和启用状态。目标实例必须已存在且不是代理实例；Geyser 的第二个目标返回
 `PROXY_SUBSERVER_LIMIT_REACHED`。
 
-### 3.3 模板安全
+### 3.3 基岩端运维画像
+
+| 方法 | 路径                                                           | 说明                         |
+|------|----------------------------------------------------------------|------------------------------|
+| GET  | `/cores/{coreId}/instances/{instanceId}/bedrock-profile`       | 查询基岩传输和配置管理能力   |
+
+画像返回 RakNet UDP、默认端口 `19132`、配置文件列表和插件管理类型。BDS 不声明插件目录，PocketMine-MP、Nukkit 与
+Cloudburst Nukkit 声明 `PLUGIN`，Geyser 使用 `config.yml` 并通过代理子服务器关系管理唯一 Java 后端。
+
+### 3.4 模板安全
 
 - 内置模板随 Panel 版本签名；远程模板源必须配置公钥或显式标记为不可信。
 - 模板步骤使用受限 DSL：download、extract、copy、writeConfig、installRuntime，不默认执行任意 Shell。

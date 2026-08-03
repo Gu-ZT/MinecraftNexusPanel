@@ -325,6 +325,15 @@ Core 只允许 `VELOCITY`、`WATERFALL`、`BUNGEECORD`、`LIGHTFALL` 和 `GEYSER
 一对多代理可以维护多个目标；Geyser 的一对一拓扑最多维护一个目标。每个目标必须指向已存在的非代理实例，
 变更请求必须带 `idempotencyKey`。
 
+### 5.5.2 基岩端运维画像
+
+| 方法              | 参数       | 结果                                      |
+|-------------------|------------|-------------------------------------------|
+| `bedrock.profile` | instanceId | transport、defaultPort、配置文件和扩展类型 |
+
+该方法仅对 Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit 和 Geyser 返回结果。
+画像统一标记 RakNet UDP 与默认端口 `19132`，同时区分 `server.properties`、Geyser `config.yml` 和可管理插件类型。
+
 ### 5.6 配置与扩展
 
 | 方法                | 参数                                                | 结果                               |

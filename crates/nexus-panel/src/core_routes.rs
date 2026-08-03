@@ -250,7 +250,9 @@ pub(crate) fn registry_error_response(error: CoreRegistryError, request_id: Requ
         CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
             if matches!(
                 code.as_str(),
-                "PROXY_TOPOLOGY_UNSUPPORTED" | "PROXY_SUBSERVER_LIMIT_REACHED"
+                "BEDROCK_PROFILE_UNSUPPORTED"
+                    | "PROXY_TOPOLOGY_UNSUPPORTED"
+                    | "PROXY_SUBSERVER_LIMIT_REACHED"
             ) =>
         {
             error_response(

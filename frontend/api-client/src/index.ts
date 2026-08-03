@@ -1,6 +1,9 @@
 export type { ApiClientOptions } from './api-client-options';
 export { createApiUrl } from './create-api-url';
 export type {
+  BedrockManagementKind,
+  BedrockManagementProfile,
+  BedrockTransport,
   ClientType,
   CommandAccepted,
   Core,

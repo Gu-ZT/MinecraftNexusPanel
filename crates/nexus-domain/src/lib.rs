@@ -1,3 +1,6 @@
+mod bedrock_management_kind;
+mod bedrock_management_profile;
+mod bedrock_transport;
 mod core_id;
 mod download_architecture;
 mod download_manifest;
@@ -40,6 +43,9 @@ mod sha256_digest_error;
 mod task_id;
 mod version_metadata_provider;
 
+pub use bedrock_management_kind::BedrockManagementKind;
+pub use bedrock_management_profile::BedrockManagementProfile;
+pub use bedrock_transport::BedrockTransport;
 pub use core_id::CoreId;
 pub use download_architecture::DownloadArchitecture;
 pub use download_manifest::DownloadManifest;

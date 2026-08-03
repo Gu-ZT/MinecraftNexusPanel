@@ -1,6 +1,7 @@
 mod auth_error;
 mod auth_routes;
 mod auth_service;
+mod bedrock_routes;
 mod client_type;
 mod core_connection;
 mod core_connection_error;
