@@ -75,14 +75,40 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
         java_server("forge", "Forge", InstanceKind::Forge, mod_layout()),
         java_server("bukkit", "Bukkit", InstanceKind::Bukkit, plugin_layout()),
         java_server("spigot", "Spigot", InstanceKind::Spigot, plugin_layout()),
-        java_server("purpur", "Purpur", InstanceKind::Purpur, plugin_layout()),
+        template(
+            "purpur",
+            "Purpur",
+            InstanceKind::Purpur,
+            InstallTemplateFamily::JavaServer,
+            InstallRuntimeRequirement::Java,
+            ProxyTopology::None,
+            vec![provider(
+                "purpur-version-service",
+                "Purpur version service",
+                "https://api.purpurmc.org/v2/purpur",
+            )],
+        )
+        .with_extension_layouts(plugin_layout()),
         java_server(
             "pufferfish",
             "Pufferfish",
             InstanceKind::Pufferfish,
             plugin_layout(),
         ),
-        java_server("folia", "Folia", InstanceKind::Folia, plugin_layout()),
+        template(
+            "folia",
+            "Folia",
+            InstanceKind::Folia,
+            InstallTemplateFamily::JavaServer,
+            InstallRuntimeRequirement::Java,
+            ProxyTopology::None,
+            vec![provider(
+                "folia-downloads-service",
+                "Folia downloads service",
+                "https://fill.papermc.io/v3/projects/folia",
+            )],
+        )
+        .with_extension_layouts(plugin_layout()),
         java_server("leaf", "Leaf", InstanceKind::Leaf, plugin_layout()),
         java_server("mohist", "Mohist", InstanceKind::Mohist, hybrid_layout()),
         java_server("magma", "Magma", InstanceKind::Magma, hybrid_layout()),
@@ -108,9 +134,28 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             hybrid_layout(),
         ),
         java_server("lingshu", "Lingshu", InstanceKind::Lingshu, hybrid_layout()),
-        java_proxy("waterfall", "Waterfall", InstanceKind::Waterfall),
-        java_proxy("bungeecord", "BungeeCord", InstanceKind::BungeeCord),
-        java_proxy("lightfall", "Lightfall", InstanceKind::Lightfall),
+        java_proxy(
+            "waterfall",
+            "Waterfall",
+            InstanceKind::Waterfall,
+            vec![provider(
+                "waterfall-downloads-service",
+                "Waterfall downloads service",
+                "https://fill.papermc.io/v3/projects/waterfall",
+            )],
+        ),
+        java_proxy(
+            "bungeecord",
+            "BungeeCord",
+            InstanceKind::BungeeCord,
+            Vec::new(),
+        ),
+        java_proxy(
+            "lightfall",
+            "Lightfall",
+            InstanceKind::Lightfall,
+            Vec::new(),
+        ),
         template(
             "geyser",
             "Geyser",
@@ -186,7 +231,12 @@ fn java_server(
     .with_extension_layouts(extension_layouts)
 }
 
-fn java_proxy(id: &str, name: &str, kind: InstanceKind) -> InstallTemplate {
+fn java_proxy(
+    id: &str,
+    name: &str,
+    kind: InstanceKind,
+    metadata_providers: Vec<VersionMetadataProvider>,
+) -> InstallTemplate {
     template(
         id,
         name,
@@ -194,7 +244,7 @@ fn java_proxy(id: &str, name: &str, kind: InstanceKind) -> InstallTemplate {
         InstallTemplateFamily::JavaProxy,
         InstallRuntimeRequirement::Java,
         ProxyTopology::OneToMany,
-        Vec::new(),
+        metadata_providers,
     )
     .with_extension_layouts(plugin_layout())
 }
@@ -293,6 +343,33 @@ mod tests {
         assert_eq!(
             templates[2].metadata_providers()[0].url(),
             "https://fill.papermc.io/v3/projects/velocity"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "purpur")
+                .expect("Purpur template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://api.purpurmc.org/v2/purpur"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "folia")
+                .expect("Folia template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://fill.papermc.io/v3/projects/folia"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "waterfall")
+                .expect("Waterfall template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://fill.papermc.io/v3/projects/waterfall"
         );
         assert!(
             templates[..4]

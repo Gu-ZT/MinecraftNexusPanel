@@ -18,7 +18,10 @@ const METADATA_TIMEOUT: Duration = Duration::from_secs(30);
 const MAXIMUM_METADATA_BYTES: usize = 2 * 1024 * 1024;
 const MOJANG_PROVIDER_ID: &str = "mojang-version-manifest";
 const PAPER_PROVIDER_ID: &str = "paper-downloads-service";
+const PURPUR_PROVIDER_ID: &str = "purpur-version-service";
 const VELOCITY_PROVIDER_ID: &str = "velocity-downloads-service";
+const FOLIA_PROVIDER_ID: &str = "folia-downloads-service";
+const WATERFALL_PROVIDER_ID: &str = "waterfall-downloads-service";
 const FABRIC_GAME_PROVIDER_ID: &str = "fabric-game-versions";
 const FABRIC_LOADER_PROVIDER_ID: &str = "fabric-loader-versions";
 const PAPERMC_CONTACT_URL: &str = "https://github.com/Gu-ZT/MinecraftNexusPanel";
@@ -62,8 +65,26 @@ impl VersionMetadataClient {
 
                 parse_paper_versions(provider, &metadata)
             }
+            "purpur" => {
+                let provider = provider(template, PURPUR_PROVIDER_ID)?;
+                let metadata = self.fetch(provider).await?;
+
+                parse_purpur_versions(provider, &metadata)
+            }
             "velocity" => {
                 let provider = provider(template, VELOCITY_PROVIDER_ID)?;
+                let metadata = self.fetch(provider).await?;
+
+                parse_velocity_versions(provider, &metadata)
+            }
+            "folia" => {
+                let provider = provider(template, FOLIA_PROVIDER_ID)?;
+                let metadata = self.fetch(provider).await?;
+
+                parse_paper_versions(provider, &metadata)
+            }
+            "waterfall" => {
+                let provider = provider(template, WATERFALL_PROVIDER_ID)?;
                 let metadata = self.fetch(provider).await?;
 
                 parse_velocity_versions(provider, &metadata)
@@ -199,6 +220,35 @@ fn parse_paper_versions(
     )
 }
 
+fn parse_purpur_versions(
+    provider: &VersionMetadataProvider,
+    metadata: &Value,
+) -> Result<Vec<InstallTemplateVersion>, VersionMetadataError> {
+    let entries = metadata
+        .get("versions")
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid_response(provider))?;
+
+    entries
+        .iter()
+        .map(|entry| {
+            let id = entry
+                .as_str()
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .ok_or_else(|| invalid_response(provider))?;
+
+            Ok(InstallTemplateVersion::new(
+                id.clone(),
+                provider.id().to_owned(),
+                InstallTemplateVersionKind::Game,
+                is_stable_version(&id),
+                None,
+            ))
+        })
+        .collect()
+}
+
 fn parse_velocity_versions(
     provider: &VersionMetadataProvider,
     metadata: &Value,
@@ -322,6 +372,7 @@ mod tests {
     use super::parse_fabric_versions;
     use super::parse_mojang_versions;
     use super::parse_paper_versions;
+    use super::parse_purpur_versions;
     use super::parse_velocity_versions;
 
     #[test]
@@ -366,6 +417,20 @@ mod tests {
         assert_eq!(velocity[0].kind(), InstallTemplateVersionKind::Server);
         assert!(!velocity[0].stable());
         assert!(velocity[1].stable());
+    }
+
+    #[test]
+    fn parses_purpur_versions() {
+        let versions = parse_purpur_versions(
+            &provider("purpur-version-service"),
+            &json!({ "versions": ["1.21.8", "1.21.8-rc-1"] }),
+        )
+        .expect("Purpur metadata is valid");
+
+        assert_eq!(versions.len(), 2);
+        assert_eq!(versions[0].kind(), InstallTemplateVersionKind::Game);
+        assert!(versions[0].stable());
+        assert!(!versions[1].stable());
     }
 
     #[test]
