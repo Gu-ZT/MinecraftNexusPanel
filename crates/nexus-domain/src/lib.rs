@@ -13,7 +13,10 @@ mod instance_metric_sample;
 mod instance_page;
 mod instance_runtime;
 mod instance_state;
+mod instance_update;
+mod instance_update_error;
 mod launch_config;
+mod patch_field;
 mod request_id;
 mod task_id;
 
@@ -32,7 +35,10 @@ pub use instance_metric_sample::InstanceMetricSample;
 pub use instance_page::InstancePage;
 pub use instance_runtime::InstanceRuntime;
 pub use instance_state::InstanceState;
+pub use instance_update::InstanceUpdate;
+pub use instance_update_error::InstanceUpdateError;
 pub use launch_config::LaunchConfig;
+pub use patch_field::PatchField;
 pub use request_id::RequestId;
 pub use task_id::TaskId;
 

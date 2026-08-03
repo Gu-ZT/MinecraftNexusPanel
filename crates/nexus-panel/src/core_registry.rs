@@ -9,6 +9,7 @@ use nexus_domain::CoreId;
 use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
 use nexus_domain::InstanceState;
+use nexus_domain::InstanceUpdate;
 use nexus_domain::PRODUCT_NAME;
 use nexus_domain::TaskId;
 use nexus_protocol::PresharedKey;
@@ -278,6 +279,25 @@ impl CoreRegistry {
             .as_mut()
             .ok_or(CoreRegistryError::ConnectionUnavailable)?;
         let instance = connection.get_instance(instance_id).await?;
+
+        Ok(instance_json(core_id, &json!(instance)))
+    }
+
+    pub async fn update_instance(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        expected_revision: u64,
+        update: &InstanceUpdate,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let instance = connection
+            .update_instance(instance_id, expected_revision, update)
+            .await?;
 
         Ok(instance_json(core_id, &json!(instance)))
     }

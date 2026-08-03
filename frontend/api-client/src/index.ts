@@ -11,6 +11,7 @@ export type {
   InstancePage,
   InstanceRuntime,
   InstanceState,
+  InstanceUpdate,
   LaunchConfig,
   LogLine,
   LogPage,

@@ -10,6 +10,7 @@ use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
 use nexus_domain::InstancePage;
 use nexus_domain::InstanceState;
+use nexus_domain::InstanceUpdate;
 use nexus_domain::PRODUCT_VERSION;
 use nexus_domain::RequestId;
 use nexus_domain::TaskId;
@@ -40,7 +41,7 @@ use crate::InstanceProcessManager;
 use crate::InstanceRepository;
 use crate::InstanceRepositoryError;
 
-const CORE_CAPABILITIES: [&str; 3] = ["events", "instances", "metrics"];
+const CORE_CAPABILITIES: [&str; 4] = ["events", "instances", "metrics", "settings"];
 const CORE_ID_FILE_NAME: &str = "core-id";
 const EVENT_TOPICS: [&str; 2] = ["instance.console", "instance.state"];
 const HEARTBEAT_SECONDS: u64 = 20;
@@ -361,6 +362,7 @@ async fn request_response(
         "instance.stop" => {
             instance_stop_response(request_id, params, idempotency_key, state.processes()).await
         }
+        "instance.update" => instance_update_response(request_id, params, state.instances()),
         "event.subscribe" => event_subscribe_response(request_id, params, state),
         "event.unsubscribe" => event_unsubscribe_response(request_id, params, state),
         _ => error_response(
@@ -635,6 +637,67 @@ fn instance_get_response(
     match instances.get(&instance_id) {
         Ok(Some(instance)) => success_response(request_id, json!(instance)),
         Ok(None) => error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist"),
+        Err(error) => repository_failure_response(request_id, &error),
+    }
+}
+
+fn instance_update_response(
+    request_id: RequestId,
+    params: &Value,
+    instances: &InstanceRepository,
+) -> WireMessage {
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.update requires a valid instanceId",
+        );
+    };
+    let Some(expected_revision) = params.get("expectedRevision").and_then(Value::as_u64) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.update requires an expectedRevision",
+        );
+    };
+    let Some(patch) = params
+        .get("patch")
+        .cloned()
+        .and_then(|value| from_value::<InstanceUpdate>(value).ok())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.update requires a valid patch",
+        );
+    };
+
+    match instances.update(&instance_id, expected_revision, &patch) {
+        Ok(instance) => success_response(request_id, json!(instance)),
+        Err(InstanceRepositoryError::InvalidUpdate(_)) => error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.update requires a valid patch",
+        ),
+        Err(InstanceRepositoryError::NotFound { .. }) => {
+            error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist")
+        }
+        Err(InstanceRepositoryError::RevisionMismatch {
+            actual_revision, ..
+        }) => error_response_with_details(
+            request_id,
+            "REVISION_MISMATCH",
+            "Instance revision does not match",
+            false,
+            Some(json!({ "actualRevision": actual_revision })),
+        ),
+        Err(InstanceRepositoryError::StateConflict { state, .. }) => error_response_with_details(
+            request_id,
+            "INSTANCE_STATE_CONFLICT",
+            "Instance state does not allow settings changes",
+            false,
+            Some(json!({ "state": state })),
+        ),
         Err(error) => repository_failure_response(request_id, &error),
     }
 }

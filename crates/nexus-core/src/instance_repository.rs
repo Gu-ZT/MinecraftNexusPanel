@@ -8,6 +8,7 @@ use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
 use nexus_domain::InstanceRuntime;
 use nexus_domain::InstanceState;
+use nexus_domain::InstanceUpdate;
 
 use crate::InstanceRepositoryError;
 
@@ -68,6 +69,40 @@ impl InstanceRepository {
         Ok(instance.clone())
     }
 
+    pub fn update(
+        &self,
+        instance_id: &InstanceId,
+        expected_revision: u64,
+        update: &InstanceUpdate,
+    ) -> Result<Instance, InstanceRepositoryError> {
+        let mut instances = self.lock_instances()?;
+        let instance =
+            instances
+                .get_mut(instance_id)
+                .ok_or_else(|| InstanceRepositoryError::NotFound {
+                    instance_id: instance_id.clone(),
+                })?;
+        if instance.revision() != expected_revision {
+            return Err(InstanceRepositoryError::RevisionMismatch {
+                expected_revision,
+                actual_revision: instance.revision(),
+            });
+        }
+        let state = instance.runtime().state();
+        if !matches!(
+            state,
+            InstanceState::Created | InstanceState::Stopped | InstanceState::Failed
+        ) {
+            return Err(InstanceRepositoryError::StateConflict {
+                instance_id: instance_id.clone(),
+                state,
+            });
+        }
+        instance.apply_update(update)?;
+
+        Ok(instance.clone())
+    }
+
     pub fn transition_runtime(
         &self,
         instance_id: &InstanceId,
@@ -111,7 +146,12 @@ mod tests {
     use nexus_domain::InstanceCreate;
     use nexus_domain::InstanceId;
     use nexus_domain::InstanceKind;
+    use nexus_domain::InstanceRuntime;
+    use nexus_domain::InstanceState;
+    use nexus_domain::InstanceUpdate;
     use nexus_domain::LaunchConfig;
+    use serde_json::from_value;
+    use serde_json::json;
 
     #[test]
     fn creates_instances_once_and_lists_them_by_identifier() {
@@ -139,6 +179,54 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(identifiers, ["creative", "survival"]);
+    }
+
+    #[test]
+    fn updates_stopped_instances_with_revision_checks() {
+        let repository = InstanceRepository::new();
+        let instance = instance_create("survival");
+        repository
+            .create(instance)
+            .expect("instance is created for settings updates");
+        let instance_id = InstanceId::new("survival".to_owned()).expect("test identifier is valid");
+        let update: InstanceUpdate = from_value(json!({
+            "name": "Configured Survival",
+            "directory": "instances/configured-survival",
+            "updateCommand": "./update.sh",
+            "expiresAt": "2030-01-01T00:00:00Z",
+        }))
+        .expect("update payload is valid");
+
+        let updated = repository
+            .update(&instance_id, 1, &update)
+            .expect("stopped instance settings are updated");
+
+        assert_eq!(updated.name(), "Configured Survival");
+        assert_eq!(updated.directory(), "instances/configured-survival");
+        assert_eq!(updated.update_command(), Some("./update.sh"));
+        assert_eq!(updated.expires_at(), Some("2030-01-01T00:00:00Z"));
+        assert_eq!(updated.revision(), 2);
+        assert!(matches!(
+            repository.update(&instance_id, 1, &update),
+            Err(InstanceRepositoryError::RevisionMismatch {
+                expected_revision: 1,
+                actual_revision: 2,
+            })
+        ));
+
+        repository
+            .set_runtime(
+                &instance_id,
+                InstanceRuntime::running(42, "2030-01-01T00:00:00Z".to_owned()),
+            )
+            .expect("instance is marked running");
+        assert!(matches!(
+            repository.update(&instance_id, 2, &update),
+            Err(InstanceRepositoryError::StateConflict {
+                state: InstanceState::Running,
+                ..
+            })
+        ));
     }
 
     fn instance_create(identifier: &str) -> InstanceCreate {

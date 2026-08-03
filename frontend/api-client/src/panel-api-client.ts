@@ -1,12 +1,13 @@
 import type { ApiClientOptions } from './api-client-options';
 import { createApiUrl } from './create-api-url';
 
-type HttpMethod = 'GET' | 'POST';
+type HttpMethod = 'GET' | 'PATCH' | 'POST';
 
 interface RequestOptions {
   method?: HttpMethod;
   body?: unknown;
   csrf?: boolean;
+  ifMatch?: number;
   idempotent?: boolean;
 }
 
@@ -96,9 +97,20 @@ export interface Instance {
   name: string;
   kind: InstanceKind;
   directory: string;
+  updateCommand: string | null;
+  expiresAt: string | null;
   launch: LaunchConfig;
   runtime: InstanceRuntime;
   revision: number;
+}
+
+export interface InstanceUpdate {
+  name?: string;
+  kind?: InstanceKind;
+  directory?: string;
+  launch?: LaunchConfig;
+  updateCommand?: string | null;
+  expiresAt?: string | null;
 }
 
 export interface InstancePage {
@@ -134,6 +146,7 @@ export interface PanelApiClient {
   logout(): Promise<void>;
   listCores(): Promise<CorePage>;
   listInstances(coreId: string): Promise<InstancePage>;
+  updateInstance(coreId: string, instanceId: string, update: InstanceUpdate, revision: number): Promise<Instance>;
   getInstanceLogs(coreId: string, instanceId: string): Promise<LogPage>;
   startInstance(coreId: string, instanceId: string): Promise<TaskAccepted>;
   stopInstance(coreId: string, instanceId: string): Promise<TaskAccepted>;
@@ -171,6 +184,9 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     }
     if (requestOptions.idempotent) {
       headers.set('Idempotency-Key', createRequestId());
+    }
+    if (requestOptions.ifMatch !== undefined) {
+      headers.set('If-Match', `"${requestOptions.ifMatch}"`);
     }
     if (requestOptions.body !== undefined) {
       headers.set('Content-Type', 'application/json');
@@ -214,6 +230,12 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     },
     listInstances(coreId) {
       return request<InstancePage>(`/api/v1/cores/${encodeURIComponent(coreId)}/instances?limit=50`);
+    },
+    updateInstance(coreId, instanceId, update, revision) {
+      return request<Instance>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}`,
+        { method: 'PATCH', body: update, csrf: true, ifMatch: revision },
+      );
     },
     getInstanceLogs(coreId, instanceId) {
       return request<LogPage>(

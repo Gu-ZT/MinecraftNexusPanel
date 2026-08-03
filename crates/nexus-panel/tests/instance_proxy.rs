@@ -65,6 +65,68 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
         Some("\"1\"")
     );
 
+    let updated = send_json_request(
+        panel_address,
+        "PATCH",
+        &format!("/api/v1/cores/{core_id}/instances/panel-process"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("If-Match", "\"1\""),
+        ],
+        Some(json!({
+            "name": "Configured Panel Process",
+            "directory": "instances/configured-panel-process",
+            "updateCommand": "./update.sh",
+            "expiresAt": "2030-01-01T00:00:00Z",
+        })),
+    )
+    .await;
+    assert_eq!(updated.status, 200);
+    assert_eq!(updated.body["name"], "Configured Panel Process");
+    assert_eq!(
+        updated.body["directory"],
+        "instances/configured-panel-process"
+    );
+    assert_eq!(updated.body["updateCommand"], "./update.sh");
+    assert_eq!(updated.body["expiresAt"], "2030-01-01T00:00:00Z");
+    assert_eq!(
+        updated.headers.get("etag").map(String::as_str),
+        Some("\"2\"")
+    );
+
+    let stale_update = send_json_request(
+        panel_address,
+        "PATCH",
+        &format!("/api/v1/cores/{core_id}/instances/panel-process"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("If-Match", "\"1\""),
+        ],
+        Some(json!({ "name": "Stale Settings" })),
+    )
+    .await;
+    assert_eq!(stale_update.status, 412);
+    assert_eq!(stale_update.body["error"]["code"], "REVISION_MISMATCH");
+
+    let cleared = send_json_request(
+        panel_address,
+        "PATCH",
+        &format!("/api/v1/cores/{core_id}/instances/panel-process"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("If-Match", "\"2\""),
+        ],
+        Some(json!({ "updateCommand": null, "expiresAt": null })),
+    )
+    .await;
+    assert_eq!(cleared.status, 200);
+    assert!(cleared.body["updateCommand"].is_null());
+    assert!(cleared.body["expiresAt"].is_null());
+    assert_eq!(
+        cleared.headers.get("etag").map(String::as_str),
+        Some("\"3\"")
+    );
+
     let duplicate = send_json_request(
         panel_address,
         "POST",
@@ -122,6 +184,23 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
         "RUNNING",
     )
     .await;
+
+    let running_update = send_json_request(
+        panel_address,
+        "PATCH",
+        &format!("/api/v1/cores/{core_id}/instances/panel-process"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("If-Match", "\"3\""),
+        ],
+        Some(json!({ "name": "Unsafe Running Update" })),
+    )
+    .await;
+    assert_eq!(running_update.status, 409);
+    assert_eq!(
+        running_update.body["error"]["code"],
+        "INSTANCE_STATE_CONFLICT"
+    );
 
     let command = send_json_request(
         panel_address,

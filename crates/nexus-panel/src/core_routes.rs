@@ -248,6 +248,16 @@ pub(crate) fn registry_error_response(error: CoreRegistryError, request_id: Requ
             )
         }
         CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "REVISION_MISMATCH" =>
+        {
+            error_response(
+                StatusCode::PRECONDITION_FAILED,
+                "REVISION_MISMATCH",
+                "Instance revision does not match",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
             if code == "BAD_REQUEST" =>
         {
             error_response(

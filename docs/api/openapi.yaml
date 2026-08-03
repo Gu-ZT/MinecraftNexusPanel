@@ -1297,7 +1297,7 @@ components:
           type: [ string, 'null' ]
     Instance:
       type: object
-      required: [ id, coreId, name, kind, directory, launch, runtime, revision ]
+      required: [ id, coreId, name, kind, directory, launch, updateCommand, expiresAt, runtime, revision ]
       properties:
         id:
           type: string
@@ -1311,6 +1311,12 @@ components:
           type: string
         launch:
           $ref: '#/components/schemas/LaunchConfig'
+        updateCommand:
+          type: [ string, 'null' ]
+          maxLength: 8192
+        expiresAt:
+          type: [ string, 'null' ]
+          format: date-time
         runtime:
           $ref: '#/components/schemas/InstanceRuntime'
         revision:
@@ -1335,6 +1341,7 @@ components:
           $ref: '#/components/schemas/LaunchConfig'
     InstanceUpdate:
       type: object
+      minProperties: 1
       properties:
         name:
           type: string
@@ -1342,8 +1349,18 @@ components:
           maxLength: 128
         kind:
           $ref: '#/components/schemas/InstanceKind'
+        directory:
+          type: string
+          minLength: 1
+          maxLength: 1024
         launch:
           $ref: '#/components/schemas/LaunchConfig'
+        updateCommand:
+          type: [ string, 'null' ]
+          maxLength: 8192
+        expiresAt:
+          type: [ string, 'null' ]
+          format: date-time
     InstancePage:
       type: object
       required: [ items, nextCursor ]

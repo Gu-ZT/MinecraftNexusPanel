@@ -8,6 +8,7 @@ use nexus_domain::InstanceLogPage;
 use nexus_domain::InstanceMetricSample;
 use nexus_domain::InstancePage;
 use nexus_domain::InstanceState;
+use nexus_domain::InstanceUpdate;
 use nexus_domain::PRODUCT_VERSION;
 use nexus_domain::RequestId;
 use nexus_domain::TaskId;
@@ -27,7 +28,7 @@ use tokio::net::TcpStream;
 use crate::CoreConnectionError;
 use crate::CoreEndpoint;
 
-const PANEL_CAPABILITIES: [&str; 3] = ["events", "instances", "metrics"];
+const PANEL_CAPABILITIES: [&str; 4] = ["events", "instances", "metrics", "settings"];
 
 pub struct CoreConnection {
     capabilities: Vec<String>,
@@ -208,6 +209,29 @@ impl CoreConnection {
     ) -> Result<Instance, CoreConnectionError> {
         let result = self
             .request("instance.get", json!({ "instanceId": instance_id }))
+            .await?;
+
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "instance" })
+    }
+
+    pub async fn update_instance(
+        &mut self,
+        instance_id: &InstanceId,
+        expected_revision: u64,
+        update: &InstanceUpdate,
+    ) -> Result<Instance, CoreConnectionError> {
+        let patch = to_value(update).map_err(|_| CoreConnectionError::InvalidResponse {
+            field: "instanceUpdate",
+        })?;
+        let result = self
+            .request(
+                "instance.update",
+                json!({
+                    "instanceId": instance_id,
+                    "expectedRevision": expected_revision,
+                    "patch": patch,
+                }),
+            )
             .await?;
 
         from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "instance" })

@@ -17,6 +17,7 @@ use nexus_domain::CoreId;
 use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
 use nexus_domain::InstanceState;
+use nexus_domain::InstanceUpdate;
 use nexus_domain::RequestId;
 
 use crate::InstanceCommandRequest;
@@ -41,7 +42,7 @@ pub(crate) fn instance_routes() -> Router<PanelState> {
         )
         .route(
             "/api/v1/cores/{core_id}/instances/{instance_id}",
-            get(get_instance),
+            get(get_instance).patch(update_instance),
         )
         .route(
             "/api/v1/cores/{core_id}/instances/{instance_id}/actions/start",
@@ -142,6 +143,37 @@ async fn get_instance(
     };
 
     match state.cores().get_instance(core_id, &instance_id).await {
+        Ok(instance) => resource_response(StatusCode::OK, instance),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn update_instance(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, instance_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    payload: Result<Json<InstanceUpdate>, JsonRejection>,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Some(expected_revision) = expected_revision(&headers) else {
+        return missing_if_match_response(request_id);
+    };
+    let Some((core_id, instance_id)) = parse_ids(&core_id, &instance_id) else {
+        return validation_error(request_id);
+    };
+    let update = match payload {
+        Ok(Json(update)) if update.validate().is_ok() => update,
+        Ok(_) | Err(_) => return validation_error(request_id),
+    };
+
+    match state
+        .cores()
+        .update_instance(core_id, &instance_id, expected_revision, &update)
+        .await
+    {
         Ok(instance) => resource_response(StatusCode::OK, instance),
         Err(error) => registry_error_response(error, request_id),
     }
@@ -377,6 +409,15 @@ fn idempotency_key(headers: &HeaderMap) -> Option<&str> {
     header_text(headers, "idempotency-key").filter(|value| value.parse::<RequestId>().is_ok())
 }
 
+fn expected_revision(headers: &HeaderMap) -> Option<u64> {
+    header_text(headers, "if-match")?
+        .strip_prefix('"')?
+        .strip_suffix('"')?
+        .parse()
+        .ok()
+        .filter(|revision| *revision > 0)
+}
+
 fn is_valid_command(command: &str) -> bool {
     !command.trim().is_empty() && command.len() <= 8192 && !command.contains('\0')
 }
@@ -395,6 +436,15 @@ fn precondition_required_response(request_id: RequestId) -> Response {
         StatusCode::PRECONDITION_REQUIRED,
         "PRECONDITION_REQUIRED",
         "Idempotency-Key is required",
+        request_id,
+    )
+}
+
+fn missing_if_match_response(request_id: RequestId) -> Response {
+    error_response(
+        StatusCode::PRECONDITION_REQUIRED,
+        "PRECONDITION_REQUIRED",
+        "If-Match is required",
         request_id,
     )
 }
