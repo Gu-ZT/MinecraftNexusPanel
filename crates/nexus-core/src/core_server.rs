@@ -59,7 +59,7 @@ use crate::file_manager::FILE_TRANSFER_CHUNK_BYTES;
 use crate::file_manager::MAXIMUM_FILE_BATCH_OPERATIONS;
 use crate::file_manager::MAXIMUM_FILE_READ_BYTES;
 
-const CORE_CAPABILITIES: [&str; 8] = [
+const CORE_CAPABILITIES: [&str; 9] = [
     "events",
     "files",
     "instances",
@@ -68,6 +68,7 @@ const CORE_CAPABILITIES: [&str; 8] = [
     "provision",
     "runtimes",
     "settings",
+    "transfer-v1",
 ];
 const CORE_ID_FILE_NAME: &str = "core-id";
 const EVENT_TOPICS: [&str; 2] = ["instance.console", "instance.state"];

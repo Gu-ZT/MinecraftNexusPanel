@@ -80,6 +80,11 @@ async fn connects_to_a_core_and_reads_its_system_info() {
     assert!(connection.capabilities().contains(&"events".to_owned()));
     assert!(connection.capabilities().contains(&"instances".to_owned()));
     assert!(connection.capabilities().contains(&"metrics".to_owned()));
+    assert!(
+        connection
+            .capabilities()
+            .contains(&"transfer-v1".to_owned())
+    );
     assert_eq!(system_info["coreId"], connection.core_id().to_string());
     assert_eq!(connection.heartbeat_seconds(), 20);
     assert_eq!(connection.tls_certificate_sha256(), certificate_sha256);

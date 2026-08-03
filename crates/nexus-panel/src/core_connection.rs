@@ -38,7 +38,7 @@ use tokio::net::TcpStream;
 use crate::CoreConnectionError;
 use crate::CoreEndpoint;
 
-const PANEL_CAPABILITIES: [&str; 8] = [
+const PANEL_CAPABILITIES: [&str; 9] = [
     "events",
     "files",
     "instances",
@@ -47,6 +47,7 @@ const PANEL_CAPABILITIES: [&str; 8] = [
     "provision",
     "runtimes",
     "settings",
+    "transfer-v1",
 ];
 
 pub struct CoreConnection {
