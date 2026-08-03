@@ -38,6 +38,7 @@ use zip::write::SimpleFileOptions;
 
 use crate::FileBatchOperation;
 use crate::FileManagerError;
+use crate::file_download::FileDownload;
 use crate::file_upload::FileUpload;
 
 pub const MAXIMUM_FILE_READ_BYTES: usize = 32 * 1024;
@@ -57,6 +58,7 @@ pub struct FileManager {
     data_directory: Arc<PathBuf>,
     tasks: Arc<Mutex<HashMap<TaskId, Value>>>,
     uploads: Arc<Mutex<HashMap<TaskId, FileUpload>>>,
+    downloads: Arc<Mutex<HashMap<TaskId, FileDownload>>>,
 }
 
 impl FileManager {
@@ -66,6 +68,7 @@ impl FileManager {
             data_directory: Arc::new(data_directory.to_path_buf()),
             tasks: Arc::new(Mutex::new(HashMap::new())),
             uploads: Arc::new(Mutex::new(HashMap::new())),
+            downloads: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -653,6 +656,67 @@ impl FileManager {
         }))
     }
 
+    pub(crate) fn begin_download(
+        &self,
+        instance: &Instance,
+        relative_path: &str,
+    ) -> Result<Value, FileManagerError> {
+        let root = self.instance_root(instance)?;
+        let relative = parse_relative_path(relative_path, false)?;
+        let path = root.join(relative);
+        let metadata = fs::symlink_metadata(&path).map_err(|source| {
+            if source.kind() == ErrorKind::NotFound {
+                FileManagerError::NotFound { path: path.clone() }
+            } else {
+                FileManagerError::Io {
+                    operation: "read download source metadata for",
+                    path: path.clone(),
+                    source,
+                }
+            }
+        })?;
+        if metadata.file_type().is_symlink() {
+            return Err(FileManagerError::SymlinkNotAllowed { path });
+        }
+        if !metadata.is_file() {
+            return Err(FileManagerError::NotFile { path });
+        }
+        let source_path = fs::canonicalize(&path).map_err(|source| FileManagerError::Io {
+            operation: "resolve download source",
+            path: path.clone(),
+            source,
+        })?;
+        if !source_path.starts_with(&root) {
+            return Err(FileManagerError::PathEscapes { path: source_path });
+        }
+        let expected_sha256 = hash_file(&source_path)?;
+        let transfer_id = TaskId::new();
+        let mut downloads = self
+            .downloads
+            .lock()
+            .map_err(|_| FileManagerError::TaskStorePoisoned)?;
+        if downloads.len() >= MAXIMUM_ACTIVE_FILE_TRANSFERS {
+            return Err(FileManagerError::TooManyTransfers);
+        }
+        downloads.insert(
+            transfer_id,
+            FileDownload {
+                source_path,
+                expected_size: metadata.len(),
+                expected_sha256: expected_sha256.clone(),
+                next_offset: 0,
+            },
+        );
+
+        Ok(json!({
+            "transferId": transfer_id,
+            "chunkSize": FILE_TRANSFER_CHUNK_BYTES,
+            "nextOffset": 0,
+            "sizeBytes": metadata.len(),
+            "sha256": expected_sha256,
+        }))
+    }
+
     pub(crate) fn write_upload_chunk(
         &self,
         transfer_id: TaskId,
@@ -758,6 +822,102 @@ impl FileManager {
         }))
     }
 
+    pub(crate) fn read_download_chunk(
+        &self,
+        transfer_id: TaskId,
+        offset: u64,
+    ) -> Result<Value, FileManagerError> {
+        let mut downloads = self
+            .downloads
+            .lock()
+            .map_err(|_| FileManagerError::TaskStorePoisoned)?;
+        let download = downloads
+            .get_mut(&transfer_id)
+            .ok_or(FileManagerError::TransferNotFound { transfer_id })?;
+        if offset > download.next_offset {
+            return Err(FileManagerError::TransferOffsetMismatch {
+                expected: download.next_offset,
+                actual: offset,
+            });
+        }
+
+        let metadata = fs::symlink_metadata(&download.source_path).map_err(|source| {
+            if source.kind() == ErrorKind::NotFound {
+                FileManagerError::NotFound {
+                    path: download.source_path.clone(),
+                }
+            } else {
+                FileManagerError::Io {
+                    operation: "read download source metadata for",
+                    path: download.source_path.clone(),
+                    source,
+                }
+            }
+        })?;
+        if metadata.file_type().is_symlink() {
+            return Err(FileManagerError::SymlinkNotAllowed {
+                path: download.source_path.clone(),
+            });
+        }
+        if !metadata.is_file() {
+            return Err(FileManagerError::NotFile {
+                path: download.source_path.clone(),
+            });
+        }
+        if metadata.len() != download.expected_size {
+            return Err(FileManagerError::TransferSizeMismatch {
+                expected: download.expected_size,
+                actual: metadata.len(),
+            });
+        }
+
+        let mut file =
+            File::open(&download.source_path).map_err(|source| FileManagerError::Io {
+                operation: "open download source",
+                path: download.source_path.clone(),
+                source,
+            })?;
+        file.seek(SeekFrom::Start(offset))
+            .map_err(|source| FileManagerError::Io {
+                operation: "seek download source",
+                path: download.source_path.clone(),
+                source,
+            })?;
+        let remaining = download.expected_size.saturating_sub(offset);
+        let chunk_length = usize::try_from(remaining.min(FILE_TRANSFER_CHUNK_BYTES as u64))
+            .unwrap_or(FILE_TRANSFER_CHUNK_BYTES);
+        let mut content = vec![0_u8; chunk_length];
+        let bytes_read = file
+            .read(&mut content)
+            .map_err(|source| FileManagerError::Io {
+                operation: "read download source",
+                path: download.source_path.clone(),
+                source,
+            })?;
+        content.truncate(bytes_read);
+        let end_offset = offset.saturating_add(bytes_read as u64);
+        if bytes_read < chunk_length {
+            return Err(FileManagerError::TransferSizeMismatch {
+                expected: download.expected_size,
+                actual: offset.saturating_add(bytes_read as u64),
+            });
+        }
+        if offset == download.next_offset {
+            download.next_offset = end_offset;
+        }
+
+        Ok(json!({
+            "transferId": transfer_id,
+            "offset": offset,
+            "nextOffset": download.next_offset,
+            "sizeBytes": download.expected_size,
+            "sha256": sha256_hex(Sha256::digest(&content)),
+            "fileSha256": download.expected_sha256,
+            "dataBase64": STANDARD.encode(content),
+            "eof": end_offset == download.expected_size,
+        }))
+    }
+
     pub(crate) fn commit_upload(&self, transfer_id: TaskId) -> Result<FileEntry, FileManagerError> {
         let upload = {
             let mut uploads = self
@@ -803,6 +963,45 @@ impl FileManager {
             .lock()
             .map_err(|_| FileManagerError::TaskStorePoisoned)?;
         uploads
+            .remove(&transfer_id)
+            .map(|_| ())
+            .ok_or(FileManagerError::TransferNotFound { transfer_id })
+    }
+
+    pub(crate) fn commit_download(&self, transfer_id: TaskId) -> Result<(), FileManagerError> {
+        let mut downloads = self
+            .downloads
+            .lock()
+            .map_err(|_| FileManagerError::TaskStorePoisoned)?;
+        let download = downloads
+            .get(&transfer_id)
+            .ok_or(FileManagerError::TransferNotFound { transfer_id })?;
+        if download.next_offset != download.expected_size {
+            return Err(FileManagerError::TransferIncomplete {
+                expected: download.expected_size,
+                actual: download.next_offset,
+            });
+        }
+        let actual_sha256 = hash_file(&download.source_path)?;
+        if !download
+            .expected_sha256
+            .eq_ignore_ascii_case(&actual_sha256)
+        {
+            return Err(FileManagerError::TransferHashMismatch {
+                expected: download.expected_sha256.clone(),
+                actual: actual_sha256,
+            });
+        }
+        downloads.remove(&transfer_id);
+        Ok(())
+    }
+
+    pub(crate) fn abort_download(&self, transfer_id: TaskId) -> Result<(), FileManagerError> {
+        let mut downloads = self
+            .downloads
+            .lock()
+            .map_err(|_| FileManagerError::TaskStorePoisoned)?;
+        downloads
             .remove(&transfer_id)
             .map(|_| ())
             .ok_or(FileManagerError::TransferNotFound { transfer_id })
@@ -1523,6 +1722,8 @@ fn current_timestamp() -> String {
 
 #[cfg(test)]
 mod tests {
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD;
     use std::collections::BTreeMap;
     use std::collections::BTreeSet;
     use std::fs;
@@ -1587,6 +1788,60 @@ mod tests {
         assert!(matches!(
             manager.read(&instance, "../outside", 0, 1),
             Err(FileManagerError::InvalidPath { .. })
+        ));
+    }
+
+    #[test]
+    fn downloads_ordered_chunks_and_validates_completion() {
+        let directory = tempdir().expect("temporary directory is created");
+        let instance = instance();
+        let instance_directory = directory.path().join(instance.directory());
+        fs::create_dir_all(&instance_directory).expect("instance directory is created");
+        let content = b"downloaded file contents";
+        fs::write(instance_directory.join("server.properties"), content)
+            .expect("download source is written");
+        let manager = FileManager::new(directory.path());
+
+        let start = manager
+            .begin_download(&instance, "server.properties")
+            .expect("download is accepted");
+        let transfer_id = start["transferId"]
+            .as_str()
+            .expect("download transfer ID is returned")
+            .parse::<TaskId>()
+            .expect("download transfer ID is valid");
+        assert_eq!(start["sizeBytes"], content.len());
+        assert_eq!(start["nextOffset"], 0);
+
+        let chunk = manager
+            .read_download_chunk(transfer_id, 0)
+            .expect("first download chunk is readable");
+        assert_eq!(chunk["nextOffset"], content.len());
+        assert_eq!(chunk["eof"], true);
+        assert_eq!(
+            STANDARD
+                .decode(
+                    chunk["dataBase64"]
+                        .as_str()
+                        .expect("chunk data is returned")
+                )
+                .expect("chunk data is valid Base64"),
+            content
+        );
+        let retry = manager
+            .read_download_chunk(transfer_id, 0)
+            .expect("download chunk can be retried");
+        assert_eq!(retry["dataBase64"], chunk["dataBase64"]);
+        assert!(matches!(
+            manager.read_download_chunk(transfer_id, content.len() as u64 + 1),
+            Err(FileManagerError::TransferOffsetMismatch { .. })
+        ));
+        manager
+            .commit_download(transfer_id)
+            .expect("completed download can be committed");
+        assert!(matches!(
+            manager.commit_download(transfer_id),
+            Err(FileManagerError::TransferNotFound { .. })
         ));
     }
 

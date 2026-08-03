@@ -1483,7 +1483,10 @@ fn transfer_begin_response(
     if idempotency_key.is_none() {
         return missing_idempotency_key_response(request_id);
     }
-    if params.get("mode").and_then(Value::as_str) != Some("UPLOAD") {
+    let Some(mode) = params.get("mode").and_then(Value::as_str) else {
+        return error_response(request_id, "BAD_REQUEST", "transfer.begin mode is invalid");
+    };
+    if !matches!(mode, "UPLOAD" | "DOWNLOAD") {
         return error_response(request_id, "BAD_REQUEST", "transfer.begin mode is invalid");
     }
     let Some(instance_id) = instance_id_parameter(params) else {
@@ -1500,20 +1503,6 @@ fn transfer_begin_response(
     else {
         return error_response(request_id, "BAD_REQUEST", "transfer.begin requires a path");
     };
-    let Some(size) = params.get("size").and_then(Value::as_u64) else {
-        return error_response(
-            request_id,
-            "BAD_REQUEST",
-            "transfer.begin requires a valid size",
-        );
-    };
-    let Some(sha256) = params.get("sha256").and_then(Value::as_str) else {
-        return error_response(
-            request_id,
-            "BAD_REQUEST",
-            "transfer.begin requires a sha256",
-        );
-    };
     let instance = match state.instances().get(&instance_id) {
         Ok(Some(instance)) => instance,
         Ok(None) => {
@@ -1522,7 +1511,28 @@ fn transfer_begin_response(
         Err(error) => return repository_failure_response(request_id, &error),
     };
 
-    match state.files().begin_upload(&instance, path, size, sha256) {
+    let result = match mode {
+        "UPLOAD" => {
+            let Some(size) = params.get("size").and_then(Value::as_u64) else {
+                return error_response(
+                    request_id,
+                    "BAD_REQUEST",
+                    "transfer.begin requires a valid size",
+                );
+            };
+            let Some(sha256) = params.get("sha256").and_then(Value::as_str) else {
+                return error_response(
+                    request_id,
+                    "BAD_REQUEST",
+                    "transfer.begin requires a sha256",
+                );
+            };
+            state.files().begin_upload(&instance, path, size, sha256)
+        }
+        "DOWNLOAD" => state.files().begin_download(&instance, path),
+        _ => unreachable!("transfer mode was validated above"),
+    };
+    match result {
         Ok(result) => success_response(request_id, result),
         Err(error) => file_manager_error_response(request_id, error),
     }
@@ -1555,11 +1565,20 @@ fn transfer_chunk_response(
             "transfer.chunk requires a valid offset",
         );
     };
+    if params.get("dataBase64").is_none() {
+        match state.files().read_download_chunk(transfer_id, offset) {
+            Ok(result) => return success_response(request_id, result),
+            Err(error) => return file_manager_error_response(request_id, error),
+        }
+    }
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
     let Some(data_base64) = params.get("dataBase64").and_then(Value::as_str) else {
         return error_response(
             request_id,
             "BAD_REQUEST",
-            "transfer.chunk requires dataBase64",
+            "transfer.chunk dataBase64 is invalid",
         );
     };
     let Ok(content) = STANDARD.decode(data_base64) else {
@@ -1620,6 +1639,12 @@ fn transfer_commit_response(
 
     match state.files().commit_upload(transfer_id) {
         Ok(entry) => success_response(request_id, json!(entry)),
+        Err(FileManagerError::TransferNotFound { .. }) => {
+            match state.files().commit_download(transfer_id) {
+                Ok(()) => success_response(request_id, json!({})),
+                Err(error) => file_manager_error_response(request_id, error),
+            }
+        }
         Err(error) => file_manager_error_response(request_id, error),
     }
 }
@@ -1647,6 +1672,12 @@ fn transfer_abort_response(
 
     match state.files().abort_upload(transfer_id) {
         Ok(()) => success_response(request_id, json!({})),
+        Err(FileManagerError::TransferNotFound { .. }) => {
+            match state.files().abort_download(transfer_id) {
+                Ok(()) => success_response(request_id, json!({})),
+                Err(error) => file_manager_error_response(request_id, error),
+            }
+        }
         Err(error) => file_manager_error_response(request_id, error),
     }
 }

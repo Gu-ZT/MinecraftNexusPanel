@@ -8,6 +8,7 @@ mod download_error;
 mod download_manager;
 mod download_task;
 mod file_batch_operation;
+mod file_download;
 mod file_manager;
 mod file_manager_error;
 mod file_upload;
