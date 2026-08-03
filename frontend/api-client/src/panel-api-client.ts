@@ -230,6 +230,18 @@ export interface FileReadResult {
   eof: boolean;
 }
 
+export type FileTaskState = 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+
+export interface FileTask {
+  taskId: string;
+  kind: 'FILE_DELETE';
+  state: FileTaskState;
+  progress: number | null;
+  path?: string;
+  deleted?: boolean;
+  error?: string;
+}
+
 export interface VersionMetadataProvider {
   id: string;
   name: string;
@@ -399,6 +411,13 @@ export interface PanelApiClient {
     to: string,
     overwrite?: boolean,
   ): Promise<FileEntry>;
+  deleteInstanceFile(
+    coreId: string,
+    instanceId: string,
+    path: string,
+    recursive?: boolean,
+  ): Promise<TaskAccepted>;
+  getFileTask(coreId: string, taskId: string): Promise<FileTask>;
   listProxySubservers(coreId: string, proxyInstanceId: string): Promise<ProxySubserverPage>;
   upsertProxySubserver(
     coreId: string,
@@ -632,6 +651,21 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
           csrf: true,
           idempotent: true,
         },
+      );
+    },
+    deleteInstanceFile(coreId, instanceId, path, recursive = false) {
+      const query = new URLSearchParams({ path, confirmation: 'DELETE' });
+      if (recursive) {
+        query.set('recursive', 'true');
+      }
+      return request<TaskAccepted>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/files?${query.toString()}`,
+        { method: 'DELETE', csrf: true, idempotent: true },
+      );
+    },
+    getFileTask(coreId, taskId) {
+      return request<FileTask>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/file-tasks/${encodeURIComponent(taskId)}`,
       );
     },
     listProxySubservers(coreId, proxyInstanceId) {

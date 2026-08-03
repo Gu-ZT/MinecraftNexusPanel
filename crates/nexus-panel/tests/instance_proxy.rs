@@ -323,6 +323,86 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     assert_eq!(moved_file.body["kind"], "FILE");
     assert_eq!(moved_file.body["path"], "config/server/server.properties");
 
+    let non_recursive_delete = send_json_request(
+        panel_address,
+        "DELETE",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/panel-process/files?path=config/server/server.properties&confirmation=DELETE"
+        ),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        None,
+    )
+    .await;
+    assert_eq!(non_recursive_delete.status, 202);
+    let delete_task_id = non_recursive_delete.body["taskId"]
+        .as_str()
+        .expect("file deletion task ID is returned")
+        .to_owned();
+    let delete_task =
+        wait_for_file_task(panel_address, &authorization, &core_id, &delete_task_id).await;
+    assert_eq!(delete_task["state"], "SUCCEEDED");
+    assert_eq!(delete_task["deleted"], true);
+
+    let nested_file = send_raw_request(
+        panel_address,
+        "PUT",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/panel-process/file-content?path=config/server/nested.properties"
+        ),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        b"nested",
+    )
+    .await;
+    assert_eq!(nested_file.status, 200);
+
+    let rejected_non_recursive_delete = send_json_request(
+        panel_address,
+        "DELETE",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/panel-process/files?path=config/server&confirmation=DELETE"
+        ),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        None,
+    )
+    .await;
+    assert_eq!(rejected_non_recursive_delete.status, 409);
+    assert_eq!(
+        rejected_non_recursive_delete.body["error"]["code"],
+        "FILE_DIRECTORY_NOT_EMPTY"
+    );
+
+    let recursive_delete = send_json_request(
+        panel_address,
+        "DELETE",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/panel-process/files?path=config/server&confirmation=DELETE&recursive=true"
+        ),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        None,
+    )
+    .await;
+    assert_eq!(recursive_delete.status, 202);
+    let recursive_task_id = recursive_delete.body["taskId"]
+        .as_str()
+        .expect("recursive deletion task ID is returned")
+        .to_owned();
+    let recursive_task =
+        wait_for_file_task(panel_address, &authorization, &core_id, &recursive_task_id).await;
+    assert_eq!(recursive_task["state"], "SUCCEEDED");
+    assert_eq!(recursive_task["path"], "config/server");
+
     let invalid_file = send_json_request(
         panel_address,
         "GET",
@@ -664,6 +744,33 @@ async fn wait_for_log_line(
     })
     .await
     .expect("expected log line is visible through the Panel REST API")
+}
+
+async fn wait_for_file_task(
+    address: SocketAddr,
+    authorization: &str,
+    core_id: &str,
+    task_id: &str,
+) -> Value {
+    timeout(Duration::from_secs(5), async {
+        loop {
+            let response = send_json_request(
+                address,
+                "GET",
+                &format!("/api/v1/cores/{core_id}/file-tasks/{task_id}"),
+                &[("Authorization", authorization)],
+                None,
+            )
+            .await;
+            assert_eq!(response.status, 200);
+            if response.body["state"] != "RUNNING" {
+                return response.body;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("file task finishes before the timeout")
 }
 
 async fn stop_panel(server_task: JoinHandle<Result<(), PanelError>>) {

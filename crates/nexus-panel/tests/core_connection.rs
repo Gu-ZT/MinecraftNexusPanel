@@ -16,9 +16,11 @@ use nexus_domain::InstanceState;
 use nexus_domain::LaunchConfig;
 use nexus_domain::ProxySubserver;
 use nexus_domain::RequestId;
+use nexus_domain::TaskId;
 use nexus_panel::CoreConnection;
 use nexus_panel::CoreConnectionError;
 use nexus_protocol::PresharedKey;
+use serde_json::Value;
 use tempfile::tempdir;
 use tokio::spawn;
 use tokio::time::sleep;
@@ -129,6 +131,27 @@ async fn connects_to_a_core_and_reads_its_system_info() {
         .await
         .expect("Core moves an instance file");
     assert_eq!(moved.path(), "config/server/server.properties");
+    let delete_task_id = connection
+        .delete_instance_file(
+            definition.id(),
+            "config/server/server.properties",
+            false,
+            &RequestId::new().to_string(),
+        )
+        .await
+        .expect("Core accepts an instance file deletion");
+    let delete_task = wait_for_file_task(&mut connection, delete_task_id).await;
+    assert_eq!(delete_task["kind"], "FILE_DELETE");
+    assert_eq!(delete_task["state"], "SUCCEEDED");
+    assert_eq!(delete_task["deleted"], true);
+    assert!(
+        connection
+            .list_instance_files(definition.id(), "config/server", None, None)
+            .await
+            .expect("Core lists the deleted file directory")
+            .items()
+            .is_empty()
+    );
     let invalid_path = connection
         .list_instance_files(definition.id(), "../outside", None, None)
         .await
@@ -343,6 +366,23 @@ async fn wait_for_logs(
     })
     .await
     .expect("Panel observes the expected log line before the timeout")
+}
+
+async fn wait_for_file_task(connection: &mut CoreConnection, task_id: TaskId) -> Value {
+    timeout(Duration::from_secs(5), async {
+        loop {
+            let task = connection
+                .get_file_task(&task_id)
+                .await
+                .expect("Core returns the file task");
+            if task["state"] != "RUNNING" {
+                return task;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("file task finishes before the timeout")
 }
 
 fn instance_create(identifier: &str) -> InstanceCreate {

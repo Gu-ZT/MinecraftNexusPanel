@@ -301,6 +301,16 @@ pub(crate) fn registry_error_response(error: CoreRegistryError, request_id: Requ
             )
         }
         CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "FILE_TASK_NOT_FOUND" =>
+        {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "FILE_TASK_NOT_FOUND",
+                "File task does not exist",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
             if code == "RUNTIME_NOT_FOUND" =>
         {
             error_response(

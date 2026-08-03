@@ -23,6 +23,7 @@ use nexus_domain::FileContent;
 use nexus_domain::FileEntry;
 use nexus_domain::InstanceId;
 use nexus_domain::RequestId;
+use nexus_domain::TaskId;
 use serde_json::Value;
 
 use crate::PanelState;
@@ -39,7 +40,7 @@ pub(crate) fn file_routes() -> Router<PanelState> {
     Router::new()
         .route(
             "/api/v1/cores/{core_id}/instances/{instance_id}/files",
-            get(list_instance_files),
+            get(list_instance_files).delete(delete_instance_file),
         )
         .route(
             "/api/v1/cores/{core_id}/instances/{instance_id}/directories",
@@ -48,6 +49,10 @@ pub(crate) fn file_routes() -> Router<PanelState> {
         .route(
             "/api/v1/cores/{core_id}/instances/{instance_id}/file-actions/move",
             post(move_instance_file),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/file-tasks/{task_id}",
+            get(get_file_task),
         )
         .route(
             "/api/v1/cores/{core_id}/instances/{instance_id}/file-content",
@@ -87,6 +92,65 @@ async fn list_instance_files(
         .await
     {
         Ok(page) => Json(page).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn delete_instance_file(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, instance_id)): Path<(String, String)>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Some(path) = query.get("path").filter(|path| !path.is_empty()) else {
+        return validation_error(request_id);
+    };
+    if query.get("confirmation").map(String::as_str) != Some("DELETE") {
+        return validation_error(request_id);
+    }
+    let recursive = match query_boolean(&query, "recursive") {
+        Ok(value) => value.unwrap_or(false),
+        Err(()) => return validation_error(request_id),
+    };
+    let Some(idempotency_key) = idempotency_key(&headers) else {
+        return precondition_required_response(request_id);
+    };
+    let Some((core_id, instance_id)) = parse_ids(&core_id, &instance_id) else {
+        return validation_error(request_id);
+    };
+
+    match state
+        .cores()
+        .delete_instance_file(core_id, &instance_id, path, recursive, idempotency_key)
+        .await
+    {
+        Ok(task) => (StatusCode::ACCEPTED, Json(task)).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn get_file_task(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, task_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, false, request_id).await {
+        return response;
+    }
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return validation_error(request_id);
+    };
+    let Ok(task_id) = task_id.parse::<TaskId>() else {
+        return validation_error(request_id);
+    };
+
+    match state.cores().get_file_task(core_id, &task_id).await {
+        Ok(task) => Json(task).into_response(),
         Err(error) => registry_error_response(error, request_id),
     }
 }
@@ -354,6 +418,13 @@ fn optional_boolean(payload: &Value, name: &str) -> Result<Option<bool>, ()> {
         None => Ok(None),
         Some(Value::Bool(value)) => Ok(Some(*value)),
         Some(_) => Err(()),
+    }
+}
+
+fn query_boolean(query: &HashMap<String, String>, name: &str) -> Result<Option<bool>, ()> {
+    match query.get(name) {
+        None => Ok(None),
+        Some(value) => value.parse::<bool>().map(Some).map_err(|_| ()),
     }
 }
 

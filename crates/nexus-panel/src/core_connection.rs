@@ -700,6 +700,35 @@ impl CoreConnection {
         from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "fileEntry" })
     }
 
+    pub async fn delete_instance_file(
+        &mut self,
+        instance_id: &InstanceId,
+        path: &str,
+        recursive: bool,
+        idempotency_key: &str,
+    ) -> Result<TaskId, CoreConnectionError> {
+        let result = self
+            .request_with_idempotency(
+                "file.delete",
+                json!({
+                    "instanceId": instance_id,
+                    "path": path,
+                    "recursive": recursive,
+                    "confirmation": "DELETE",
+                }),
+                Some(idempotency_key),
+            )
+            .await?;
+        let task_id = response_field(&result, "taskId")?;
+
+        from_value(task_id).map_err(|_| CoreConnectionError::InvalidResponse { field: "taskId" })
+    }
+
+    pub async fn get_file_task(&mut self, task_id: &TaskId) -> Result<Value, CoreConnectionError> {
+        self.request("file.task.get", json!({ "taskId": task_id }))
+            .await
+    }
+
     async fn request(&mut self, method: &str, params: Value) -> Result<Value, CoreConnectionError> {
         self.request_with_idempotency(method, params, None).await
     }

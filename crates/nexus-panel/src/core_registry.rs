@@ -730,6 +730,40 @@ impl CoreRegistry {
             .await?)
     }
 
+    pub async fn delete_instance_file(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        path: &str,
+        recursive: bool,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        let task_id = connection
+            .delete_instance_file(instance_id, path, recursive, idempotency_key)
+            .await?;
+        Ok(task_accepted_json(task_id))
+    }
+
+    pub async fn get_file_task(
+        &self,
+        core_id: CoreId,
+        task_id: &TaskId,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection.get_file_task(task_id).await?)
+    }
+
     async fn find(&self, core_id: CoreId) -> Result<Arc<ManagedCore>, CoreRegistryError> {
         self.entries
             .read()
