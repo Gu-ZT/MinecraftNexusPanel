@@ -54,9 +54,20 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     )
     .await;
     assert_eq!(templates.status, 200);
-    assert_eq!(templates.body["items"].as_array().map(Vec::len), Some(4));
+    assert_eq!(templates.body["items"].as_array().map(Vec::len), Some(29));
     assert_eq!(templates.body["items"][0]["id"], "vanilla");
     assert_eq!(templates.body["items"][3]["id"], "fabric");
+    assert_eq!(templates.body["items"][12]["id"], "mohist");
+    assert_eq!(
+        templates.body["items"][12]["extensionLayouts"][0]["kind"],
+        "PLUGIN"
+    );
+    assert_eq!(
+        templates.body["items"][12]["extensionLayouts"][1]["kind"],
+        "MOD"
+    );
+    assert_eq!(templates.body["items"][24]["id"], "geyser");
+    assert_eq!(templates.body["items"][24]["proxyTopology"], "ONE_TO_ONE");
 
     let missing_template = send_json_request(
         panel_address,

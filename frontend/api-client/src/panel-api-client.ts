@@ -21,10 +21,49 @@ interface ErrorBody {
 
 export type ClientType = 'BROWSER' | 'NATIVE';
 export type CoreStatus = 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'INCOMPATIBLE' | 'AUTH_FAILED' | 'UNKNOWN';
-export type InstanceKind = 'VANILLA' | 'PAPER' | 'VELOCITY' | 'FABRIC' | 'CUSTOM' | 'UNKNOWN';
+export type InstanceKind =
+  | 'VANILLA'
+  | 'PAPER'
+  | 'VELOCITY'
+  | 'FABRIC'
+  | 'NEO_FORGE'
+  | 'FORGE'
+  | 'BUKKIT'
+  | 'SPIGOT'
+  | 'PURPUR'
+  | 'PUFFERFISH'
+  | 'FOLIA'
+  | 'LEAF'
+  | 'MOHIST'
+  | 'MAGMA'
+  | 'SPONGE'
+  | 'ARCLIGHT'
+  | 'YOUER'
+  | 'ASYNC_YOUER'
+  | 'SILKARD'
+  | 'CAT_SERVER'
+  | 'LINGSHU'
+  | 'WATERFALL'
+  | 'BUNGEE_CORD'
+  | 'LIGHTFALL'
+  | 'GEYSER'
+  | 'BEDROCK_DEDICATED_SERVER'
+  | 'POCKET_MINE_MP'
+  | 'NUKKIT'
+  | 'CLOUDBURST_NUKKIT'
+  | 'CUSTOM'
+  | 'UNKNOWN';
 export type InstanceState = 'CREATED' | 'STARTING' | 'RUNNING' | 'STOPPING' | 'STOPPED' | 'FAILED' | 'UNKNOWN';
 export type LogStream = 'stdout' | 'stderr' | 'system';
 export type RuntimeKind = 'JAVA' | 'NODE_JS' | 'PYTHON';
+export type InstallRuntimeRequirement = 'JAVA' | 'NODE_JS' | 'PYTHON' | 'PHP' | 'NATIVE';
+export type InstallTemplateFamily = 'JAVA_SERVER' | 'JAVA_PROXY' | 'BEDROCK_SERVER' | 'BEDROCK_PROXY';
+export type ProxyTopology = 'NONE' | 'ONE_TO_MANY' | 'ONE_TO_ONE';
+export type ExtensionKind = 'PLUGIN' | 'MOD';
+export interface InstallTemplateExtensionLayout {
+  kind: ExtensionKind;
+  directories: string[];
+}
 export type RuntimeSource = 'MANAGED' | 'SYSTEM';
 export type RuntimeValidation = 'VALID' | 'INVALID';
 export type InstallTemplateVersionKind = 'GAME' | 'LOADER' | 'SERVER';
@@ -97,7 +136,10 @@ export interface InstallTemplate {
   id: string;
   name: string;
   instanceKind: InstanceKind;
-  requiredRuntime: RuntimeKind;
+  family: InstallTemplateFamily;
+  requiredRuntime: InstallRuntimeRequirement;
+  proxyTopology: ProxyTopology;
+  extensionLayouts: InstallTemplateExtensionLayout[];
   metadataProviders: VersionMetadataProvider[];
 }
 
