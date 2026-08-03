@@ -71,7 +71,20 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             ],
         )
         .with_extension_layouts(mod_layout()),
-        java_server("neoforge", "NeoForge", InstanceKind::NeoForge, mod_layout()),
+        template(
+            "neoforge",
+            "NeoForge",
+            InstanceKind::NeoForge,
+            InstallTemplateFamily::JavaServer,
+            InstallRuntimeRequirement::Java,
+            ProxyTopology::None,
+            vec![provider(
+                "neoforge-maven-service",
+                "NeoForge Maven service",
+                "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml",
+            )],
+        )
+        .with_extension_layouts(mod_layout()),
         template(
             "forge",
             "Forge",
@@ -102,12 +115,42 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             )],
         )
         .with_extension_layouts(plugin_layout()),
-        java_server(
+        template(
             "pufferfish",
             "Pufferfish",
             InstanceKind::Pufferfish,
-            plugin_layout(),
-        ),
+            InstallTemplateFamily::JavaServer,
+            InstallRuntimeRequirement::Java,
+            ProxyTopology::None,
+            vec![
+                provider(
+                    "pufferfish-1.21-jenkins-service",
+                    "Pufferfish 1.21 Jenkins service",
+                    "https://ci.pufferfish.host/job/Pufferfish-1.21/api/json?tree=builds[number,url,result,artifacts[relativePath]]",
+                ),
+                provider(
+                    "pufferfish-1.20-jenkins-service",
+                    "Pufferfish 1.20 Jenkins service",
+                    "https://ci.pufferfish.host/job/Pufferfish-1.20/api/json?tree=builds[number,url,result,artifacts[relativePath]]",
+                ),
+                provider(
+                    "pufferfish-1.19-jenkins-service",
+                    "Pufferfish 1.19 Jenkins service",
+                    "https://ci.pufferfish.host/job/Pufferfish-1.19/api/json?tree=builds[number,url,result,artifacts[relativePath]]",
+                ),
+                provider(
+                    "pufferfish-1.18-jenkins-service",
+                    "Pufferfish 1.18 Jenkins service",
+                    "https://ci.pufferfish.host/job/Pufferfish-1.18/api/json?tree=builds[number,url,result,artifacts[relativePath]]",
+                ),
+                provider(
+                    "pufferfish-1.17-jenkins-service",
+                    "Pufferfish 1.17 Jenkins service",
+                    "https://ci.pufferfish.host/job/Pufferfish-1.17/api/json?tree=builds[number,url,result,artifacts[relativePath]]",
+                ),
+            ],
+        )
+        .with_extension_layouts(plugin_layout()),
         template(
             "folia",
             "Folia",
@@ -122,7 +165,20 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             )],
         )
         .with_extension_layouts(plugin_layout()),
-        java_server("leaf", "Leaf", InstanceKind::Leaf, plugin_layout()),
+        template(
+            "leaf",
+            "Leaf",
+            InstanceKind::Leaf,
+            InstallTemplateFamily::JavaServer,
+            InstallRuntimeRequirement::Java,
+            ProxyTopology::None,
+            vec![provider(
+                "leaf-github-releases",
+                "Leaf GitHub releases",
+                "https://api.github.com/repos/Winds-Studio/Leaf/releases?per_page=100",
+            )],
+        )
+        .with_extension_layouts(plugin_layout()),
         java_server("mohist", "Mohist", InstanceKind::Mohist, hybrid_layout()),
         java_server("magma", "Magma", InstanceKind::Magma, hybrid_layout()),
         java_server("sponge", "Sponge", InstanceKind::Sponge, sponge_layout()),
@@ -400,6 +456,33 @@ mod tests {
                 .metadata_providers()[0]
                 .url(),
             "https://files.minecraftforge.net/net/minecraftforge/forge/maven-metadata.json"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "neoforge")
+                .expect("NeoForge template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "pufferfish")
+                .expect("Pufferfish template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://ci.pufferfish.host/job/Pufferfish-1.21/api/json?tree=builds[number,url,result,artifacts[relativePath]]"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "leaf")
+                .expect("Leaf template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://api.github.com/repos/Winds-Studio/Leaf/releases?per_page=100"
         );
         assert_eq!(
             templates

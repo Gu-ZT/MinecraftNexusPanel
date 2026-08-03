@@ -2174,6 +2174,7 @@ dependencies = [
  "nexus-domain",
  "nexus-protocol",
  "nexus-storage",
+ "quick-xml",
  "reqwest",
  "rustls",
  "serde",
