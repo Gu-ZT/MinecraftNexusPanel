@@ -724,6 +724,27 @@ impl CoreConnection {
         from_value(task_id).map_err(|_| CoreConnectionError::InvalidResponse { field: "taskId" })
     }
 
+    pub async fn batch_instance_files(
+        &mut self,
+        instance_id: &InstanceId,
+        operations: Vec<Value>,
+        idempotency_key: &str,
+    ) -> Result<TaskId, CoreConnectionError> {
+        let result = self
+            .request_with_idempotency(
+                "file.batch",
+                json!({
+                    "instanceId": instance_id,
+                    "operations": operations,
+                }),
+                Some(idempotency_key),
+            )
+            .await?;
+        let task_id = response_field(&result, "taskId")?;
+
+        from_value(task_id).map_err(|_| CoreConnectionError::InvalidResponse { field: "taskId" })
+    }
+
     pub async fn get_file_task(&mut self, task_id: &TaskId) -> Result<Value, CoreConnectionError> {
         self.request("file.task.get", json!({ "taskId": task_id }))
             .await

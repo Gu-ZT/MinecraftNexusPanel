@@ -29,10 +29,12 @@ use time::format_description::well_known::Rfc3339;
 use tokio::spawn;
 use tokio::task::spawn_blocking;
 
+use crate::FileBatchOperation;
 use crate::FileManagerError;
 
 pub const MAXIMUM_FILE_READ_BYTES: usize = 32 * 1024;
 pub const MAXIMUM_FILE_WRITE_BYTES: usize = 1024 * 1024;
+pub const MAXIMUM_FILE_BATCH_OPERATIONS: usize = 64;
 const DEFAULT_FILE_LIST_LIMIT: usize = 50;
 const MAXIMUM_FILE_LIST_LIMIT: usize = 200;
 
@@ -472,6 +474,59 @@ impl FileManager {
         Ok(task_id)
     }
 
+    pub(crate) fn start_batch(
+        &self,
+        instance: &Instance,
+        operations: Vec<FileBatchOperation>,
+    ) -> Result<TaskId, FileManagerError> {
+        if operations.is_empty() || operations.len() > MAXIMUM_FILE_BATCH_OPERATIONS {
+            return Err(FileManagerError::InvalidPath {
+                path: format!("operations={}", operations.len()),
+            });
+        }
+
+        let task_id = TaskId::new();
+        let total = operations.len();
+        {
+            let mut tasks = self
+                .tasks
+                .lock()
+                .map_err(|_| FileManagerError::TaskStorePoisoned)?;
+            if tasks.len() >= 512 {
+                tasks.clear();
+            }
+            tasks.insert(
+                task_id,
+                json!({
+                    "taskId": task_id,
+                    "kind": "FILE_BATCH",
+                    "state": "RUNNING",
+                    "progress": { "completed": 0, "total": total },
+                    "results": [],
+                }),
+            );
+        }
+
+        let manager = self.clone();
+        let worker = manager.clone();
+        let instance = instance.clone();
+        spawn(async move {
+            let result =
+                spawn_blocking(move || worker.execute_batch(&instance, task_id, operations)).await;
+            match result {
+                Ok(Ok(results)) => manager.finish_batch_task(task_id, Ok(results)),
+                Ok(Err((results, failed_index, error))) => {
+                    manager.finish_batch_task(task_id, Err((results, failed_index, error)));
+                }
+                Err(error) => {
+                    manager.finish_batch_task(task_id, Err((Vec::new(), 0, error.to_string())))
+                }
+            }
+        });
+
+        Ok(task_id)
+    }
+
     pub fn task(&self, task_id: TaskId) -> Result<Option<Value>, FileManagerError> {
         let tasks = self
             .tasks
@@ -559,6 +614,61 @@ impl FileManager {
         Ok(())
     }
 
+    fn execute_batch(
+        &self,
+        instance: &Instance,
+        task_id: TaskId,
+        operations: Vec<FileBatchOperation>,
+    ) -> Result<Vec<Value>, (Vec<Value>, usize, String)> {
+        let total = operations.len();
+        let mut results = Vec::with_capacity(total);
+        for (index, operation) in operations.into_iter().enumerate() {
+            let result = match operation {
+                FileBatchOperation::CreateDirectory { path, recursive } => self
+                    .mkdir(instance, &path, recursive)
+                    .map(|entry| json!({ "entry": entry })),
+                FileBatchOperation::Move {
+                    from,
+                    to,
+                    overwrite,
+                } => self
+                    .move_entry(instance, &from, &to, overwrite)
+                    .map(|entry| json!({ "entry": entry })),
+                FileBatchOperation::Write {
+                    path,
+                    content,
+                    expected_sha256,
+                } => self
+                    .write(instance, &path, &content, expected_sha256.as_deref())
+                    .map(|entry| json!({ "entry": entry })),
+                FileBatchOperation::Delete { path, recursive } => self
+                    .delete_sync(instance, &path, recursive)
+                    .map(|()| json!({ "path": path, "deleted": true })),
+            };
+
+            match result {
+                Ok(result) => {
+                    results.push(json!({
+                        "index": index,
+                        "state": "SUCCEEDED",
+                        "result": result,
+                    }));
+                    self.update_batch_progress(task_id, index + 1, total);
+                }
+                Err(error) => {
+                    results.push(json!({
+                        "index": index,
+                        "state": "FAILED",
+                        "error": error.to_string(),
+                    }));
+                    return Err((results, index, error.to_string()));
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
     fn finish_delete_task(&self, task_id: TaskId, result: Result<Value, String>) {
         let Ok(mut tasks) = self.tasks.lock() else {
             return;
@@ -578,6 +688,43 @@ impl FileManager {
             Err(error) => {
                 task["state"] = json!("FAILED");
                 task["error"] = json!(error);
+            }
+        }
+    }
+
+    fn update_batch_progress(&self, task_id: TaskId, completed: usize, total: usize) {
+        let Ok(mut tasks) = self.tasks.lock() else {
+            return;
+        };
+        let Some(task) = tasks.get_mut(&task_id) else {
+            return;
+        };
+        task["progress"] = json!({ "completed": completed, "total": total });
+    }
+
+    fn finish_batch_task(
+        &self,
+        task_id: TaskId,
+        result: Result<Vec<Value>, (Vec<Value>, usize, String)>,
+    ) {
+        let Ok(mut tasks) = self.tasks.lock() else {
+            return;
+        };
+        let Some(task) = tasks.get_mut(&task_id) else {
+            return;
+        };
+        match result {
+            Ok(results) => {
+                let total = results.len();
+                task["state"] = json!("SUCCEEDED");
+                task["progress"] = json!({ "completed": total, "total": total });
+                task["results"] = json!(results);
+            }
+            Err((results, failed_index, error)) => {
+                task["state"] = json!("FAILED");
+                task["failedIndex"] = json!(failed_index);
+                task["error"] = json!(error);
+                task["results"] = json!(results);
             }
         }
     }

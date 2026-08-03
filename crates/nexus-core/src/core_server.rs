@@ -42,6 +42,7 @@ use tokio_rustls::TlsAcceptor;
 use crate::CoreError;
 use crate::CoreRequestState;
 use crate::CoreTlsIdentity;
+use crate::FileBatchOperation;
 use crate::FileManager;
 use crate::FileManagerError;
 use crate::InstanceProcessError;
@@ -54,6 +55,7 @@ use crate::ProxySubserverRepository;
 use crate::ProxySubserverRepositoryError;
 use crate::RuntimeManager;
 use crate::RuntimeManagerError;
+use crate::file_manager::MAXIMUM_FILE_BATCH_OPERATIONS;
 use crate::file_manager::MAXIMUM_FILE_READ_BYTES;
 
 const CORE_CAPABILITIES: [&str; 8] = [
@@ -454,6 +456,7 @@ async fn request_response(
         "file.mkdir" => file_mkdir_response(request_id, params, idempotency_key, state),
         "file.move" => file_move_response(request_id, params, idempotency_key, state),
         "file.delete" => file_delete_response(request_id, params, idempotency_key, state),
+        "file.batch" => file_batch_response(request_id, params, idempotency_key, state),
         "file.task.get" => file_task_response(request_id, params, state),
         "file.write" => file_write_response(request_id, params, idempotency_key, state),
         "instance.start" => {
@@ -1301,6 +1304,57 @@ fn file_delete_response(
     };
 
     match state.files().start_delete(&instance, path, recursive) {
+        Ok(task_id) => task_accepted_response(request_id, task_id),
+        Err(error) => file_manager_error_response(request_id, error),
+    }
+}
+
+fn file_batch_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    state: &CoreRequestState,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.batch requires a valid instanceId",
+        );
+    };
+    let Some(operation_values) = params.get("operations").and_then(Value::as_array) else {
+        return error_response(request_id, "BAD_REQUEST", "file.batch requires operations");
+    };
+    if operation_values.is_empty() || operation_values.len() > MAXIMUM_FILE_BATCH_OPERATIONS {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.batch operation count is invalid",
+        );
+    }
+    let Ok(operations) = operation_values
+        .iter()
+        .map(FileBatchOperation::from_value)
+        .collect::<Result<Vec<_>, _>>()
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.batch contains an invalid operation",
+        );
+    };
+    let instance = match state.instances().get(&instance_id) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            return error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist");
+        }
+        Err(error) => return repository_failure_response(request_id, &error),
+    };
+
+    match state.files().start_batch(&instance, operations) {
         Ok(task_id) => task_accepted_response(request_id, task_id),
         Err(error) => file_manager_error_response(request_id, error),
     }

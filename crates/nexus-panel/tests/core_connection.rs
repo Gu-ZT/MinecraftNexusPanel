@@ -21,6 +21,7 @@ use nexus_panel::CoreConnection;
 use nexus_panel::CoreConnectionError;
 use nexus_protocol::PresharedKey;
 use serde_json::Value;
+use serde_json::json;
 use tempfile::tempdir;
 use tokio::spawn;
 use tokio::time::sleep;
@@ -98,6 +99,43 @@ async fn connects_to_a_core_and_reads_its_system_info() {
         .expect("Core writes an instance file");
     assert_eq!(written.kind(), FileKind::File);
     assert_eq!(written.path(), "server.properties");
+    let batch_task_id = connection
+        .batch_instance_files(
+            definition.id(),
+            vec![
+                json!({ "kind": "MKDIR", "path": "batch", "recursive": true }),
+                json!({
+                    "kind": "WRITE",
+                    "path": "batch/source.txt",
+                    "dataBase64": "YmF0Y2g="
+                }),
+                json!({
+                    "kind": "MOVE",
+                    "from": "batch/source.txt",
+                    "to": "batch/renamed.txt"
+                }),
+                json!({
+                    "kind": "DELETE",
+                    "path": "batch/renamed.txt",
+                    "confirmation": "DELETE"
+                }),
+                json!({
+                    "kind": "DELETE",
+                    "path": "batch",
+                    "recursive": true,
+                    "confirmation": "DELETE"
+                }),
+            ],
+            &RequestId::new().to_string(),
+        )
+        .await
+        .expect("Core accepts a batch file task");
+    let batch_task = wait_for_file_task(&mut connection, batch_task_id).await;
+    assert_eq!(batch_task["kind"], "FILE_BATCH");
+    assert_eq!(batch_task["state"], "SUCCEEDED");
+    assert_eq!(batch_task["progress"]["completed"], 5);
+    assert_eq!(batch_task["progress"]["total"], 5);
+    assert_eq!(batch_task["results"].as_array().map(Vec::len), Some(5));
     let files = connection
         .list_instance_files(definition.id(), "", None, None)
         .await
