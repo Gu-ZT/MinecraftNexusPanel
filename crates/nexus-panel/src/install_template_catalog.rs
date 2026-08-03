@@ -230,12 +230,20 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             hybrid_layout(),
         ),
         java_server("silkard", "Silkard", InstanceKind::Silkard, hybrid_layout()),
-        java_server(
+        template(
             "catserver",
             "CatServer",
             InstanceKind::CatServer,
-            hybrid_layout(),
-        ),
+            InstallTemplateFamily::JavaServer,
+            InstallRuntimeRequirement::Java,
+            ProxyTopology::None,
+            vec![provider(
+                "catserver-github-releases",
+                "CatServer GitHub releases",
+                "https://api.github.com/repos/Luohuayu/CatServer/releases?per_page=100",
+            )],
+        )
+        .with_extension_layouts(hybrid_layout()),
         java_server("lingshu", "Lingshu", InstanceKind::Lingshu, hybrid_layout()),
         java_proxy(
             "waterfall",
@@ -261,7 +269,11 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             "lightfall",
             "Lightfall",
             InstanceKind::Lightfall,
-            Vec::new(),
+            vec![provider(
+                "lightfall-github-releases",
+                "Lightfall GitHub releases",
+                "https://api.github.com/repos/ArclightPowered/lightfall/releases?per_page=100",
+            )],
         ),
         template(
             "geyser",
@@ -551,6 +563,15 @@ mod tests {
         assert_eq!(
             templates
                 .iter()
+                .find(|template| template.id() == "catserver")
+                .expect("CatServer template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://api.github.com/repos/Luohuayu/CatServer/releases?per_page=100"
+        );
+        assert_eq!(
+            templates
+                .iter()
                 .find(|template| template.id() == "sponge")
                 .expect("Sponge template exists")
                 .metadata_providers()[0]
@@ -592,6 +613,15 @@ mod tests {
                 .metadata_providers()[0]
                 .url(),
             "https://hub.spigotmc.org/jenkins/job/BungeeCord/api/json?tree=builds[number,url,result]"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "lightfall")
+                .expect("Lightfall template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://api.github.com/repos/ArclightPowered/lightfall/releases?per_page=100"
         );
         assert_eq!(
             templates

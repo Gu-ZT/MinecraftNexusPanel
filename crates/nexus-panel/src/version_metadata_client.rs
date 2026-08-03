@@ -35,10 +35,12 @@ const PUFFERFISH_PROVIDER_IDS: [&str; 5] = [
 const MAGMA_PROVIDER_ID: &str = "magma-github-releases";
 const SPONGE_PROVIDER_ID: &str = "sponge-github-releases";
 const ARCLIGHT_PROVIDER_ID: &str = "arclight-github-releases";
+const CATSERVER_PROVIDER_ID: &str = "catserver-github-releases";
 const VELOCITY_PROVIDER_ID: &str = "velocity-downloads-service";
 const FOLIA_PROVIDER_ID: &str = "folia-downloads-service";
 const WATERFALL_PROVIDER_ID: &str = "waterfall-downloads-service";
 const BUNGEECORD_PROVIDER_ID: &str = "bungeecord-jenkins-service";
+const LIGHTFALL_PROVIDER_ID: &str = "lightfall-github-releases";
 const GEYSER_PROVIDER_ID: &str = "geyser-version-service";
 const LEAF_PROVIDER_ID: &str = "leaf-github-releases";
 const POCKETMINE_PROVIDER_ID: &str = "pocketmine-github-releases";
@@ -123,6 +125,12 @@ impl VersionMetadataClient {
 
                 parse_github_release_versions(provider, &metadata, &[".jar"], false)
             }
+            "catserver" => {
+                let provider = provider(template, CATSERVER_PROVIDER_ID)?;
+                let metadata = self.fetch(provider).await?;
+
+                parse_github_release_versions(provider, &metadata, &[".jar"], false)
+            }
             "pufferfish" => {
                 let mut versions = Vec::new();
                 for provider_id in PUFFERFISH_PROVIDER_IDS {
@@ -156,6 +164,12 @@ impl VersionMetadataClient {
                 let metadata = self.fetch(provider).await?;
 
                 parse_bungeecord_versions(provider, &metadata)
+            }
+            "lightfall" => {
+                let provider = provider(template, LIGHTFALL_PROVIDER_ID)?;
+                let metadata = self.fetch(provider).await?;
+
+                parse_github_release_versions(provider, &metadata, &[".jar"], false)
             }
             "geyser" => {
                 let provider = provider(template, GEYSER_PROVIDER_ID)?;
