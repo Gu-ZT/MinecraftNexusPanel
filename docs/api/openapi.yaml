@@ -47,6 +47,32 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /install-templates/{templateId}/versions:
+    get:
+      tags: [ Install templates ]
+      operationId: listInstallTemplateVersions
+      summary: Resolve the current official versions for an install template
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      responses:
+        '200':
+          description: Parsed official game, loader, or server versions for the template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallTemplateVersionPage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          description: An official version metadata source could not be queried or parsed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /health/live:
     get:
       tags: [ System ]
@@ -933,6 +959,12 @@ components:
       required: true
       schema:
         type: string
+    TemplateId:
+      name: templateId
+      in: path
+      required: true
+      schema:
+        type: string
     InstanceId:
       name: instanceId
       in: path
@@ -1348,6 +1380,32 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/InstallTemplate'
+    InstallTemplateVersionKind:
+      type: string
+      enum: [ GAME, LOADER, SERVER ]
+    InstallTemplateVersion:
+      type: object
+      required: [ id, providerId, kind, stable, metadataUrl ]
+      properties:
+        id:
+          type: string
+        providerId:
+          type: string
+        kind:
+          $ref: '#/components/schemas/InstallTemplateVersionKind'
+        stable:
+          type: boolean
+        metadataUrl:
+          type: [ string, 'null' ]
+          format: uri
+    InstallTemplateVersionPage:
+      type: object
+      required: [ items ]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InstallTemplateVersion'
     InstanceKind:
       type: string
       enum: [ VANILLA, PAPER, VELOCITY, FABRIC, CUSTOM, UNKNOWN ]

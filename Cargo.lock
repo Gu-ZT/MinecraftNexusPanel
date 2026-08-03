@@ -2157,6 +2157,8 @@ dependencies = [
  "nexus-domain",
  "nexus-protocol",
  "nexus-storage",
+ "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "sha1",

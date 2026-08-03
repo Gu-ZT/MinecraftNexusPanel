@@ -27,6 +27,7 @@ use crate::CoreRegistry;
 use crate::PanelError;
 use crate::PanelState;
 use crate::SecretCipher;
+use crate::VersionMetadataClient;
 use crate::auth_routes::auth_routes;
 use crate::core_routes::core_routes;
 use crate::environment_routes::environment_routes;
@@ -62,6 +63,7 @@ impl PanelServer {
             );
         }
         let cores = CoreRegistry::new(store, SecretCipher::new(master_key), panel_id)?;
+        let version_metadata = VersionMetadataClient::new()?;
         if let Some(local_core) = config.local_core() {
             cores.ensure_local_core(local_core).await?;
         }
@@ -79,7 +81,7 @@ impl PanelServer {
         Ok(Self {
             listen_address,
             listener,
-            state: PanelState::new(auth, cores),
+            state: PanelState::new(auth, cores, version_metadata),
         })
     }
 

@@ -6,6 +6,7 @@ use thiserror::Error;
 
 use crate::AuthError;
 use crate::CoreRegistryError;
+use crate::VersionMetadataError;
 
 #[derive(Debug, Error)]
 pub enum PanelError {
@@ -25,4 +26,6 @@ pub enum PanelError {
     MissingPanelMasterKey,
     #[error(transparent)]
     Storage(#[from] StorageError),
+    #[error(transparent)]
+    VersionMetadata(#[from] VersionMetadataError),
 }

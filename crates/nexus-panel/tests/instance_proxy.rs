@@ -58,6 +58,17 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     assert_eq!(templates.body["items"][0]["id"], "vanilla");
     assert_eq!(templates.body["items"][3]["id"], "fabric");
 
+    let missing_template = send_json_request(
+        panel_address,
+        "GET",
+        "/api/v1/install-templates/missing/versions",
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(missing_template.status, 404);
+    assert_eq!(missing_template.body["error"]["code"], "NOT_FOUND");
+
     let core_id = register_core(panel_address, &authorization, core_address).await;
 
     let runtimes = send_json_request(

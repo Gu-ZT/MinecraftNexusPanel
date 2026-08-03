@@ -27,6 +27,7 @@ export type LogStream = 'stdout' | 'stderr' | 'system';
 export type RuntimeKind = 'JAVA' | 'NODE_JS' | 'PYTHON';
 export type RuntimeSource = 'MANAGED' | 'SYSTEM';
 export type RuntimeValidation = 'VALID' | 'INVALID';
+export type InstallTemplateVersionKind = 'GAME' | 'LOADER' | 'SERVER';
 
 export interface User {
   id: string;
@@ -104,6 +105,18 @@ export interface InstallTemplatePage {
   items: InstallTemplate[];
 }
 
+export interface InstallTemplateVersion {
+  id: string;
+  providerId: string;
+  kind: InstallTemplateVersionKind;
+  stable: boolean;
+  metadataUrl: string | null;
+}
+
+export interface InstallTemplateVersionPage {
+  items: InstallTemplateVersion[];
+}
+
 export interface LaunchConfig {
   executable: string;
   args: string[];
@@ -179,6 +192,7 @@ export interface PanelApiClient {
   logout(): Promise<void>;
   listCores(): Promise<CorePage>;
   listInstallTemplates(): Promise<InstallTemplatePage>;
+  listInstallTemplateVersions(templateId: string): Promise<InstallTemplateVersionPage>;
   listManagedRuntimes(coreId: string): Promise<ManagedRuntimePage>;
   listInstances(coreId: string): Promise<InstancePage>;
   updateInstance(coreId: string, instanceId: string, update: InstanceUpdate, revision: number): Promise<Instance>;
@@ -265,6 +279,11 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     },
     listInstallTemplates() {
       return request<InstallTemplatePage>('/api/v1/install-templates');
+    },
+    listInstallTemplateVersions(templateId) {
+      return request<InstallTemplateVersionPage>(
+        `/api/v1/install-templates/${encodeURIComponent(templateId)}/versions`,
+      );
     },
     listManagedRuntimes(coreId) {
       return request<ManagedRuntimePage>(

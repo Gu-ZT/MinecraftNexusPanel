@@ -22,9 +22,9 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             InstanceKind::Paper,
             RuntimeKind::Java,
             vec![VersionMetadataProvider::new(
-                "paper-project-api".to_owned(),
-                "Paper project API".to_owned(),
-                "https://api.papermc.io/v2/projects/paper".to_owned(),
+                "paper-downloads-service".to_owned(),
+                "Paper downloads service".to_owned(),
+                "https://fill.papermc.io/v3/projects/paper".to_owned(),
             )],
         ),
         InstallTemplate::new(
@@ -33,9 +33,9 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             InstanceKind::Velocity,
             RuntimeKind::Java,
             vec![VersionMetadataProvider::new(
-                "velocity-project-api".to_owned(),
-                "Velocity project API".to_owned(),
-                "https://api.papermc.io/v2/projects/velocity".to_owned(),
+                "velocity-downloads-service".to_owned(),
+                "Velocity downloads service".to_owned(),
+                "https://fill.papermc.io/v3/projects/velocity".to_owned(),
             )],
         ),
         InstallTemplate::new(
@@ -59,6 +59,12 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
     ]
 }
 
+pub(crate) fn install_template(id: &str) -> Option<InstallTemplate> {
+    install_templates()
+        .into_iter()
+        .find(|template| template.id() == id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::install_templates;
@@ -73,6 +79,14 @@ mod tests {
         assert_eq!(templates[1].instance_kind(), InstanceKind::Paper);
         assert_eq!(templates[2].instance_kind(), InstanceKind::Velocity);
         assert_eq!(templates[3].instance_kind(), InstanceKind::Fabric);
+        assert_eq!(
+            templates[1].metadata_providers()[0].url(),
+            "https://fill.papermc.io/v3/projects/paper"
+        );
+        assert_eq!(
+            templates[2].metadata_providers()[0].url(),
+            "https://fill.papermc.io/v3/projects/velocity"
+        );
         assert!(
             templates
                 .iter()

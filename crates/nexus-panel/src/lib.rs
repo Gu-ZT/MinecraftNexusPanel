@@ -31,6 +31,8 @@ mod secret_cipher;
 mod secret_cipher_error;
 mod session_response;
 mod user_response;
+mod version_metadata_client;
+mod version_metadata_error;
 mod websocket_routes;
 mod websocket_ticket;
 mod websocket_ticket_store;
@@ -63,6 +65,8 @@ pub(crate) use secret_cipher::SecretCipher;
 pub(crate) use secret_cipher_error::SecretCipherError;
 pub(crate) use session_response::SessionResponse;
 pub(crate) use user_response::UserResponse;
+pub(crate) use version_metadata_client::VersionMetadataClient;
+pub use version_metadata_error::VersionMetadataError;
 pub(crate) use websocket_ticket::WebSocketTicket;
 pub(crate) use websocket_ticket_store::WebSocketTicketStore;
 
