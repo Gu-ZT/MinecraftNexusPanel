@@ -54,6 +54,8 @@ const NUKKIT_PROVIDER_ID: &str = "nukkit-opencollab-maven-service";
 const CLOUDBURST_NUKKIT_PROVIDER_ID: &str = "cloudburst-nukkit-opencollab-maven-service";
 const FABRIC_GAME_PROVIDER_ID: &str = "fabric-game-versions";
 const FABRIC_LOADER_PROVIDER_ID: &str = "fabric-loader-versions";
+const MOHIST_PROJECT_PROVIDER_ID: &str = "mohist-project-api";
+const YOUER_PROJECT_PROVIDER_ID: &str = "youer-project-api";
 const PAPERMC_CONTACT_URL: &str = "https://github.com/Gu-ZT/MinecraftNexusPanel";
 
 #[derive(Clone)]
@@ -131,6 +133,12 @@ impl VersionMetadataClient {
 
                 parse_github_release_versions(provider, &metadata, &[".jar"], true)
             }
+            "mohist" => {
+                let provider = provider(template, MOHIST_PROJECT_PROVIDER_ID)?;
+                let metadata = self.fetch(provider).await?;
+
+                parse_project_versions(provider, &metadata)
+            }
             "sponge" => {
                 let provider = provider(template, SPONGE_PROVIDER_ID)?;
                 let metadata = self.fetch(provider).await?;
@@ -142,6 +150,12 @@ impl VersionMetadataClient {
                 let metadata = self.fetch(provider).await?;
 
                 parse_github_release_versions(provider, &metadata, &[".jar"], false)
+            }
+            "youer" => {
+                let provider = provider(template, YOUER_PROJECT_PROVIDER_ID)?;
+                let metadata = self.fetch(provider).await?;
+
+                parse_project_versions(provider, &metadata)
             }
             "catserver" => {
                 let provider = provider(template, CATSERVER_PROVIDER_ID)?;
@@ -728,6 +742,35 @@ fn has_github_asset(entry: &Value, asset_suffixes: &[&str]) -> bool {
         })
 }
 
+fn parse_project_versions(
+    provider: &VersionMetadataProvider,
+    metadata: &Value,
+) -> Result<Vec<InstallTemplateVersion>, VersionMetadataError> {
+    let entries = metadata
+        .as_array()
+        .ok_or_else(|| invalid_response(provider))?;
+
+    entries
+        .iter()
+        .map(|entry| {
+            let id = entry
+                .get("name")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .ok_or_else(|| invalid_response(provider))?;
+
+            Ok(InstallTemplateVersion::new(
+                id.clone(),
+                provider.id().to_owned(),
+                InstallTemplateVersionKind::Server,
+                is_stable_version(&id),
+                None,
+            ))
+        })
+        .collect()
+}
+
 fn parse_string_versions(
     provider: &VersionMetadataProvider,
     metadata: &Value,
@@ -905,6 +948,7 @@ mod tests {
     use super::parse_mojang_versions;
     use super::parse_neoforge_versions;
     use super::parse_paper_versions;
+    use super::parse_project_versions;
     use super::parse_pufferfish_versions;
     use super::parse_purpur_versions;
     use super::parse_string_versions;
@@ -1255,6 +1299,21 @@ mod tests {
         assert_eq!(magma[0].id(), "va549e0d-DEV");
         assert!(!magma[0].stable());
         assert!(nukkit.iter().all(|version| !version.stable()));
+    }
+
+    #[test]
+    fn parses_mohist_project_versions() {
+        let versions = parse_project_versions(
+            &provider("mohist-project-api"),
+            &json!([{ "name": "1.21.1" }, { "name": "26.2-SNAPSHOT" }]),
+        )
+        .expect("Mohist project metadata is valid");
+
+        assert_eq!(versions.len(), 2);
+        assert_eq!(versions[0].id(), "1.21.1");
+        assert_eq!(versions[0].kind(), InstallTemplateVersionKind::Server);
+        assert!(versions[0].stable());
+        assert!(!versions[1].stable());
     }
 
     #[test]

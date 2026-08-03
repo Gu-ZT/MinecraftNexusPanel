@@ -205,7 +205,20 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             )],
         )
         .with_extension_layouts(plugin_layout()),
-        java_server("mohist", "Mohist", InstanceKind::Mohist, hybrid_layout()),
+        template(
+            "mohist",
+            "Mohist",
+            InstanceKind::Mohist,
+            InstallTemplateFamily::JavaServer,
+            InstallRuntimeRequirement::Java,
+            ProxyTopology::None,
+            vec![provider(
+                "mohist-project-api",
+                "Mohist project API",
+                "https://api.mohistmc.com/project/mohist/versions",
+            )],
+        )
+        .with_extension_layouts(hybrid_layout()),
         template(
             "magma",
             "Magma",
@@ -248,7 +261,20 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             )],
         )
         .with_extension_layouts(hybrid_layout()),
-        java_server("youer", "Youer", InstanceKind::Youer, hybrid_layout()),
+        template(
+            "youer",
+            "Youer",
+            InstanceKind::Youer,
+            InstallTemplateFamily::JavaServer,
+            InstallRuntimeRequirement::Java,
+            ProxyTopology::None,
+            vec![provider(
+                "youer-project-api",
+                "Youer project API",
+                "https://api.mohistmc.com/project/youer/versions",
+            )],
+        )
+        .with_extension_layouts(hybrid_layout()),
         java_server(
             "async-youer",
             "AsyncYouer",
@@ -602,6 +628,15 @@ mod tests {
         assert_eq!(
             templates
                 .iter()
+                .find(|template| template.id() == "mohist")
+                .expect("Mohist template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://api.mohistmc.com/project/mohist/versions"
+        );
+        assert_eq!(
+            templates
+                .iter()
                 .find(|template| template.id() == "arclight")
                 .expect("Arclight template exists")
                 .metadata_providers()[0]
@@ -625,6 +660,15 @@ mod tests {
                 .metadata_providers()[0]
                 .url(),
             "https://api.github.com/repos/SpongePowered/SpongeVanilla/releases?per_page=100"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "youer")
+                .expect("Youer template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://api.mohistmc.com/project/youer/versions"
         );
         assert_eq!(
             templates
