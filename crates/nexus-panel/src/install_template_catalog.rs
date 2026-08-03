@@ -295,7 +295,11 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             InstallTemplateFamily::BedrockServer,
             InstallRuntimeRequirement::Native,
             ProxyTopology::None,
-            Vec::new(),
+            vec![provider(
+                "bedrock-dedicated-server-links",
+                "Bedrock Dedicated Server download links",
+                "https://net-secondary.web.minecraft-services.net/api/v1.0/download/links",
+            )],
         ),
         template(
             "pocketmine-mp",
@@ -604,6 +608,15 @@ mod tests {
                 .metadata_providers()[0]
                 .url(),
             "https://repo.opencollab.dev/api/maven/versions/maven-snapshots/org/cloudburstmc/cloudburst-server"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "bedrock-dedicated-server")
+                .expect("Bedrock Dedicated Server template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://net-secondary.web.minecraft-services.net/api/v1.0/download/links"
         );
         assert_eq!(
             templates

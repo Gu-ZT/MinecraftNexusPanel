@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::str;
 use std::time::Duration;
 
@@ -14,6 +15,7 @@ use reqwest::redirect::Policy;
 use rustls::crypto::ring;
 use serde_json::Map;
 use serde_json::Value;
+use url::Url;
 
 use crate::VersionMetadataError;
 
@@ -42,6 +44,7 @@ const WATERFALL_PROVIDER_ID: &str = "waterfall-downloads-service";
 const BUNGEECORD_PROVIDER_ID: &str = "bungeecord-jenkins-service";
 const LIGHTFALL_PROVIDER_ID: &str = "lightfall-github-releases";
 const GEYSER_PROVIDER_ID: &str = "geyser-version-service";
+const BEDROCK_DEDICATED_SERVER_PROVIDER_ID: &str = "bedrock-dedicated-server-links";
 const LEAF_PROVIDER_ID: &str = "leaf-github-releases";
 const POCKETMINE_PROVIDER_ID: &str = "pocketmine-github-releases";
 const NUKKIT_PROVIDER_ID: &str = "nukkit-opencollab-maven-service";
@@ -176,6 +179,12 @@ impl VersionMetadataClient {
                 let metadata = self.fetch(provider).await?;
 
                 parse_geyser_versions(provider, &metadata)
+            }
+            "bedrock-dedicated-server" => {
+                let provider = provider(template, BEDROCK_DEDICATED_SERVER_PROVIDER_ID)?;
+                let metadata = self.fetch(provider).await?;
+
+                parse_bedrock_download_versions(provider, &metadata)
             }
             "leaf" => {
                 let provider = provider(template, LEAF_PROVIDER_ID)?;
@@ -501,6 +510,68 @@ fn parse_geyser_versions(
     parse_string_versions(provider, metadata, InstallTemplateVersionKind::Server)
 }
 
+fn parse_bedrock_download_versions(
+    provider: &VersionMetadataProvider,
+    metadata: &Value,
+) -> Result<Vec<InstallTemplateVersion>, VersionMetadataError> {
+    let links = metadata
+        .get("result")
+        .and_then(|result| result.get("links"))
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid_response(provider))?;
+    let mut versions = BTreeMap::new();
+
+    for link in links {
+        let download_type = required_string(provider, link, "downloadType")?;
+        let stable = match download_type.as_str() {
+            "serverBedrockWindows" | "serverBedrockLinux" => true,
+            "serverBedrockPreviewWindows" | "serverBedrockPreviewLinux" => false,
+            _ => continue,
+        };
+        let download_url = required_string(provider, link, "downloadUrl")?;
+        let id = bedrock_version_from_url(provider, &download_url)?;
+        let entry = versions.entry(id).or_insert((stable, download_url.clone()));
+        if stable {
+            entry.0 = true;
+            entry.1 = download_url;
+        }
+    }
+
+    if versions.is_empty() {
+        return Err(invalid_response(provider));
+    }
+
+    Ok(versions
+        .into_iter()
+        .map(|(id, (stable, download_url))| {
+            InstallTemplateVersion::new(
+                id,
+                provider.id().to_owned(),
+                InstallTemplateVersionKind::Server,
+                stable,
+                Some(download_url),
+            )
+        })
+        .collect())
+}
+
+fn bedrock_version_from_url(
+    provider: &VersionMetadataProvider,
+    download_url: &str,
+) -> Result<String, VersionMetadataError> {
+    let url = Url::parse(download_url).map_err(|_| invalid_response(provider))?;
+    let file_name = url
+        .path_segments()
+        .and_then(|mut segments| segments.next_back())
+        .ok_or_else(|| invalid_response(provider))?;
+    file_name
+        .strip_prefix("bedrock-server-")
+        .and_then(|value| value.strip_suffix(".zip"))
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| invalid_response(provider))
+}
+
 fn parse_github_release_versions(
     provider: &VersionMetadataProvider,
     metadata: &Value,
@@ -727,6 +798,7 @@ mod tests {
     use nexus_domain::VersionMetadataProvider;
     use serde_json::json;
 
+    use super::parse_bedrock_download_versions;
     use super::parse_bungeecord_versions;
     use super::parse_fabric_versions;
     use super::parse_forge_versions;
@@ -861,6 +933,42 @@ mod tests {
         assert_eq!(versions.len(), 2);
         assert_eq!(versions[0].kind(), InstallTemplateVersionKind::Server);
         assert!(versions.iter().all(|version| version.stable()));
+    }
+
+    #[test]
+    fn parses_bedrock_stable_and_preview_downloads() {
+        let versions = parse_bedrock_download_versions(
+            &provider("bedrock-dedicated-server-links"),
+            &json!({
+                "result": {
+                    "links": [
+                        {
+                            "downloadType": "serverBedrockWindows",
+                            "downloadUrl": "https://www.minecraft.net/bedrockdedicatedserver/bin-win/bedrock-server-1.26.36.1.zip"
+                        },
+                        {
+                            "downloadType": "serverBedrockLinux",
+                            "downloadUrl": "https://www.minecraft.net/bedrockdedicatedserver/bin-linux/bedrock-server-1.26.36.1.zip"
+                        },
+                        {
+                            "downloadType": "serverBedrockPreviewWindows",
+                            "downloadUrl": "https://www.minecraft.net/bedrockdedicatedserver/bin-win-preview/bedrock-server-1.26.50.22.zip"
+                        },
+                        {
+                            "downloadType": "serverJar",
+                            "downloadUrl": "https://example.invalid/server.jar"
+                        }
+                    ]
+                }
+            }),
+        )
+        .expect("Bedrock metadata is valid");
+
+        assert_eq!(versions.len(), 2);
+        assert_eq!(versions[0].id(), "1.26.36.1");
+        assert!(versions[0].stable());
+        assert_eq!(versions[1].id(), "1.26.50.22");
+        assert!(!versions[1].stable());
     }
 
     #[test]
