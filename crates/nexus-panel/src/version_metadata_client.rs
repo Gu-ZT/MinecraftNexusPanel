@@ -9,6 +9,7 @@ use nexus_domain::VersionMetadataProvider;
 use reqwest::Client;
 use reqwest::redirect::Policy;
 use rustls::crypto::ring;
+use serde_json::Map;
 use serde_json::Value;
 
 use crate::VersionMetadataError;
@@ -18,6 +19,7 @@ const METADATA_TIMEOUT: Duration = Duration::from_secs(30);
 const MAXIMUM_METADATA_BYTES: usize = 2 * 1024 * 1024;
 const MOJANG_PROVIDER_ID: &str = "mojang-version-manifest";
 const PAPER_PROVIDER_ID: &str = "paper-downloads-service";
+const FORGE_PROVIDER_ID: &str = "forge-version-service";
 const PURPUR_PROVIDER_ID: &str = "purpur-version-service";
 const VELOCITY_PROVIDER_ID: &str = "velocity-downloads-service";
 const FOLIA_PROVIDER_ID: &str = "folia-downloads-service";
@@ -64,6 +66,12 @@ impl VersionMetadataClient {
                 let metadata = self.fetch(provider).await?;
 
                 parse_paper_versions(provider, &metadata)
+            }
+            "forge" => {
+                let provider = provider(template, FORGE_PROVIDER_ID)?;
+                let metadata = self.fetch(provider).await?;
+
+                parse_forge_versions(provider, &metadata)
             }
             "purpur" => {
                 let provider = provider(template, PURPUR_PROVIDER_ID)?;
@@ -220,6 +228,22 @@ fn parse_paper_versions(
     )
 }
 
+fn parse_forge_versions(
+    provider: &VersionMetadataProvider,
+    metadata: &Value,
+) -> Result<Vec<InstallTemplateVersion>, VersionMetadataError> {
+    let groups = metadata
+        .as_object()
+        .ok_or_else(|| invalid_response(provider))?;
+
+    parse_string_version_groups(
+        provider,
+        groups,
+        InstallTemplateVersionKind::Server,
+        is_stable_version,
+    )
+}
+
 fn parse_purpur_versions(
     provider: &VersionMetadataProvider,
     metadata: &Value,
@@ -303,6 +327,18 @@ where
         .get("versions")
         .and_then(Value::as_object)
         .ok_or_else(|| invalid_response(provider))?;
+    parse_string_version_groups(provider, groups, kind, stable)
+}
+
+fn parse_string_version_groups<F>(
+    provider: &VersionMetadataProvider,
+    groups: &Map<String, Value>,
+    kind: InstallTemplateVersionKind,
+    stable: F,
+) -> Result<Vec<InstallTemplateVersion>, VersionMetadataError>
+where
+    F: Fn(&str) -> bool,
+{
     let mut versions = Vec::new();
 
     for entries in groups.values() {
@@ -370,6 +406,7 @@ mod tests {
     use serde_json::json;
 
     use super::parse_fabric_versions;
+    use super::parse_forge_versions;
     use super::parse_mojang_versions;
     use super::parse_paper_versions;
     use super::parse_purpur_versions;
@@ -417,6 +454,26 @@ mod tests {
         assert_eq!(velocity[0].kind(), InstallTemplateVersionKind::Server);
         assert!(!velocity[0].stable());
         assert!(velocity[1].stable());
+    }
+
+    #[test]
+    fn parses_forge_minecraft_and_build_versions() {
+        let versions = parse_forge_versions(
+            &provider("forge-version-service"),
+            &json!({
+                "1.21.8": ["1.21.8-58.1.20", "1.21.8-58.1.0"],
+                "1.21.7": ["1.21.7-57.0.3"]
+            }),
+        )
+        .expect("Forge metadata is valid");
+
+        assert_eq!(versions.len(), 3);
+        let latest = versions
+            .iter()
+            .find(|version| version.id() == "1.21.8-58.1.20")
+            .expect("Forge build is present");
+        assert_eq!(latest.kind(), InstallTemplateVersionKind::Server);
+        assert!(versions.iter().all(|version| version.stable()));
     }
 
     #[test]

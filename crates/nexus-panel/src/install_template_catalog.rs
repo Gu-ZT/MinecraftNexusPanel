@@ -72,7 +72,20 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
         )
         .with_extension_layouts(mod_layout()),
         java_server("neoforge", "NeoForge", InstanceKind::NeoForge, mod_layout()),
-        java_server("forge", "Forge", InstanceKind::Forge, mod_layout()),
+        template(
+            "forge",
+            "Forge",
+            InstanceKind::Forge,
+            InstallTemplateFamily::JavaServer,
+            InstallRuntimeRequirement::Java,
+            ProxyTopology::None,
+            vec![provider(
+                "forge-version-service",
+                "Forge version service",
+                "https://files.minecraftforge.net/net/minecraftforge/forge/maven-metadata.json",
+            )],
+        )
+        .with_extension_layouts(mod_layout()),
         java_server("bukkit", "Bukkit", InstanceKind::Bukkit, plugin_layout()),
         java_server("spigot", "Spigot", InstanceKind::Spigot, plugin_layout()),
         template(
@@ -370,6 +383,15 @@ mod tests {
                 .metadata_providers()[0]
                 .url(),
             "https://fill.papermc.io/v3/projects/waterfall"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "forge")
+                .expect("Forge template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://files.minecraftforge.net/net/minecraftforge/forge/maven-metadata.json"
         );
         assert!(
             templates[..4]
