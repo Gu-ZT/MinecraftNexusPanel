@@ -373,6 +373,31 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     assert_eq!(batch_task["progress"]["completed"], 5);
     assert_eq!(batch_task["results"].as_array().map(Vec::len), Some(5));
 
+    let archive_request = send_json_request(
+        panel_address,
+        "POST",
+        &format!("/api/v1/cores/{core_id}/instances/panel-process/archives"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        Some(json!({
+            "paths": ["config/server"],
+            "outputPath": "panel-backup.zip",
+        })),
+    )
+    .await;
+    assert_eq!(archive_request.status, 202);
+    let archive_task_id = archive_request.body["taskId"]
+        .as_str()
+        .expect("archive task ID is returned")
+        .to_owned();
+    let archive_task =
+        wait_for_file_task(panel_address, &authorization, &core_id, &archive_task_id).await;
+    assert_eq!(archive_task["kind"], "FILE_ARCHIVE_CREATE");
+    assert_eq!(archive_task["state"], "SUCCEEDED");
+    assert_eq!(archive_task["archive"]["path"], "panel-backup.zip");
+
     let upload_content = b"panel chunked upload";
     let upload_sha256 = sha256_hex(upload_content);
     let started_upload = send_json_request(

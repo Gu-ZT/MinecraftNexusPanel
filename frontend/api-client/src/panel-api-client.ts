@@ -279,13 +279,14 @@ export interface FileBatchTaskResult {
 
 export interface FileTask {
   taskId: string;
-  kind: 'FILE_DELETE' | 'FILE_BATCH';
+  kind: 'FILE_DELETE' | 'FILE_BATCH' | 'FILE_ARCHIVE_CREATE';
   state: FileTaskState;
   progress: number | null | FileBatchTaskProgress;
   path?: string;
   deleted?: boolean;
   failedIndex?: number;
   results?: FileBatchTaskResult[];
+  archive?: FileEntry;
   error?: string;
 }
 
@@ -478,6 +479,12 @@ export interface PanelApiClient {
     coreId: string,
     instanceId: string,
     operations: FileBatchOperation[],
+  ): Promise<TaskAccepted>;
+  createFileArchive(
+    coreId: string,
+    instanceId: string,
+    paths: string[],
+    outputPath: string,
   ): Promise<TaskAccepted>;
   deleteInstanceFile(
     coreId: string,
@@ -783,6 +790,17 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
         {
           method: 'POST',
           body: { operations },
+          csrf: true,
+          idempotent: true,
+        },
+      );
+    },
+    createFileArchive(coreId, instanceId, paths, outputPath) {
+      return request<TaskAccepted>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/archives`,
+        {
+          method: 'POST',
+          body: { paths, outputPath },
           csrf: true,
           idempotent: true,
         },

@@ -769,6 +769,26 @@ impl CoreRegistry {
         Ok(task_accepted_json(task_id))
     }
 
+    pub async fn create_file_archive(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        paths: Vec<String>,
+        output_path: &str,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        let task_id = connection
+            .create_file_archive(instance_id, paths, output_path, idempotency_key)
+            .await?;
+        Ok(task_accepted_json(task_id))
+    }
+
     pub async fn get_file_task(
         &self,
         core_id: CoreId,

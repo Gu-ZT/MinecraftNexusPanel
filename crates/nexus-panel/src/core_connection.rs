@@ -746,6 +746,30 @@ impl CoreConnection {
         from_value(task_id).map_err(|_| CoreConnectionError::InvalidResponse { field: "taskId" })
     }
 
+    pub async fn create_file_archive(
+        &mut self,
+        instance_id: &InstanceId,
+        paths: Vec<String>,
+        output_path: &str,
+        idempotency_key: &str,
+    ) -> Result<TaskId, CoreConnectionError> {
+        let result = self
+            .request_with_idempotency(
+                "file.archive.create",
+                json!({
+                    "instanceId": instance_id,
+                    "format": "ZIP",
+                    "paths": paths,
+                    "outputPath": output_path,
+                }),
+                Some(idempotency_key),
+            )
+            .await?;
+        let task_id = response_field(&result, "taskId")?;
+
+        from_value(task_id).map_err(|_| CoreConnectionError::InvalidResponse { field: "taskId" })
+    }
+
     pub async fn get_file_task(&mut self, task_id: &TaskId) -> Result<Value, CoreConnectionError> {
         self.request("file.task.get", json!({ "taskId": task_id }))
             .await
