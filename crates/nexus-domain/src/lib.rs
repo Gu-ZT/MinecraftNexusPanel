@@ -1,5 +1,6 @@
 mod core_id;
 mod event_id;
+mod install_template;
 mod instance;
 mod instance_create;
 mod instance_create_error;
@@ -23,9 +24,11 @@ mod runtime_kind;
 mod runtime_source;
 mod runtime_validation;
 mod task_id;
+mod version_metadata_provider;
 
 pub use core_id::CoreId;
 pub use event_id::EventId;
+pub use install_template::InstallTemplate;
 pub use instance::Instance;
 pub use instance_create::InstanceCreate;
 pub use instance_create_error::InstanceCreateError;
@@ -49,6 +52,7 @@ pub use runtime_kind::RuntimeKind;
 pub use runtime_source::RuntimeSource;
 pub use runtime_validation::RuntimeValidation;
 pub use task_id::TaskId;
+pub use version_metadata_provider::VersionMetadataProvider;
 
 pub const API_VERSION: &str = "v1";
 pub const PRODUCT_NAME: &str = "MCNP";

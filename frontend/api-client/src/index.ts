@@ -12,6 +12,8 @@ export type {
   InstanceRuntime,
   InstanceState,
   InstanceUpdate,
+  InstallTemplate,
+  InstallTemplatePage,
   LaunchConfig,
   LogLine,
   LogPage,
@@ -26,5 +28,6 @@ export type {
   RuntimeValidation,
   TaskAccepted,
   User,
+  VersionMetadataProvider,
 } from './panel-api-client';
 export { ApiRequestError, createPanelApiClient } from './panel-api-client';

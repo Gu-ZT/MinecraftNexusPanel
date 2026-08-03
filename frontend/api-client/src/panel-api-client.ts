@@ -86,6 +86,24 @@ export interface ManagedRuntimePage {
   items: ManagedRuntime[];
 }
 
+export interface VersionMetadataProvider {
+  id: string;
+  name: string;
+  url: string;
+}
+
+export interface InstallTemplate {
+  id: string;
+  name: string;
+  instanceKind: InstanceKind;
+  requiredRuntime: RuntimeKind;
+  metadataProviders: VersionMetadataProvider[];
+}
+
+export interface InstallTemplatePage {
+  items: InstallTemplate[];
+}
+
 export interface LaunchConfig {
   executable: string;
   args: string[];
@@ -160,6 +178,7 @@ export interface PanelApiClient {
   getCurrentUser(): Promise<User>;
   logout(): Promise<void>;
   listCores(): Promise<CorePage>;
+  listInstallTemplates(): Promise<InstallTemplatePage>;
   listManagedRuntimes(coreId: string): Promise<ManagedRuntimePage>;
   listInstances(coreId: string): Promise<InstancePage>;
   updateInstance(coreId: string, instanceId: string, update: InstanceUpdate, revision: number): Promise<Instance>;
@@ -243,6 +262,9 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     },
     listCores() {
       return request<CorePage>('/api/v1/cores?limit=50');
+    },
+    listInstallTemplates() {
+      return request<InstallTemplatePage>('/api/v1/install-templates');
     },
     listManagedRuntimes(coreId) {
       return request<ManagedRuntimePage>(

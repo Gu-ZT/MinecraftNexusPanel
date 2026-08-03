@@ -19,6 +19,8 @@ tags:
     description: WebSocket connection bootstrap
   - name: Cores
     description: Remote Core registration and connectivity
+  - name: Install templates
+    description: Built-in server templates and version metadata sources
   - name: Instances
     description: Minecraft instance configuration and lifecycle
   - name: Files
@@ -29,6 +31,22 @@ security:
   - cookieAuth: [ ]
   - bearerAuth: [ ]
 paths:
+  /install-templates:
+    get:
+      tags: [ Install templates ]
+      operationId: listInstallTemplates
+      summary: List built-in server install templates
+      responses:
+        '200':
+          description: Install templates and their trusted version metadata sources
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallTemplatePage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /health/live:
     get:
       tags: [ System ]
@@ -1294,6 +1312,42 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ManagedRuntime'
+    VersionMetadataProvider:
+      type: object
+      required: [ id, name, url ]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+    InstallTemplate:
+      type: object
+      required: [ id, name, instanceKind, requiredRuntime, metadataProviders ]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        instanceKind:
+          $ref: '#/components/schemas/InstanceKind'
+        requiredRuntime:
+          $ref: '#/components/schemas/RuntimeKind'
+        metadataProviders:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/VersionMetadataProvider'
+    InstallTemplatePage:
+      type: object
+      required: [ items ]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InstallTemplate'
     InstanceKind:
       type: string
       enum: [ VANILLA, PAPER, VELOCITY, FABRIC, CUSTOM, UNKNOWN ]
