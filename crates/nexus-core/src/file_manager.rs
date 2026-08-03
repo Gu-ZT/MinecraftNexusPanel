@@ -958,15 +958,16 @@ mod tests {
             )
             .expect("file is moved");
         assert_eq!(moved.path(), "config/server/server.properties");
-        assert!(matches!(
-            manager.move_entry(
-                &instance,
-                "config/server/server.properties",
-                "config/server/server.properties",
-                false,
-            ),
-            Ok(_)
-        ));
+        assert!(
+            manager
+                .move_entry(
+                    &instance,
+                    "config/server/server.properties",
+                    "config/server/server.properties",
+                    false,
+                )
+                .is_ok()
+        );
         assert!(matches!(
             manager.mkdir(&instance, "config/server/server.properties/logs", true),
             Err(FileManagerError::NotDirectory { .. })
