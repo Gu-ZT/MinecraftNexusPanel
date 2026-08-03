@@ -56,7 +56,7 @@ API。通用鉴权、分页、错误、幂等及乐观锁规则沿用 Web API。
 | GET  | `/server-catalog/templates/{templateId}/versions` | `instance.read`   | Minecraft、加载器与构建版本          |
 | POST | `/cores/{coreId}/provision-plans:resolve`         | `instance.create` | 解析依赖、下载量和最终设置           |
 | POST | `/cores/{coreId}/instance-provisions`             | `instance.create` | 执行一键搭建                         |
-| GET  | `/instance-provisions/{provisionId}`              | 资源可见          | 查询供应状态                         |
+| GET  | `/cores/{coreId}/instance-provisions/{taskId}`   | 资源可见          | 查询供应状态                         |
 
 执行前先 resolve：
 
@@ -65,29 +65,33 @@ API。通用鉴权、分页、错误、幂等及乐观锁规则沿用 Web API。
   "templateId": "paper",
   "minecraftVersion": "1.21.8",
   "build": "latest",
-  "instance": {
-    "id": "survival",
-    "name": "Survival",
-    "workingDirectory": "instances/survival",
-    "expiresAt": null
+  "instanceId": "survival",
+  "instanceName": "Survival",
+  "instanceKind": "PAPER",
+  "instanceDirectory": "instances/survival",
+  "expiresAt": null,
+  "requiredRuntime": "JAVA",
+  "runtimeId": null,
+  "archive": {
+    "url": "https://downloads.example.invalid/paper.zip",
+    "sizeBytes": 1024,
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "platform": "WINDOWS",
+    "architecture": "X86_64"
   },
-  "runtime": {
-    "runtimeId": null,
-    "installIfMissing": {
-      "kind": "JAVA",
-      "distribution": "TEMURIN",
-      "majorVersion": 21
-    }
-  },
-  "execution": {
-    "runtimeMode": "HOST",
-    "supervisorMode": "MCDR"
-  }
+  "archiveFormat": "ZIP",
+  "executablePath": "server.jar",
+  "launchArguments": ["-jar", "{server}"],
+  "stopCommand": "stop",
+  "stopTimeoutSeconds": 30
 }
 ```
 
 `resolve` 返回精确版本、所需空间、下载项、哈希、将要安装的环境、默认启动/更新命令和警告。客户端确认后使用相同 `planHash` 创建
 provision；Catalog 变化导致 hash 失效时必须重新确认。
+
+当前执行计划要求显式提供经来源校验的 `archive` 下载清单、压缩格式、归档内可执行文件相对路径和启动参数。Core 会再次校验
+SHA-256、平台/架构、实例目录、归档条目和受管运行时；下载失败、实例目录已存在或计划 hash 变化时不会留下半成品目录。
 
 ### 3.2 代理子服务器
 

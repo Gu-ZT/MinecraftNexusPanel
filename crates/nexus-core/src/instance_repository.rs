@@ -53,6 +53,14 @@ impl InstanceRepository {
         Ok(instances.values().cloned().collect())
     }
 
+    pub fn remove(
+        &self,
+        instance_id: &InstanceId,
+    ) -> Result<Option<Instance>, InstanceRepositoryError> {
+        let mut instances = self.lock_instances()?;
+        Ok(instances.remove(instance_id))
+    }
+
     pub fn references_runtime(&self, runtime_path: &Path) -> Result<bool, InstanceRepositoryError> {
         let instances = self.lock_instances()?;
         Ok(instances.values().any(|instance| {

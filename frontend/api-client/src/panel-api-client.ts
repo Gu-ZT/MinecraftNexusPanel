@@ -161,6 +161,41 @@ export interface RuntimeOperation {
   error?: string;
 }
 
+export interface ProvisionPlan {
+  templateId: string;
+  minecraftVersion: string;
+  build: string;
+  instanceId: string;
+  instanceName: string;
+  instanceKind: InstanceKind;
+  instanceDirectory: string;
+  updateCommand?: string | null;
+  expiresAt?: string | null;
+  requiredRuntime: InstallRuntimeRequirement;
+  runtimeId?: string | null;
+  archive: DownloadManifest;
+  archiveFormat: RuntimeArchiveFormat;
+  executablePath: string;
+  launchArguments?: string[];
+  stopCommand: string;
+  stopTimeoutSeconds: number;
+}
+
+export interface ProvisionResolution {
+  resolvedPlan: ProvisionPlan;
+  planHash: string;
+}
+
+export interface ProvisionOperation {
+  taskId: string;
+  instanceId?: string;
+  instance?: Instance;
+  kind?: string;
+  state?: RuntimeTaskState;
+  progress?: number | null;
+  error?: string;
+}
+
 export interface BedrockManagementProfile {
   managementKind: BedrockManagementKind;
   transport: BedrockTransport;
@@ -292,6 +327,9 @@ export interface PanelApiClient {
   listInstallTemplates(): Promise<InstallTemplatePage>;
   listInstallTemplateVersions(templateId: string): Promise<InstallTemplateVersionPage>;
   listManagedRuntimes(coreId: string): Promise<ManagedRuntimePage>;
+  resolveProvisionPlan(coreId: string, plan: ProvisionPlan): Promise<ProvisionResolution>;
+  executeProvision(coreId: string, plan: ProvisionPlan, planHash: string): Promise<ProvisionOperation>;
+  getProvisionTask(coreId: string, taskId: string): Promise<ProvisionOperation>;
   installRuntime(
     coreId: string,
     manifest: RuntimeInstallManifest,
@@ -402,6 +440,28 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     listManagedRuntimes(coreId) {
       return request<ManagedRuntimePage>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/environments`,
+      );
+    },
+    resolveProvisionPlan(coreId, plan) {
+      return request<ProvisionResolution>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/provision-plans:resolve`,
+        { method: 'POST', body: plan, csrf: true },
+      );
+    },
+    executeProvision(coreId, plan, planHash) {
+      return request<ProvisionOperation>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instance-provisions`,
+        {
+          method: 'POST',
+          body: { resolvedPlan: plan, planHash },
+          csrf: true,
+          idempotent: true,
+        },
+      );
+    },
+    getProvisionTask(coreId, taskId) {
+      return request<ProvisionOperation>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instance-provisions/${encodeURIComponent(taskId)}`,
       );
     },
     installRuntime(coreId, manifest, setAsDefault = false) {

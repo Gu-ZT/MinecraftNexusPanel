@@ -5,6 +5,7 @@ use nexus_domain::RequestId;
 
 use crate::InstanceProcessManager;
 use crate::InstanceRepository;
+use crate::ProvisionManager;
 use crate::ProxySubserverRepository;
 use crate::RuntimeManager;
 
@@ -15,6 +16,7 @@ pub(crate) struct CoreRequestState {
     instances: InstanceRepository,
     processes: InstanceProcessManager,
     proxy_subservers: ProxySubserverRepository,
+    provision: ProvisionManager,
     runtimes: RuntimeManager,
 }
 
@@ -24,6 +26,7 @@ impl CoreRequestState {
         instances: InstanceRepository,
         processes: InstanceProcessManager,
         proxy_subservers: ProxySubserverRepository,
+        provision: ProvisionManager,
         runtimes: RuntimeManager,
     ) -> Self {
         Self {
@@ -33,6 +36,7 @@ impl CoreRequestState {
             instances,
             processes,
             proxy_subservers,
+            provision,
             runtimes,
         }
     }
@@ -63,6 +67,10 @@ impl CoreRequestState {
 
     pub(crate) const fn proxy_subservers(&self) -> &ProxySubserverRepository {
         &self.proxy_subservers
+    }
+
+    pub(crate) const fn provision(&self) -> &ProvisionManager {
+        &self.provision
     }
 
     pub(crate) const fn runtimes(&self) -> &RuntimeManager {

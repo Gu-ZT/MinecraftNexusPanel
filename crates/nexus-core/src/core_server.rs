@@ -13,6 +13,7 @@ use nexus_domain::InstancePage;
 use nexus_domain::InstanceState;
 use nexus_domain::InstanceUpdate;
 use nexus_domain::PRODUCT_VERSION;
+use nexus_domain::ProvisionPlan;
 use nexus_domain::ProxySubserver;
 use nexus_domain::RequestId;
 use nexus_domain::RuntimeInstallManifest;
@@ -43,16 +44,19 @@ use crate::InstanceProcessError;
 use crate::InstanceProcessManager;
 use crate::InstanceRepository;
 use crate::InstanceRepositoryError;
+use crate::ProvisionManager;
+use crate::ProvisionManagerError;
 use crate::ProxySubserverRepository;
 use crate::ProxySubserverRepositoryError;
 use crate::RuntimeManager;
 use crate::RuntimeManagerError;
 
-const CORE_CAPABILITIES: [&str; 6] = [
+const CORE_CAPABILITIES: [&str; 7] = [
     "events",
     "instances",
     "metrics",
     "proxy-subservers",
+    "provision",
     "runtimes",
     "settings",
 ];
@@ -73,6 +77,7 @@ pub struct CoreServer {
     instances: InstanceRepository,
     processes: InstanceProcessManager,
     proxy_subservers: ProxySubserverRepository,
+    provision: ProvisionManager,
     runtimes: RuntimeManager,
     tls_acceptor: TlsAcceptor,
 }
@@ -82,6 +87,7 @@ struct CoreResources {
     instances: InstanceRepository,
     processes: InstanceProcessManager,
     proxy_subservers: ProxySubserverRepository,
+    provision: ProvisionManager,
     runtimes: RuntimeManager,
 }
 
@@ -109,6 +115,7 @@ impl CoreServer {
             InstanceProcessManager::new(config.data_directory().to_path_buf(), instances.clone());
         let runtimes =
             RuntimeManager::new(config.data_directory()).map_err(CoreError::RuntimeManager)?;
+        let provision = ProvisionManager::new(config.data_directory(), runtimes.clone())?;
 
         Ok(Self {
             core_id,
@@ -119,6 +126,7 @@ impl CoreServer {
             instances,
             processes,
             proxy_subservers: ProxySubserverRepository::new(),
+            provision,
             runtimes,
             tls_acceptor: tls_identity.acceptor(),
         })
@@ -160,6 +168,7 @@ impl CoreServer {
                 instances: self.instances.clone(),
                 processes: self.processes.clone(),
                 proxy_subservers: self.proxy_subservers.clone(),
+                provision: self.provision.clone(),
                 runtimes: self.runtimes.clone(),
             };
             let tls_acceptor = self.tls_acceptor.clone();
@@ -221,6 +230,7 @@ where
         resources.instances,
         resources.processes,
         resources.proxy_subservers,
+        resources.provision,
         resources.runtimes,
     );
     let mut event_receiver = request_state.processes().subscribe();
@@ -390,6 +400,11 @@ async fn request_response(
         }
         "runtime.delete" => runtime_delete_response(request_id, params, idempotency_key, state),
         "runtime.task.get" => runtime_task_response(request_id, params, state.runtimes()),
+        "provision.resolve" => provision_resolve_response(request_id, params, state.provision()),
+        "provision.execute" => {
+            provision_execute_response(request_id, params, idempotency_key, state)
+        }
+        "provision.task.get" => provision_task_response(request_id, params, state.provision()),
         "bedrock.profile" => bedrock_profile_response(request_id, params, state.instances()),
         "proxy.subserver.list" => proxy_subserver_list_response(
             request_id,
@@ -577,6 +592,142 @@ fn runtime_manager_error_response(
         }
     };
     error_response(request_id, code, message)
+}
+
+fn provision_resolve_response(
+    request_id: RequestId,
+    params: &Value,
+    provision: &ProvisionManager,
+) -> WireMessage {
+    let Some(plan) = from_value::<ProvisionPlan>(params.clone()).ok() else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "provision.resolve requires a valid plan",
+        );
+    };
+    match provision.resolve(&plan) {
+        Ok(result) => success_response(request_id, result),
+        Err(error) => provision_manager_error_response(request_id, error),
+    }
+}
+
+fn provision_execute_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    state: &CoreRequestState,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let Some(plan) = params
+        .get("resolvedPlan")
+        .cloned()
+        .and_then(|value| from_value::<ProvisionPlan>(value).ok())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "provision.execute requires a valid resolvedPlan",
+        );
+    };
+    let Some(plan_hash) = params.get("planHash").and_then(Value::as_str) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "provision.execute requires a planHash",
+        );
+    };
+    match state
+        .provision()
+        .start_execute(&plan, plan_hash, state.instances())
+    {
+        Ok(task_id) => success_response(
+            request_id,
+            json!({
+                "taskId": task_id,
+                "instanceId": plan.instance_id(),
+                "acceptedAt": current_timestamp(),
+            }),
+        ),
+        Err(error) => provision_manager_error_response(request_id, error),
+    }
+}
+
+fn provision_task_response(
+    request_id: RequestId,
+    params: &Value,
+    provision: &ProvisionManager,
+) -> WireMessage {
+    let Some(task_id) = params
+        .get("taskId")
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse::<TaskId>().ok())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "provision.task.get requires a valid taskId",
+        );
+    };
+    match provision.task(task_id) {
+        Ok(Some(task)) => success_response(request_id, task),
+        Ok(None) => error_response(
+            request_id,
+            "PROVISION_TASK_NOT_FOUND",
+            "Provision task does not exist",
+        ),
+        Err(error) => provision_manager_error_response(request_id, error),
+    }
+}
+
+fn provision_manager_error_response(
+    request_id: RequestId,
+    error: ProvisionManagerError,
+) -> WireMessage {
+    match error {
+        ProvisionManagerError::InvalidPlan { .. }
+        | ProvisionManagerError::Serialization(_)
+        | ProvisionManagerError::Instance(_) => {
+            error_response(request_id, "BAD_REQUEST", "Provision plan is invalid")
+        }
+        ProvisionManagerError::PlanHashMismatch => error_response(
+            request_id,
+            "PROVISION_PLAN_EXPIRED",
+            "Provision plan hash does not match",
+        ),
+        ProvisionManagerError::AlreadyExists { .. } => error_response(
+            request_id,
+            "INSTANCE_ALREADY_EXISTS",
+            "Instance already exists",
+        ),
+        ProvisionManagerError::Repository(crate::InstanceRepositoryError::AlreadyExists {
+            ..
+        }) => error_response(
+            request_id,
+            "INSTANCE_ALREADY_EXISTS",
+            "Instance already exists",
+        ),
+        ProvisionManagerError::Repository(crate::InstanceRepositoryError::NotFound { .. }) => {
+            error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist")
+        }
+        ProvisionManagerError::Runtime(RuntimeManagerError::NotFound { .. }) => {
+            error_response(request_id, "RUNTIME_NOT_FOUND", "Runtime does not exist")
+        }
+        ProvisionManagerError::Runtime(RuntimeManagerError::InvalidManifest { .. }) => {
+            error_response(request_id, "RUNTIME_INVALID", "Selected runtime is invalid")
+        }
+        ProvisionManagerError::TaskStorePoisoned
+        | ProvisionManagerError::Archive { .. }
+        | ProvisionManagerError::Download(_)
+        | ProvisionManagerError::Repository(_)
+        | ProvisionManagerError::Runtime(_)
+        | ProvisionManagerError::Storage { .. } => {
+            tracing::error!(%error, "Provision operation failed");
+            error_response(request_id, "PROVISION_FAILED", "Provision operation failed")
+        }
+    }
 }
 
 fn bedrock_profile_response(

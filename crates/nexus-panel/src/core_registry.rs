@@ -12,6 +12,7 @@ use nexus_domain::InstanceState;
 use nexus_domain::InstanceUpdate;
 use nexus_domain::ManagedRuntime;
 use nexus_domain::PRODUCT_NAME;
+use nexus_domain::ProvisionPlan;
 use nexus_domain::ProxySubserver;
 use nexus_domain::RuntimeInstallManifest;
 use nexus_domain::TaskId;
@@ -362,6 +363,52 @@ impl CoreRegistry {
             .await?;
 
         Ok(task_accepted_json(task_id))
+    }
+
+    pub async fn resolve_provision(
+        &self,
+        core_id: CoreId,
+        plan: &ProvisionPlan,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection.resolve_provision(plan).await?)
+    }
+
+    pub async fn execute_provision(
+        &self,
+        core_id: CoreId,
+        plan: &ProvisionPlan,
+        plan_hash: &str,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .execute_provision(plan, plan_hash, idempotency_key)
+            .await?)
+    }
+
+    pub async fn get_provision_task(
+        &self,
+        core_id: CoreId,
+        task_id: &TaskId,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection.get_provision_task(task_id).await?)
     }
 
     pub async fn get_bedrock_profile(

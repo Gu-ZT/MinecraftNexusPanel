@@ -39,6 +39,8 @@ pub enum CoreError {
     TlsIdentity(#[from] CoreTlsIdentityError),
     #[error(transparent)]
     RuntimeManager(#[from] crate::RuntimeManagerError),
+    #[error(transparent)]
+    ProvisionManager(#[from] crate::ProvisionManagerError),
     #[error("failed to write the Core identity file {path}")]
     WriteCoreIdentity {
         path: PathBuf,

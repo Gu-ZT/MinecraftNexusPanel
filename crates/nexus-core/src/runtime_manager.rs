@@ -5,9 +5,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use nexus_domain::InstallRuntimeRequirement;
 use nexus_domain::ManagedRuntime;
 use nexus_domain::RuntimeInstallManifest;
 use nexus_domain::RuntimeKind;
+use nexus_domain::RuntimeValidation;
 use nexus_domain::TaskId;
 use serde_json::Value;
 use serde_json::json;
@@ -42,6 +44,28 @@ impl RuntimeManager {
 
     pub(crate) async fn discover(&self) -> Vec<ManagedRuntime> {
         self.discovery.discover().await
+    }
+
+    pub(crate) async fn resolve_executable(
+        &self,
+        runtime_id: Option<&str>,
+        requirement: InstallRuntimeRequirement,
+    ) -> Result<String, RuntimeManagerError> {
+        let Some(runtime_id) = runtime_id else {
+            return Ok(system_executable(requirement).to_owned());
+        };
+        let Some(runtime) = self.discovery.find_managed(runtime_id).await else {
+            return Err(RuntimeManagerError::NotFound {
+                runtime_id: runtime_id.to_owned(),
+            });
+        };
+        let expected_kind = runtime_kind(requirement)
+            .ok_or(RuntimeManagerError::InvalidManifest { field: "runtimeId" })?;
+        if runtime.kind() != expected_kind || runtime.validation() != RuntimeValidation::Valid {
+            return Err(RuntimeManagerError::InvalidManifest { field: "runtimeId" });
+        }
+
+        Ok(runtime.executable().to_owned())
     }
 
     pub(crate) fn start_install(
@@ -363,6 +387,25 @@ fn kind_directory(kind: RuntimeKind) -> &'static str {
         RuntimeKind::Java => "java",
         RuntimeKind::NodeJs => "node",
         RuntimeKind::Python => "python",
+    }
+}
+
+fn runtime_kind(requirement: InstallRuntimeRequirement) -> Option<RuntimeKind> {
+    match requirement {
+        InstallRuntimeRequirement::Java => Some(RuntimeKind::Java),
+        InstallRuntimeRequirement::NodeJs => Some(RuntimeKind::NodeJs),
+        InstallRuntimeRequirement::Python => Some(RuntimeKind::Python),
+        InstallRuntimeRequirement::Php | InstallRuntimeRequirement::Native => None,
+    }
+}
+
+fn system_executable(requirement: InstallRuntimeRequirement) -> &'static str {
+    match requirement {
+        InstallRuntimeRequirement::Java => "java",
+        InstallRuntimeRequirement::NodeJs => "node",
+        InstallRuntimeRequirement::Python => "python",
+        InstallRuntimeRequirement::Php => "php",
+        InstallRuntimeRequirement::Native => "",
     }
 }
 

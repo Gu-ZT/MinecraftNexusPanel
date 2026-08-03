@@ -12,6 +12,7 @@ use nexus_domain::InstanceState;
 use nexus_domain::InstanceUpdate;
 use nexus_domain::ManagedRuntime;
 use nexus_domain::PRODUCT_VERSION;
+use nexus_domain::ProvisionPlan;
 use nexus_domain::ProxySubserver;
 use nexus_domain::RequestId;
 use nexus_domain::RuntimeInstallManifest;
@@ -32,11 +33,12 @@ use tokio::net::TcpStream;
 use crate::CoreConnectionError;
 use crate::CoreEndpoint;
 
-const PANEL_CAPABILITIES: [&str; 6] = [
+const PANEL_CAPABILITIES: [&str; 7] = [
     "events",
     "instances",
     "metrics",
     "proxy-subservers",
+    "provision",
     "runtimes",
     "settings",
 ];
@@ -260,6 +262,44 @@ impl CoreConnection {
         let task_id = response_field(&result, "taskId")?;
 
         from_value(task_id).map_err(|_| CoreConnectionError::InvalidResponse { field: "taskId" })
+    }
+
+    pub async fn resolve_provision(
+        &mut self,
+        plan: &ProvisionPlan,
+    ) -> Result<Value, CoreConnectionError> {
+        let plan = to_value(plan).map_err(|_| CoreConnectionError::InvalidResponse {
+            field: "provisionPlan",
+        })?;
+        self.request("provision.resolve", plan).await
+    }
+
+    pub async fn execute_provision(
+        &mut self,
+        plan: &ProvisionPlan,
+        plan_hash: &str,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreConnectionError> {
+        let plan = to_value(plan).map_err(|_| CoreConnectionError::InvalidResponse {
+            field: "provisionPlan",
+        })?;
+        self.request_with_idempotency(
+            "provision.execute",
+            json!({
+                "resolvedPlan": plan,
+                "planHash": plan_hash,
+            }),
+            Some(idempotency_key),
+        )
+        .await
+    }
+
+    pub async fn get_provision_task(
+        &mut self,
+        task_id: &TaskId,
+    ) -> Result<Value, CoreConnectionError> {
+        self.request("provision.task.get", json!({ "taskId": task_id }))
+            .await
     }
 
     pub async fn get_bedrock_profile(

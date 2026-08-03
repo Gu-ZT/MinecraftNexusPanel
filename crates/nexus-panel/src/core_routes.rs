@@ -248,6 +248,16 @@ pub(crate) fn registry_error_response(error: CoreRegistryError, request_id: Requ
             )
         }
         CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "PROVISION_TASK_NOT_FOUND" =>
+        {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "PROVISION_TASK_NOT_FOUND",
+                "Provision task does not exist",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
             if matches!(code.as_str(), "RUNTIME_ALREADY_EXISTS" | "RUNTIME_IN_USE") =>
         {
             error_response(
@@ -264,6 +274,36 @@ pub(crate) fn registry_error_response(error: CoreRegistryError, request_id: Requ
                 StatusCode::CONFLICT,
                 "INSTANCE_ALREADY_EXISTS",
                 "Instance already exists",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "PROVISION_PLAN_EXPIRED" =>
+        {
+            error_response(
+                StatusCode::CONFLICT,
+                "PROVISION_PLAN_EXPIRED",
+                "Provision plan must be resolved again",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "RUNTIME_INVALID" =>
+        {
+            error_response(
+                StatusCode::BAD_REQUEST,
+                "RUNTIME_INVALID",
+                "Selected runtime is invalid",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "PROVISION_FAILED" =>
+        {
+            error_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "PROVISION_FAILED",
+                "Provision operation failed",
                 request_id,
             )
         }

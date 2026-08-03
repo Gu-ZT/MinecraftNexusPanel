@@ -539,6 +539,86 @@ paths:
           $ref: '#/components/responses/PreconditionRequired'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/provision-plans:resolve:
+    post:
+      tags: [ Install templates ]
+      operationId: resolveProvisionPlan
+      summary: Validate and hash a server installation plan
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProvisionPlan'
+      responses:
+        '200':
+          description: Resolved plan and content hash
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProvisionResolution'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/instance-provisions:
+    post:
+      tags: [ Install templates ]
+      operationId: executeProvision
+      summary: Execute a previously resolved server installation plan
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProvisionExecuteRequest'
+      responses:
+        '202':
+          description: Provision task accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProvisionOperation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/instance-provisions/{taskId}:
+    get:
+      tags: [ Install templates ]
+      operationId: getProvisionTask
+      summary: Get a server installation task
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Provision task state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProvisionOperation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instances/{instanceId}/bedrock-profile:
     parameters:
       - $ref: '#/components/parameters/CoreId'
@@ -1670,8 +1750,130 @@ components:
       properties:
         taskId:
           type: string
+        kind:
+          type: string
+        state:
+          type: string
+          enum: [ RUNNING, SUCCEEDED, FAILED ]
+        progress:
+          type: [ number, 'null' ]
+          minimum: 0
+          maximum: 1
         runtime:
           $ref: '#/components/schemas/ManagedRuntime'
+        error:
+          type: string
+    ProvisionPlan:
+      type: object
+      required:
+        - templateId
+        - minecraftVersion
+        - build
+        - instanceId
+        - instanceName
+        - instanceKind
+        - instanceDirectory
+        - requiredRuntime
+        - archive
+        - archiveFormat
+        - executablePath
+        - stopCommand
+        - stopTimeoutSeconds
+      properties:
+        templateId:
+          type: string
+          pattern: '^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$'
+        minecraftVersion:
+          type: string
+          minLength: 1
+          maxLength: 128
+        build:
+          type: string
+          minLength: 1
+          maxLength: 128
+        instanceId:
+          type: string
+          pattern: '^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$'
+        instanceName:
+          type: string
+          minLength: 1
+          maxLength: 128
+        instanceKind:
+          $ref: '#/components/schemas/InstanceKind'
+        instanceDirectory:
+          type: string
+          minLength: 1
+        updateCommand:
+          type: [ string, 'null' ]
+          maxLength: 8192
+        expiresAt:
+          type: [ string, 'null' ]
+          format: date-time
+        requiredRuntime:
+          $ref: '#/components/schemas/InstallRuntimeRequirement'
+        runtimeId:
+          type: [ string, 'null' ]
+          pattern: '^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$'
+        archive:
+          $ref: '#/components/schemas/DownloadManifest'
+        archiveFormat:
+          $ref: '#/components/schemas/RuntimeArchiveFormat'
+        executablePath:
+          type: string
+          minLength: 1
+        launchArguments:
+          type: array
+          maxItems: 256
+          items:
+            type: string
+            maxLength: 8192
+        stopCommand:
+          type: string
+          minLength: 1
+          maxLength: 8192
+        stopTimeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 300
+    ProvisionResolution:
+      type: object
+      required: [ resolvedPlan, planHash ]
+      properties:
+        resolvedPlan:
+          $ref: '#/components/schemas/ProvisionPlan'
+        planHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+    ProvisionExecuteRequest:
+      type: object
+      required: [ resolvedPlan, planHash ]
+      properties:
+        resolvedPlan:
+          $ref: '#/components/schemas/ProvisionPlan'
+        planHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+    ProvisionOperation:
+      type: object
+      required: [ taskId ]
+      properties:
+        taskId:
+          type: string
+        instanceId:
+          type: string
+        instance:
+          $ref: '#/components/schemas/Instance'
+        kind:
+          type: string
+        state:
+          type: string
+          enum: [ RUNNING, SUCCEEDED, FAILED ]
+        progress:
+          type: [ number, 'null' ]
+          minimum: 0
+          maximum: 1
+        error:
+          type: string
     VersionMetadataProvider:
       type: object
       required: [ id, name, url ]

@@ -307,8 +307,9 @@ M1 的 `instance.metrics` 返回一个当前进程样本组成的 `series`，字
 | `runtime.install`   | manifest、setAsDefault | taskId                 |
 | `runtime.verify`    | runtimeId              | taskId                 |
 | `runtime.delete`    | runtimeId              | taskId                 |
-| `provision.resolve` | InstallPlan            | resolvedPlan、planHash |
+| `provision.resolve` | ProvisionPlan          | resolvedPlan、planHash |
 | `provision.execute` | resolvedPlan、planHash | taskId、instanceId     |
+| `provision.task.get` | taskId                 | task                   |
 
 Core 只接受 Panel 已解析的精确 manifest：下载 URL、大小、SHA-256、目标目录和受限安装步骤。Core 必须再次校验平台/架构、摘要、可用空间和路径，不信任
 Panel 传来的预检结果。
@@ -316,6 +317,10 @@ Panel 传来的预检结果。
 `runtime.install` 的 manifest 还必须声明运行时 ID、发行版、版本、`ZIP` 或 `TAR_GZ` 压缩格式以及相对可执行文件路径。
 Core 将压缩包解压到受管 runtime 目录的临时目录，完成可执行文件检查后原子切换；缓存命中时复用已校验的 SHA-256 文件。
 压缩包中的绝对路径、父目录、符号链接和特殊文件会被拒绝。`runtime.verify` 重新执行版本探测，`runtime.delete` 会拒绝删除被实例启动命令引用的 runtime。
+
+`provision.resolve` 校验模板类型、运行时要求、目标平台/架构、实例目录和归档内的可执行文件路径，并对完整计划计算
+`planHash`。`provision.execute` 只接受相同的完整计划和 hash；Core 下载归档、验证 SHA-256、安全解压并原子创建实例目录，任务状态通过
+`provision.task.get` 查询。归档存在符号链接、特殊文件、绝对路径或父目录时会被拒绝。
 
 ### 5.5.1 代理子服务器
 
