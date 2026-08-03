@@ -1,6 +1,7 @@
 use std::io;
 use std::path::PathBuf;
 
+use nexus_domain::TaskId;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -56,4 +57,20 @@ pub enum FileManagerError {
     DirectoryNotEmpty { path: PathBuf },
     #[error("file task store is unavailable")]
     TaskStorePoisoned,
+    #[error("file transfer does not exist: {transfer_id}")]
+    TransferNotFound { transfer_id: TaskId },
+    #[error("file transfer offset mismatch: expected {expected}, got {actual}")]
+    TransferOffsetMismatch { expected: u64, actual: u64 },
+    #[error("file transfer is incomplete: expected {expected}, got {actual}")]
+    TransferIncomplete { expected: u64, actual: u64 },
+    #[error("file transfer size mismatch: expected {expected}, got {actual}")]
+    TransferSizeMismatch { expected: u64, actual: u64 },
+    #[error("file transfer hash does not match the expected value")]
+    TransferHashMismatch { expected: String, actual: String },
+    #[error("file transfer chunk hash does not match the expected value")]
+    TransferChunkHashMismatch { expected: String, actual: String },
+    #[error("file transfer chunk exceeds the maximum size of {maximum_bytes} bytes")]
+    TransferChunkTooLarge { maximum_bytes: usize },
+    #[error("too many active file transfers")]
+    TooManyTransfers,
 }

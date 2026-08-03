@@ -55,6 +55,7 @@ use crate::ProxySubserverRepository;
 use crate::ProxySubserverRepositoryError;
 use crate::RuntimeManager;
 use crate::RuntimeManagerError;
+use crate::file_manager::FILE_TRANSFER_CHUNK_BYTES;
 use crate::file_manager::MAXIMUM_FILE_BATCH_OPERATIONS;
 use crate::file_manager::MAXIMUM_FILE_READ_BYTES;
 
@@ -459,6 +460,10 @@ async fn request_response(
         "file.batch" => file_batch_response(request_id, params, idempotency_key, state),
         "file.task.get" => file_task_response(request_id, params, state),
         "file.write" => file_write_response(request_id, params, idempotency_key, state),
+        "transfer.begin" => transfer_begin_response(request_id, params, idempotency_key, state),
+        "transfer.chunk" => transfer_chunk_response(request_id, params, idempotency_key, state),
+        "transfer.commit" => transfer_commit_response(request_id, params, idempotency_key, state),
+        "transfer.abort" => transfer_abort_response(request_id, params, idempotency_key, state),
         "instance.start" => {
             instance_start_response(request_id, params, idempotency_key, state.processes()).await
         }
@@ -1388,6 +1393,183 @@ fn file_task_response(
     }
 }
 
+fn transfer_begin_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    state: &CoreRequestState,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    if params.get("mode").and_then(Value::as_str) != Some("UPLOAD") {
+        return error_response(request_id, "BAD_REQUEST", "transfer.begin mode is invalid");
+    }
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "transfer.begin requires a valid instanceId",
+        );
+    };
+    let Some(path) = params
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+    else {
+        return error_response(request_id, "BAD_REQUEST", "transfer.begin requires a path");
+    };
+    let Some(size) = params.get("size").and_then(Value::as_u64) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "transfer.begin requires a valid size",
+        );
+    };
+    let Some(sha256) = params.get("sha256").and_then(Value::as_str) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "transfer.begin requires a sha256",
+        );
+    };
+    let instance = match state.instances().get(&instance_id) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            return error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist");
+        }
+        Err(error) => return repository_failure_response(request_id, &error),
+    };
+
+    match state.files().begin_upload(&instance, path, size, sha256) {
+        Ok(result) => success_response(request_id, result),
+        Err(error) => file_manager_error_response(request_id, error),
+    }
+}
+
+fn transfer_chunk_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    state: &CoreRequestState,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let Some(transfer_id) = params
+        .get("transferId")
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse::<TaskId>().ok())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "transfer.chunk requires a valid transferId",
+        );
+    };
+    let Some(offset) = params.get("offset").and_then(Value::as_u64) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "transfer.chunk requires a valid offset",
+        );
+    };
+    let Some(data_base64) = params.get("dataBase64").and_then(Value::as_str) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "transfer.chunk requires dataBase64",
+        );
+    };
+    let Ok(content) = STANDARD.decode(data_base64) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "transfer.chunk dataBase64 is invalid",
+        );
+    };
+    let expected_sha256 = match params.get("sha256") {
+        None => None,
+        Some(Value::String(value)) => Some(value.as_str()),
+        Some(_) => {
+            return error_response(
+                request_id,
+                "BAD_REQUEST",
+                "transfer.chunk sha256 is invalid",
+            );
+        }
+    };
+    if content.len() > FILE_TRANSFER_CHUNK_BYTES {
+        return error_response(
+            request_id,
+            "PAYLOAD_TOO_LARGE",
+            "File transfer chunk exceeds the maximum size",
+        );
+    }
+
+    match state
+        .files()
+        .write_upload_chunk(transfer_id, offset, &content, expected_sha256)
+    {
+        Ok(result) => success_response(request_id, result),
+        Err(error) => file_manager_error_response(request_id, error),
+    }
+}
+
+fn transfer_commit_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    state: &CoreRequestState,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let Some(transfer_id) = params
+        .get("transferId")
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse::<TaskId>().ok())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "transfer.commit requires a valid transferId",
+        );
+    };
+
+    match state.files().commit_upload(transfer_id) {
+        Ok(entry) => success_response(request_id, json!(entry)),
+        Err(error) => file_manager_error_response(request_id, error),
+    }
+}
+
+fn transfer_abort_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    state: &CoreRequestState,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let Some(transfer_id) = params
+        .get("transferId")
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse::<TaskId>().ok())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "transfer.abort requires a valid transferId",
+        );
+    };
+
+    match state.files().abort_upload(transfer_id) {
+        Ok(()) => success_response(request_id, json!({})),
+        Err(error) => file_manager_error_response(request_id, error),
+    }
+}
+
 fn file_manager_error_response(request_id: RequestId, error: FileManagerError) -> WireMessage {
     match error {
         FileManagerError::InvalidPath { .. } | FileManagerError::InvalidHash { .. } => {
@@ -1401,6 +1583,11 @@ fn file_manager_error_response(request_id: RequestId, error: FileManagerError) -
             request_id,
             "PAYLOAD_TOO_LARGE",
             "File content exceeds the maximum size",
+        ),
+        FileManagerError::TransferChunkTooLarge { .. } => error_response(
+            request_id,
+            "PAYLOAD_TOO_LARGE",
+            "File transfer chunk exceeds the maximum size",
         ),
         FileManagerError::NotFound { .. } => {
             error_response(request_id, "FILE_NOT_FOUND", "File does not exist")
@@ -1424,6 +1611,45 @@ fn file_manager_error_response(request_id: RequestId, error: FileManagerError) -
             "File hash does not match",
             false,
             Some(json!({ "expectedSha256": expected, "actualSha256": actual })),
+        ),
+        FileManagerError::TransferHashMismatch { expected, actual }
+        | FileManagerError::TransferChunkHashMismatch { expected, actual } => {
+            error_response_with_details(
+                request_id,
+                "FILE_TRANSFER_HASH_MISMATCH",
+                "File transfer hash does not match",
+                false,
+                Some(json!({ "expectedSha256": expected, "actualSha256": actual })),
+            )
+        }
+        FileManagerError::TransferOffsetMismatch { expected, actual } => {
+            error_response_with_details(
+                request_id,
+                "FILE_TRANSFER_OFFSET_MISMATCH",
+                "File transfer offset is invalid",
+                false,
+                Some(json!({ "expectedOffset": expected, "actualOffset": actual })),
+            )
+        }
+        FileManagerError::TransferIncomplete { expected, actual }
+        | FileManagerError::TransferSizeMismatch { expected, actual } => {
+            error_response_with_details(
+                request_id,
+                "FILE_TRANSFER_SIZE_MISMATCH",
+                "File transfer size is invalid",
+                false,
+                Some(json!({ "expectedBytes": expected, "actualBytes": actual })),
+            )
+        }
+        FileManagerError::TransferNotFound { .. } => error_response(
+            request_id,
+            "FILE_TRANSFER_NOT_FOUND",
+            "File transfer does not exist",
+        ),
+        FileManagerError::TooManyTransfers => error_response(
+            request_id,
+            "FILE_TRANSFER_LIMIT_REACHED",
+            "Too many active file transfers",
         ),
         FileManagerError::AlreadyExists { .. } => error_response(
             request_id,

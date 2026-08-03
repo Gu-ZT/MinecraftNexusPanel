@@ -31,10 +31,14 @@ use tokio::task::spawn_blocking;
 
 use crate::FileBatchOperation;
 use crate::FileManagerError;
+use crate::file_upload::FileUpload;
 
 pub const MAXIMUM_FILE_READ_BYTES: usize = 32 * 1024;
 pub const MAXIMUM_FILE_WRITE_BYTES: usize = 1024 * 1024;
 pub const MAXIMUM_FILE_BATCH_OPERATIONS: usize = 64;
+pub const FILE_TRANSFER_CHUNK_BYTES: usize = 1024 * 1024;
+pub const MAXIMUM_FILE_TRANSFER_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+const MAXIMUM_ACTIVE_FILE_TRANSFERS: usize = 16;
 const DEFAULT_FILE_LIST_LIMIT: usize = 50;
 const MAXIMUM_FILE_LIST_LIMIT: usize = 200;
 
@@ -42,6 +46,7 @@ const MAXIMUM_FILE_LIST_LIMIT: usize = 200;
 pub struct FileManager {
     data_directory: Arc<PathBuf>,
     tasks: Arc<Mutex<HashMap<TaskId, Value>>>,
+    uploads: Arc<Mutex<HashMap<TaskId, FileUpload>>>,
 }
 
 impl FileManager {
@@ -50,6 +55,7 @@ impl FileManager {
         Self {
             data_directory: Arc::new(data_directory.to_path_buf()),
             tasks: Arc::new(Mutex::new(HashMap::new())),
+            uploads: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -525,6 +531,212 @@ impl FileManager {
         });
 
         Ok(task_id)
+    }
+
+    pub(crate) fn begin_upload(
+        &self,
+        instance: &Instance,
+        relative_path: &str,
+        expected_size: u64,
+        expected_sha256: &str,
+    ) -> Result<Value, FileManagerError> {
+        if expected_size > MAXIMUM_FILE_TRANSFER_BYTES {
+            return Err(FileManagerError::ContentTooLarge {
+                maximum_bytes: usize::try_from(MAXIMUM_FILE_TRANSFER_BYTES).unwrap_or(usize::MAX),
+            });
+        }
+        validate_hash(expected_sha256)?;
+        let root = self.instance_root(instance)?;
+        let target = self.resolve_write_target(&root, relative_path)?;
+        let parent = target
+            .parent()
+            .ok_or_else(|| FileManagerError::InvalidPath {
+                path: relative_path.to_owned(),
+            })?;
+        let temporary = NamedTempFile::new_in(parent).map_err(|source| FileManagerError::Io {
+            operation: "create upload temporary file in",
+            path: parent.to_path_buf(),
+            source,
+        })?;
+        let transfer_id = TaskId::new();
+        let upload = FileUpload {
+            root_path: root,
+            target_path: target,
+            temporary,
+            expected_size,
+            expected_sha256: expected_sha256.to_ascii_lowercase(),
+            next_offset: 0,
+        };
+        let mut uploads = self
+            .uploads
+            .lock()
+            .map_err(|_| FileManagerError::TaskStorePoisoned)?;
+        if uploads.len() >= MAXIMUM_ACTIVE_FILE_TRANSFERS {
+            return Err(FileManagerError::TooManyTransfers);
+        }
+        uploads.insert(transfer_id, upload);
+
+        Ok(json!({
+            "transferId": transfer_id,
+            "chunkSize": FILE_TRANSFER_CHUNK_BYTES,
+            "nextOffset": 0,
+            "sizeBytes": expected_size,
+        }))
+    }
+
+    pub(crate) fn write_upload_chunk(
+        &self,
+        transfer_id: TaskId,
+        offset: u64,
+        content: &[u8],
+        expected_sha256: Option<&str>,
+    ) -> Result<Value, FileManagerError> {
+        if content.is_empty() {
+            return Err(FileManagerError::InvalidPath {
+                path: "empty transfer chunk".to_owned(),
+            });
+        }
+        if content.len() > FILE_TRANSFER_CHUNK_BYTES {
+            return Err(FileManagerError::TransferChunkTooLarge {
+                maximum_bytes: FILE_TRANSFER_CHUNK_BYTES,
+            });
+        }
+        if let Some(expected_sha256) = expected_sha256 {
+            validate_hash(expected_sha256)?;
+            let actual_sha256 = sha256_hex(Sha256::digest(content));
+            if !expected_sha256.eq_ignore_ascii_case(&actual_sha256) {
+                return Err(FileManagerError::TransferChunkHashMismatch {
+                    expected: expected_sha256.to_owned(),
+                    actual: actual_sha256,
+                });
+            }
+        }
+
+        let mut uploads = self
+            .uploads
+            .lock()
+            .map_err(|_| FileManagerError::TaskStorePoisoned)?;
+        let upload = uploads
+            .get_mut(&transfer_id)
+            .ok_or(FileManagerError::TransferNotFound { transfer_id })?;
+        let temporary_path = upload.temporary.path().to_path_buf();
+        let content_length = u64::try_from(content.len()).unwrap_or(u64::MAX);
+        let end_offset = offset.saturating_add(content_length);
+        if end_offset > upload.expected_size {
+            return Err(FileManagerError::TransferSizeMismatch {
+                expected: upload.expected_size,
+                actual: end_offset,
+            });
+        }
+        if offset < upload.next_offset {
+            if end_offset > upload.next_offset {
+                return Err(FileManagerError::TransferOffsetMismatch {
+                    expected: upload.next_offset,
+                    actual: offset,
+                });
+            }
+            let file = upload.temporary.as_file_mut();
+            file.seek(SeekFrom::Start(offset))
+                .map_err(|source| FileManagerError::Io {
+                    operation: "seek upload temporary file",
+                    path: temporary_path.clone(),
+                    source,
+                })?;
+            let mut existing = vec![0_u8; content.len()];
+            file.read_exact(&mut existing)
+                .map_err(|source| FileManagerError::Io {
+                    operation: "read upload temporary file",
+                    path: temporary_path.clone(),
+                    source,
+                })?;
+            if existing != content {
+                return Err(FileManagerError::TransferOffsetMismatch {
+                    expected: upload.next_offset,
+                    actual: offset,
+                });
+            }
+        } else if offset == upload.next_offset {
+            let file = upload.temporary.as_file_mut();
+            file.seek(SeekFrom::Start(offset))
+                .map_err(|source| FileManagerError::Io {
+                    operation: "seek upload temporary file",
+                    path: temporary_path.clone(),
+                    source,
+                })?;
+            file.write_all(content)
+                .map_err(|source| FileManagerError::Io {
+                    operation: "write upload temporary file",
+                    path: temporary_path.clone(),
+                    source,
+                })?;
+            file.sync_data().map_err(|source| FileManagerError::Io {
+                operation: "sync upload temporary file",
+                path: temporary_path,
+                source,
+            })?;
+            upload.next_offset = end_offset;
+        } else {
+            return Err(FileManagerError::TransferOffsetMismatch {
+                expected: upload.next_offset,
+                actual: offset,
+            });
+        }
+
+        Ok(json!({
+            "transferId": transfer_id,
+            "nextOffset": upload.next_offset,
+            "sizeBytes": upload.expected_size,
+        }))
+    }
+
+    pub(crate) fn commit_upload(&self, transfer_id: TaskId) -> Result<FileEntry, FileManagerError> {
+        let upload = {
+            let mut uploads = self
+                .uploads
+                .lock()
+                .map_err(|_| FileManagerError::TaskStorePoisoned)?;
+            let upload = uploads
+                .get(&transfer_id)
+                .ok_or(FileManagerError::TransferNotFound { transfer_id })?;
+            if upload.next_offset != upload.expected_size {
+                return Err(FileManagerError::TransferIncomplete {
+                    expected: upload.expected_size,
+                    actual: upload.next_offset,
+                });
+            }
+            let actual_sha256 = hash_file(upload.temporary.path())?;
+            if !upload.expected_sha256.eq_ignore_ascii_case(&actual_sha256) {
+                return Err(FileManagerError::TransferHashMismatch {
+                    expected: upload.expected_sha256.clone(),
+                    actual: actual_sha256,
+                });
+            }
+            uploads
+                .remove(&transfer_id)
+                .ok_or(FileManagerError::TransferNotFound { transfer_id })?
+        };
+
+        let target_path = upload.target_path.clone();
+        upload
+            .temporary
+            .persist(&target_path)
+            .map_err(|error| FileManagerError::Io {
+                operation: "replace uploaded file",
+                path: target_path,
+                source: error.error,
+            })?;
+        relative_file_entry(&upload.root_path, &upload.target_path)
+    }
+
+    pub(crate) fn abort_upload(&self, transfer_id: TaskId) -> Result<(), FileManagerError> {
+        let mut uploads = self
+            .uploads
+            .lock()
+            .map_err(|_| FileManagerError::TaskStorePoisoned)?;
+        uploads
+            .remove(&transfer_id)
+            .map(|_| ())
+            .ok_or(FileManagerError::TransferNotFound { transfer_id })
     }
 
     pub fn task(&self, task_id: TaskId) -> Result<Option<Value>, FileManagerError> {

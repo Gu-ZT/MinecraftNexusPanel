@@ -22,6 +22,8 @@ use nexus_panel::CoreConnectionError;
 use nexus_protocol::PresharedKey;
 use serde_json::Value;
 use serde_json::json;
+use sha2::Digest;
+use sha2::Sha256;
 use tempfile::tempdir;
 use tokio::spawn;
 use tokio::time::sleep;
@@ -148,6 +150,78 @@ async fn connects_to_a_core_and_reads_its_system_info() {
         .expect("Core reads an instance file chunk");
     assert_eq!(content.data_base64(), "bW90ZA==");
     assert!(!content.eof());
+    let transfer_content = b"chunked transfer content";
+    let transfer_sha256 = sha256_hex(transfer_content);
+    let transfer = connection
+        .begin_file_upload(
+            definition.id(),
+            "transfer.txt",
+            transfer_content.len() as u64,
+            &transfer_sha256,
+            &RequestId::new().to_string(),
+        )
+        .await
+        .expect("Core accepts a file upload");
+    assert_eq!(transfer["chunkSize"], 1024 * 1024);
+    let transfer_id = transfer["transferId"]
+        .as_str()
+        .expect("file transfer ID is returned")
+        .parse::<TaskId>()
+        .expect("file transfer ID is valid");
+    let first_chunk = &transfer_content[..8];
+    let first_chunk_sha256 = sha256_hex(first_chunk);
+    let out_of_order = connection
+        .upload_file_chunk(
+            &transfer_id,
+            1,
+            first_chunk,
+            Some(&first_chunk_sha256),
+            &RequestId::new().to_string(),
+        )
+        .await
+        .expect_err("Core rejects an out-of-order upload chunk");
+    assert!(matches!(
+        out_of_order,
+        CoreConnectionError::Rejected { code } if code == "FILE_TRANSFER_OFFSET_MISMATCH"
+    ));
+    let first_result = connection
+        .upload_file_chunk(
+            &transfer_id,
+            0,
+            first_chunk,
+            Some(&first_chunk_sha256),
+            &RequestId::new().to_string(),
+        )
+        .await
+        .expect("Core accepts the first upload chunk");
+    assert_eq!(first_result["nextOffset"], 8);
+    let retry_result = connection
+        .upload_file_chunk(
+            &transfer_id,
+            0,
+            first_chunk,
+            Some(&first_chunk_sha256),
+            &RequestId::new().to_string(),
+        )
+        .await
+        .expect("Core accepts an identical upload retry");
+    assert_eq!(retry_result["nextOffset"], 8);
+    let second_chunk = &transfer_content[8..];
+    connection
+        .upload_file_chunk(
+            &transfer_id,
+            8,
+            second_chunk,
+            None,
+            &RequestId::new().to_string(),
+        )
+        .await
+        .expect("Core accepts the final upload chunk");
+    let uploaded = connection
+        .commit_file_upload(&transfer_id, &RequestId::new().to_string())
+        .await
+        .expect("Core commits the uploaded file");
+    assert_eq!(uploaded.path(), "transfer.txt");
     let directory = connection
         .create_instance_directory(
             definition.id(),
@@ -425,6 +499,13 @@ async fn wait_for_file_task(connection: &mut CoreConnection, task_id: TaskId) ->
 
 fn instance_create(identifier: &str) -> InstanceCreate {
     instance_create_with_kind(identifier, InstanceKind::Paper)
+}
+
+fn sha256_hex(content: &[u8]) -> String {
+    Sha256::digest(content)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn instance_create_with_kind(identifier: &str, kind: InstanceKind) -> InstanceCreate {

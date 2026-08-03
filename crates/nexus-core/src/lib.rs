@@ -10,6 +10,7 @@ mod download_task;
 mod file_batch_operation;
 mod file_manager;
 mod file_manager_error;
+mod file_upload;
 mod instance_log_store;
 mod instance_log_store_error;
 mod instance_process;

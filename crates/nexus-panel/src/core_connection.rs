@@ -750,6 +750,78 @@ impl CoreConnection {
             .await
     }
 
+    pub async fn begin_file_upload(
+        &mut self,
+        instance_id: &InstanceId,
+        path: &str,
+        size_bytes: u64,
+        sha256: &str,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreConnectionError> {
+        self.request_with_idempotency(
+            "transfer.begin",
+            json!({
+                "instanceId": instance_id,
+                "path": path,
+                "size": size_bytes,
+                "sha256": sha256,
+                "mode": "UPLOAD",
+            }),
+            Some(idempotency_key),
+        )
+        .await
+    }
+
+    pub async fn upload_file_chunk(
+        &mut self,
+        transfer_id: &TaskId,
+        offset: u64,
+        content: &[u8],
+        sha256: Option<&str>,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreConnectionError> {
+        let mut params = json!({
+            "transferId": transfer_id,
+            "offset": offset,
+            "dataBase64": STANDARD.encode(content),
+        });
+        if let Some(sha256) = sha256 {
+            params["sha256"] = json!(sha256);
+        }
+        self.request_with_idempotency("transfer.chunk", params, Some(idempotency_key))
+            .await
+    }
+
+    pub async fn commit_file_upload(
+        &mut self,
+        transfer_id: &TaskId,
+        idempotency_key: &str,
+    ) -> Result<FileEntry, CoreConnectionError> {
+        let result = self
+            .request_with_idempotency(
+                "transfer.commit",
+                json!({ "transferId": transfer_id }),
+                Some(idempotency_key),
+            )
+            .await?;
+
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "fileEntry" })
+    }
+
+    pub async fn abort_file_upload(
+        &mut self,
+        transfer_id: &TaskId,
+        idempotency_key: &str,
+    ) -> Result<(), CoreConnectionError> {
+        self.request_with_idempotency(
+            "transfer.abort",
+            json!({ "transferId": transfer_id }),
+            Some(idempotency_key),
+        )
+        .await?;
+        Ok(())
+    }
+
     async fn request(&mut self, method: &str, params: Value) -> Result<Value, CoreConnectionError> {
         self.request_with_idempotency(method, params, None).await
     }
