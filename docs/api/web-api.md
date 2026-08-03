@@ -234,8 +234,8 @@ Panel 使用 `MCNP_PANEL_MASTER_KEY` 对 Core PSK 执行 AES-256-GCM 信封加�
 
 | 方法   | 路径                                                   | 权限         | 说明           |
 |--------|--------------------------------------------------------|--------------|----------------|
-| GET    | `.../{instanceId}/files?path=/`                        | `file.read`  | 列出目录       |
-| GET    | `.../{instanceId}/file-content?path=server.properties` | `file.read`  | 下载/读取文件  |
+| GET    | `.../{instanceId}/files?path=`                         | `file.read`  | 列出目录       |
+| GET    | `.../{instanceId}/file-content?path=server.properties&offset=0&length=32768` | `file.read`  | 分块读取文件   |
 | PUT    | `.../{instanceId}/file-content?path=server.properties` | `file.write` | 小文件整体写入 |
 | POST   | `.../{instanceId}/directories`                         | `file.write` | 创建目录       |
 | POST   | `.../{instanceId}/file-actions/move`                   | `file.write` | 移动或重命名   |
@@ -247,7 +247,10 @@ Panel 使用 `MCNP_PANEL_MASTER_KEY` 对 Core PSK 执行 AES-256-GCM 信封加�
 
 路径必须使用 UTF-8 和 `/`，以实例根目录为 `/`。Panel 与 Core 都必须拒绝绝对宿主机路径、NUL、`..` 段和逃逸实例根目录的符号链接。
 
-小文件整体写入上限建议 1 MiB。大文件上传分块由初始化响应指定，默认 1 MiB；每个 part 使用
+当前文件接口已提供目录分页、单次最多 32 KiB 的分块读取和最多 1 MiB 的原子写入。读取响应使用完整文件 SHA-256 的 `ETag`，并通过
+`X-MCNP-File-Eof: true|false` 表示是否到达末尾；写入使用 `Idempotency-Key`，可选 `If-Match` 传入带引号的当前文件 SHA-256。
+
+大文件上传分块由初始化响应指定，默认 1 MiB；每个 part 使用
 `Content-Type: application/octet-stream` 和 `Content-SHA256`。
 
 ### 5.5 任务、用户和审计

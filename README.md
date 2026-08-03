@@ -29,6 +29,17 @@ The catalog distinguishes a server profile from a verified installer. Version me
 - Velocity, Waterfall, BungeeCord, and Lightfall use one-to-many backend topology; Geyser uses one-to-one topology and has dedicated Bedrock-facing management.
 - Bedrock Dedicated Server, PocketMine-MP, Nukkit, Cloudburst Nukkit, and Geyser expose dedicated management profiles for RakNet UDP, default port `19132`, configuration files, and extension capabilities.
 
+### File Management Slice
+
+The first file-management slice is now available through the Core `files` capability and Panel API:
+
+- sandboxed directory listing with pagination;
+- 32 KiB chunked reads with full-file SHA-256 and EOF metadata;
+- atomic writes up to 1 MiB with optional `ETag`/`If-Match` protection and idempotency keys;
+- binary Panel responses and TypeScript Client methods for the same contract.
+
+Directory creation, moving, deletion, and task-based large-file transfer remain planned M3 work.
+
 ## Project Layout
 
 ```text

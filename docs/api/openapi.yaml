@@ -1109,6 +1109,8 @@ paths:
         - $ref: '#/components/parameters/CoreId'
         - $ref: '#/components/parameters/InstanceId'
         - $ref: '#/components/parameters/FilePath'
+        - $ref: '#/components/parameters/FileOffset'
+        - $ref: '#/components/parameters/FileLength'
       responses:
         '200':
           description: File content
@@ -1117,6 +1119,11 @@ paths:
               description: SHA-256 based content ETag
               schema:
                 type: string
+            X-MCNP-File-Eof:
+              description: Whether the returned chunk reaches the end of the file
+              schema:
+                type: string
+                enum: [ 'true', 'false' ]
           content:
             application/octet-stream:
               schema:
@@ -1136,7 +1143,8 @@ paths:
         - $ref: '#/components/parameters/CoreId'
         - $ref: '#/components/parameters/InstanceId'
         - $ref: '#/components/parameters/FilePath'
-        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/FileIfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -1148,12 +1156,19 @@ paths:
       responses:
         '200':
           description: File written atomically
+          headers:
+            ETag:
+              description: SHA-256 based content ETag for the written file
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/FileEntry'
         '412':
           $ref: '#/components/responses/RevisionMismatch'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
   /tasks:
@@ -1292,6 +1307,31 @@ components:
       in: query
       required: true
       description: UTF-8 path relative to the instance root
+      schema:
+        type: string
+    FileOffset:
+      name: offset
+      in: query
+      description: Byte offset of the requested chunk
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+        default: 0
+    FileLength:
+      name: length
+      in: query
+      description: Number of bytes to read; Core accepts 1 through 32768
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 32768
+        default: 32768
+    FileIfMatch:
+      name: If-Match
+      in: header
+      description: Optional quoted SHA-256 of the current file content
+      required: false
       schema:
         type: string
     IfMatch:

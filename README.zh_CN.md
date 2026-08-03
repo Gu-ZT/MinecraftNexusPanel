@@ -29,6 +29,17 @@
 - Velocity、Waterfall、BungeeCord、Lightfall 使用一对多后端拓扑；Geyser 使用一对一拓扑，并提供专门的基岩版管理能力。
 - Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit 与 Geyser 使用专门画像管理 RakNet UDP、默认端口 `19132`、配置文件和扩展能力。
 
+### 当前文件管理能力
+
+首批文件管理能力已经通过 Core `files` capability 和 Panel API 提供：
+
+- 带分页的实例目录列表；
+- 单次 32 KiB 的分块读取，返回完整文件 SHA-256 和 EOF 元数据；
+- 最大 1 MiB 的原子写入，支持可选 `ETag`/`If-Match` 校验和幂等键；
+- Panel 二进制响应以及对应的 TypeScript Client 方法。
+
+目录创建、移动、删除和任务化大文件传输仍属于 M3 后续工作。
+
 ## 工程布局
 
 ```text
