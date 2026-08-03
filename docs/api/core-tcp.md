@@ -313,6 +313,18 @@ M1 的 `instance.metrics` 返回一个当前进程样本组成的 `series`，字
 Core 只接受 Panel 已解析的精确 manifest：下载 URL、大小、SHA-256、目标目录和受限安装步骤。Core 必须再次校验平台/架构、摘要、可用空间和路径，不信任
 Panel 传来的预检结果。
 
+### 5.5.1 代理子服务器
+
+| 方法                    | 参数                                  | 结果                  |
+|-------------------------|---------------------------------------|-----------------------|
+| `proxy.subserver.list`  | proxyInstanceId                       | items                 |
+| `proxy.subserver.upsert`| proxyInstanceId、subserver            | ProxySubserver        |
+| `proxy.subserver.delete`| proxyInstanceId、subserverId          | 空对象                |
+
+Core 只允许 `VELOCITY`、`WATERFALL`、`BUNGEECORD`、`LIGHTFALL` 和 `GEYSER` 实例使用这些方法。
+一对多代理可以维护多个目标；Geyser 的一对一拓扑最多维护一个目标。每个目标必须指向已存在的非代理实例，
+变更请求必须带 `idempotencyKey`。
+
 ### 5.6 配置与扩展
 
 | 方法                | 参数                                                | 结果                               |

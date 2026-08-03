@@ -26,6 +26,7 @@ mod managed_core;
 mod panel_error;
 mod panel_server;
 mod panel_state;
+mod proxy_routes;
 mod refresh_request;
 mod secret_cipher;
 mod secret_cipher_error;

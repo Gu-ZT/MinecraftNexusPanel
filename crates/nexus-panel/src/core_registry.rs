@@ -12,6 +12,7 @@ use nexus_domain::InstanceState;
 use nexus_domain::InstanceUpdate;
 use nexus_domain::ManagedRuntime;
 use nexus_domain::PRODUCT_NAME;
+use nexus_domain::ProxySubserver;
 use nexus_domain::TaskId;
 use nexus_protocol::PresharedKey;
 use nexus_protocol::ProtocolVersion;
@@ -293,6 +294,59 @@ impl CoreRegistry {
         let runtimes: Vec<ManagedRuntime> = connection.list_managed_runtimes().await?;
 
         Ok(json!({ "items": runtimes }))
+    }
+
+    pub async fn list_proxy_subservers(
+        &self,
+        core_id: CoreId,
+        proxy_instance_id: &InstanceId,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let items = connection.list_proxy_subservers(proxy_instance_id).await?;
+
+        Ok(json!({ "items": items }))
+    }
+
+    pub async fn upsert_proxy_subserver(
+        &self,
+        core_id: CoreId,
+        proxy_instance_id: &InstanceId,
+        subserver: &ProxySubserver,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let item = connection
+            .upsert_proxy_subserver(proxy_instance_id, subserver, idempotency_key)
+            .await?;
+
+        Ok(json!(item))
+    }
+
+    pub async fn delete_proxy_subserver(
+        &self,
+        core_id: CoreId,
+        proxy_instance_id: &InstanceId,
+        subserver_id: &str,
+        idempotency_key: &str,
+    ) -> Result<(), CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        connection
+            .delete_proxy_subserver(proxy_instance_id, subserver_id, idempotency_key)
+            .await?;
+
+        Ok(())
     }
 
     pub async fn update_instance(

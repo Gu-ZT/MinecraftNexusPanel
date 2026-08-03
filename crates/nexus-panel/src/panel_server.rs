@@ -33,6 +33,7 @@ use crate::core_routes::core_routes;
 use crate::environment_routes::environment_routes;
 use crate::install_template_routes::install_template_routes;
 use crate::instance_routes::instance_routes;
+use crate::proxy_routes::proxy_routes;
 use crate::websocket_routes::websocket_routes;
 
 pub struct PanelServer {
@@ -113,6 +114,7 @@ fn router(state: PanelState) -> Router {
         .merge(core_routes())
         .merge(environment_routes())
         .merge(instance_routes())
+        .merge(proxy_routes())
         .merge(install_template_routes())
         .merge(websocket_routes())
         .with_state(state)

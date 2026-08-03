@@ -23,6 +23,8 @@ tags:
     description: Built-in server templates and version metadata sources
   - name: Instances
     description: Minecraft instance configuration and lifecycle
+  - name: Proxy
+    description: Proxy backend and subserver relationships
   - name: Files
     description: Sandboxed instance file operations
   - name: Tasks
@@ -484,6 +486,86 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/instances/{proxyInstanceId}/proxy-subservers:
+    parameters:
+      - $ref: '#/components/parameters/CoreId'
+      - $ref: '#/components/parameters/ProxyInstanceId'
+    get:
+      tags: [ Proxy ]
+      operationId: listProxySubservers
+      summary: List the backend instances configured for a proxy
+      responses:
+        '200':
+          description: Proxy backend relationships
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxySubserverPage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      tags: [ Proxy ]
+      operationId: upsertProxySubserver
+      summary: Create or replace a proxy backend relationship
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProxySubserver'
+      responses:
+        '200':
+          description: Proxy backend relationship saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxySubserver'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/instances/{proxyInstanceId}/proxy-subservers/{subserverId}:
+    parameters:
+      - $ref: '#/components/parameters/CoreId'
+      - $ref: '#/components/parameters/ProxyInstanceId'
+      - $ref: '#/components/parameters/SubserverId'
+    delete:
+      tags: [ Proxy ]
+      operationId: deleteProxySubserver
+      summary: Remove a proxy backend relationship
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: Proxy backend relationship removed
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionRequired'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instances/{instanceId}:
@@ -971,6 +1053,18 @@ components:
       required: true
       schema:
         type: string
+    ProxyInstanceId:
+      name: proxyInstanceId
+      in: path
+      required: true
+      schema:
+        type: string
+    SubserverId:
+      name: subserverId
+      in: path
+      required: true
+      schema:
+        type: string
     TaskId:
       name: taskId
       in: path
@@ -1030,6 +1124,12 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     RevisionMismatch:
       description: If-Match does not match current revision
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PreconditionRequired:
+      description: Required idempotency precondition is missing
       content:
         application/json:
           schema:
@@ -1436,6 +1536,38 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/InstallTemplateVersion'
+    ProxySubserver:
+      type: object
+      required: [ id, name, targetInstanceId, host, port, enabled ]
+      properties:
+        id:
+          type: string
+          pattern: '^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        targetInstanceId:
+          type: string
+        host:
+          type: string
+          minLength: 1
+          maxLength: 253
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        enabled:
+          type: boolean
+      additionalProperties: false
+    ProxySubserverPage:
+      type: object
+      required: [ items ]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProxySubserver'
     InstanceKind:
       type: string
       enum:

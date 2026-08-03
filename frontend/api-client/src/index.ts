@@ -30,6 +30,8 @@ export type {
   ManagedRuntimePage,
   PanelApiClient,
   ProxyTopology,
+  ProxySubserver,
+  ProxySubserverPage,
   SessionTokens,
   RuntimeKind,
   RuntimeSource,

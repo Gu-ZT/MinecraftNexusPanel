@@ -248,6 +248,49 @@ pub(crate) fn registry_error_response(error: CoreRegistryError, request_id: Requ
             )
         }
         CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if matches!(
+                code.as_str(),
+                "PROXY_TOPOLOGY_UNSUPPORTED" | "PROXY_SUBSERVER_LIMIT_REACHED"
+            ) =>
+        {
+            error_response(
+                StatusCode::CONFLICT,
+                code.as_str(),
+                "Proxy topology does not allow this subserver operation",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "PROXY_TARGET_INVALID" =>
+        {
+            error_response(
+                StatusCode::BAD_REQUEST,
+                code.as_str(),
+                "Proxy subserver target is invalid",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "PROXY_TARGET_NOT_FOUND" =>
+        {
+            error_response(
+                StatusCode::NOT_FOUND,
+                code.as_str(),
+                "Proxy subserver target does not exist",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "PROXY_SUBSERVER_NOT_FOUND" =>
+        {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "PROXY_SUBSERVER_NOT_FOUND",
+                "Proxy subserver does not exist",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
             if code == "REVISION_MISMATCH" =>
         {
             error_response(

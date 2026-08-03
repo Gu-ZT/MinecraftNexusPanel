@@ -93,6 +93,98 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     assert_eq!(runtimes.status, 200);
     assert!(runtimes.body["items"].is_array());
 
+    for (identifier, kind) in [
+        ("geyser-proxy", "GEYSER"),
+        ("java-backend", "PAPER"),
+        ("java-backend-two", "PAPER"),
+    ] {
+        let response = send_json_request(
+            panel_address,
+            "POST",
+            &format!("/api/v1/cores/{core_id}/instances"),
+            &[
+                ("Authorization", authorization.as_str()),
+                ("Idempotency-Key", &RequestId::new().to_string()),
+            ],
+            Some(instance_create_with_kind(identifier, kind)),
+        )
+        .await;
+        assert_eq!(response.status, 201);
+    }
+
+    let proxy_path = format!("/api/v1/cores/{core_id}/instances/geyser-proxy/proxy-subservers");
+    let first_subserver = send_json_request(
+        panel_address,
+        "POST",
+        &proxy_path,
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        Some(json!({
+            "id": "default",
+            "name": "Default",
+            "targetInstanceId": "java-backend",
+            "host": "127.0.0.1",
+            "port": 25565,
+            "enabled": true,
+        })),
+    )
+    .await;
+    assert_eq!(first_subserver.status, 200);
+    assert_eq!(first_subserver.body["targetInstanceId"], "java-backend");
+
+    let listed_subservers = send_json_request(
+        panel_address,
+        "GET",
+        &proxy_path,
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(listed_subservers.status, 200);
+    assert_eq!(
+        listed_subservers.body["items"].as_array().map(Vec::len),
+        Some(1)
+    );
+
+    let second_subserver = send_json_request(
+        panel_address,
+        "POST",
+        &proxy_path,
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        Some(json!({
+            "id": "secondary",
+            "name": "Secondary",
+            "targetInstanceId": "java-backend-two",
+            "host": "127.0.0.1",
+            "port": 25566,
+            "enabled": true,
+        })),
+    )
+    .await;
+    assert_eq!(second_subserver.status, 409);
+    assert_eq!(
+        second_subserver.body["error"]["code"],
+        "PROXY_SUBSERVER_LIMIT_REACHED"
+    );
+
+    let deleted_subserver = send_json_request(
+        panel_address,
+        "DELETE",
+        &format!("{proxy_path}/default"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        None,
+    )
+    .await;
+    assert_eq!(deleted_subserver.status, 204);
+
     let created = send_json_request(
         panel_address,
         "POST",
@@ -197,8 +289,11 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     )
     .await;
     assert_eq!(listed.status, 200);
-    assert_eq!(listed.body["items"][0]["id"], "panel-process");
-    assert_eq!(listed.body["items"][0]["coreId"], core_id);
+    let panel_process = listed.body["items"]
+        .as_array()
+        .and_then(|items| items.iter().find(|item| item["id"] == "panel-process"))
+        .expect("instance list contains panel-process");
+    assert_eq!(panel_process["coreId"], core_id);
 
     let missing_key = send_json_request(
         panel_address,
@@ -492,6 +587,12 @@ fn safe_process_create(identifier: &str) -> Value {
         "directory": format!("instances/{identifier}"),
         "launch": safe_process_launch_config(),
     })
+}
+
+fn instance_create_with_kind(identifier: &str, kind: &str) -> Value {
+    let mut definition = safe_process_create(identifier);
+    definition["kind"] = json!(kind);
+    definition
 }
 
 #[cfg(windows)]

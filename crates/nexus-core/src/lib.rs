@@ -16,6 +16,8 @@ mod instance_process_supervisor;
 mod instance_repository;
 mod instance_repository_error;
 mod process_output;
+mod proxy_subserver_repository;
+mod proxy_subserver_repository_error;
 mod runtime_discovery;
 
 pub use core_error::CoreError;
@@ -37,4 +39,6 @@ use instance_process_supervisor::InstanceProcessSupervisor;
 pub use instance_repository::InstanceRepository;
 pub use instance_repository_error::InstanceRepositoryError;
 use process_output::spawn_output_reader;
+pub use proxy_subserver_repository::ProxySubserverRepository;
+pub use proxy_subserver_repository_error::ProxySubserverRepositoryError;
 use runtime_discovery::RuntimeDiscovery;

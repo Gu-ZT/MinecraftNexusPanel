@@ -85,7 +85,21 @@ API。通用鉴权、分页、错误、幂等及乐观锁规则沿用 Web API。
 `resolve` 返回精确版本、所需空间、下载项、哈希、将要安装的环境、默认启动/更新命令和警告。客户端确认后使用相同 `planHash` 创建
 provision；Catalog 变化导致 hash 失效时必须重新确认。
 
-### 3.2 模板安全
+### 3.2 代理子服务器
+
+代理实例的子服务器关系由 Core 保存，Panel 负责鉴权、授权和审计。Velocity、Waterfall、BungeeCord、Lightfall
+支持一对多目标；Geyser 只支持一个 Java 后端目标。
+
+| 方法   | 路径                                                               | 说明                         |
+|--------|--------------------------------------------------------------------|------------------------------|
+| GET    | `/cores/{coreId}/instances/{proxyInstanceId}/proxy-subservers`     | 查询代理后端                 |
+| POST   | `/cores/{coreId}/instances/{proxyInstanceId}/proxy-subservers`     | 创建或替换一个后端关系       |
+| DELETE | `/cores/{coreId}/instances/{proxyInstanceId}/proxy-subservers/{subserverId}` | 删除后端关系                 |
+
+后端记录包含 `targetInstanceId`、监听目标地址、端口和启用状态。目标实例必须已存在且不是代理实例；Geyser 的第二个目标返回
+`PROXY_SUBSERVER_LIMIT_REACHED`。
+
+### 3.3 模板安全
 
 - 内置模板随 Panel 版本签名；远程模板源必须配置公钥或显式标记为不可信。
 - 模板步骤使用受限 DSL：download、extract、copy、writeConfig、installRuntime，不默认执行任意 Shell。

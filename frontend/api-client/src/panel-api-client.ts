@@ -1,7 +1,7 @@
 import type { ApiClientOptions } from './api-client-options';
 import { createApiUrl } from './create-api-url';
 
-type HttpMethod = 'GET' | 'PATCH' | 'POST';
+type HttpMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST';
 
 interface RequestOptions {
   method?: HttpMethod;
@@ -159,6 +159,19 @@ export interface InstallTemplateVersionPage {
   items: InstallTemplateVersion[];
 }
 
+export interface ProxySubserver {
+  id: string;
+  name: string;
+  targetInstanceId: string;
+  host: string;
+  port: number;
+  enabled: boolean;
+}
+
+export interface ProxySubserverPage {
+  items: ProxySubserver[];
+}
+
 export interface LaunchConfig {
   executable: string;
   args: string[];
@@ -236,6 +249,13 @@ export interface PanelApiClient {
   listInstallTemplates(): Promise<InstallTemplatePage>;
   listInstallTemplateVersions(templateId: string): Promise<InstallTemplateVersionPage>;
   listManagedRuntimes(coreId: string): Promise<ManagedRuntimePage>;
+  listProxySubservers(coreId: string, proxyInstanceId: string): Promise<ProxySubserverPage>;
+  upsertProxySubserver(
+    coreId: string,
+    proxyInstanceId: string,
+    subserver: ProxySubserver,
+  ): Promise<ProxySubserver>;
+  deleteProxySubserver(coreId: string, proxyInstanceId: string, subserverId: string): Promise<void>;
   listInstances(coreId: string): Promise<InstancePage>;
   updateInstance(coreId: string, instanceId: string, update: InstanceUpdate, revision: number): Promise<Instance>;
   getInstanceLogs(coreId: string, instanceId: string): Promise<LogPage>;
@@ -330,6 +350,23 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     listManagedRuntimes(coreId) {
       return request<ManagedRuntimePage>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/environments`,
+      );
+    },
+    listProxySubservers(coreId, proxyInstanceId) {
+      return request<ProxySubserverPage>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(proxyInstanceId)}/proxy-subservers`,
+      );
+    },
+    upsertProxySubserver(coreId, proxyInstanceId, subserver) {
+      return request<ProxySubserver>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(proxyInstanceId)}/proxy-subservers`,
+        { method: 'POST', body: subserver, csrf: true, idempotent: true },
+      );
+    },
+    deleteProxySubserver(coreId, proxyInstanceId, subserverId) {
+      return request<void>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(proxyInstanceId)}/proxy-subservers/${encodeURIComponent(subserverId)}`,
+        { method: 'DELETE', csrf: true, idempotent: true },
       );
     },
     listInstances(coreId) {

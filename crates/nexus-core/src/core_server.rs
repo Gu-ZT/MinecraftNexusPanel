@@ -6,12 +6,14 @@ use std::sync::Arc;
 
 use nexus_config::CoreConfig;
 use nexus_domain::CoreId;
+use nexus_domain::Instance;
 use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
 use nexus_domain::InstancePage;
 use nexus_domain::InstanceState;
 use nexus_domain::InstanceUpdate;
 use nexus_domain::PRODUCT_VERSION;
+use nexus_domain::ProxySubserver;
 use nexus_domain::RequestId;
 use nexus_domain::TaskId;
 use nexus_protocol::CURRENT_PROTOCOL_VERSION;
@@ -40,9 +42,18 @@ use crate::InstanceProcessError;
 use crate::InstanceProcessManager;
 use crate::InstanceRepository;
 use crate::InstanceRepositoryError;
+use crate::ProxySubserverRepository;
+use crate::ProxySubserverRepositoryError;
 use crate::RuntimeDiscovery;
 
-const CORE_CAPABILITIES: [&str; 5] = ["events", "instances", "metrics", "runtimes", "settings"];
+const CORE_CAPABILITIES: [&str; 6] = [
+    "events",
+    "instances",
+    "metrics",
+    "proxy-subservers",
+    "runtimes",
+    "settings",
+];
 const CORE_ID_FILE_NAME: &str = "core-id";
 const EVENT_TOPICS: [&str; 2] = ["instance.console", "instance.state"];
 const HEARTBEAT_SECONDS: u64 = 20;
@@ -59,8 +70,17 @@ pub struct CoreServer {
     pre_shared_key: PresharedKey,
     instances: InstanceRepository,
     processes: InstanceProcessManager,
+    proxy_subservers: ProxySubserverRepository,
     runtimes: RuntimeDiscovery,
     tls_acceptor: TlsAcceptor,
+}
+
+#[derive(Clone)]
+struct CoreResources {
+    instances: InstanceRepository,
+    processes: InstanceProcessManager,
+    proxy_subservers: ProxySubserverRepository,
+    runtimes: RuntimeDiscovery,
 }
 
 impl CoreServer {
@@ -95,6 +115,7 @@ impl CoreServer {
             pre_shared_key,
             instances,
             processes,
+            proxy_subservers: ProxySubserverRepository::new(),
             runtimes,
             tls_acceptor: tls_identity.acceptor(),
         })
@@ -132,9 +153,12 @@ impl CoreServer {
             let core_id = self.core_id;
             let certificate_sha256 = self.certificate_sha256.clone();
             let pre_shared_key = self.pre_shared_key.clone();
-            let instances = self.instances.clone();
-            let processes = self.processes.clone();
-            let runtimes = self.runtimes.clone();
+            let resources = CoreResources {
+                instances: self.instances.clone(),
+                processes: self.processes.clone(),
+                proxy_subservers: self.proxy_subservers.clone(),
+                runtimes: self.runtimes.clone(),
+            };
             let tls_acceptor = self.tls_acceptor.clone();
 
             spawn(async move {
@@ -150,9 +174,7 @@ impl CoreServer {
                     &pre_shared_key,
                     core_id,
                     &certificate_sha256,
-                    instances,
-                    processes,
-                    runtimes,
+                    resources,
                 )
                 .await
                 .is_err()
@@ -173,9 +195,7 @@ async fn handle_connection<S>(
     pre_shared_key: &PresharedKey,
     core_id: CoreId,
     certificate_sha256: &str,
-    instances: InstanceRepository,
-    processes: InstanceProcessManager,
-    runtimes: RuntimeDiscovery,
+    resources: CoreResources,
 ) -> Result<(), CoreError>
 where
     S: AsyncRead + AsyncWrite + Unpin,
@@ -193,7 +213,13 @@ where
         return Ok(());
     }
 
-    let mut request_state = CoreRequestState::new(core_id, instances, processes, runtimes);
+    let mut request_state = CoreRequestState::new(
+        core_id,
+        resources.instances,
+        resources.processes,
+        resources.proxy_subservers,
+        resources.runtimes,
+    );
     let mut event_receiver = request_state.processes().subscribe();
 
     loop {
@@ -353,6 +379,26 @@ async fn request_response(
         ),
         "system.ping" => success_response(request_id, json!({ "receivedAt": current_timestamp() })),
         "runtime.list" => environment_list_response(request_id, state.runtimes()).await,
+        "proxy.subserver.list" => proxy_subserver_list_response(
+            request_id,
+            params,
+            state.instances(),
+            state.proxy_subservers(),
+        ),
+        "proxy.subserver.upsert" => proxy_subserver_upsert_response(
+            request_id,
+            params,
+            idempotency_key,
+            state.instances(),
+            state.proxy_subservers(),
+        ),
+        "proxy.subserver.delete" => proxy_subserver_delete_response(
+            request_id,
+            params,
+            idempotency_key,
+            state.instances(),
+            state.proxy_subservers(),
+        ),
         "instance.command" => {
             instance_command_response(request_id, params, state.processes()).await
         }
@@ -386,6 +432,142 @@ async fn environment_list_response(
     runtimes: &RuntimeDiscovery,
 ) -> WireMessage {
     success_response(request_id, json!({ "items": runtimes.discover().await }))
+}
+
+fn proxy_subserver_list_response(
+    request_id: RequestId,
+    params: &Value,
+    instances: &InstanceRepository,
+    subservers: &ProxySubserverRepository,
+) -> WireMessage {
+    let proxy = match find_proxy_instance(request_id, params, instances) {
+        Ok(proxy) => proxy,
+        Err(response) => return *response,
+    };
+
+    match subservers.list(&proxy) {
+        Ok(items) => success_response(request_id, json!({ "items": items })),
+        Err(error) => proxy_subserver_repository_failure_response(request_id, &error),
+    }
+}
+
+fn proxy_subserver_upsert_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    instances: &InstanceRepository,
+    subservers: &ProxySubserverRepository,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let proxy = match find_proxy_instance(request_id, params, instances) {
+        Ok(proxy) => proxy,
+        Err(response) => return *response,
+    };
+    let Some(subserver) = params
+        .get("subserver")
+        .cloned()
+        .and_then(|value| from_value::<ProxySubserver>(value).ok())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "proxy.subserver.upsert requires a valid subserver",
+        );
+    };
+    if let Err(error) = subserver.validate() {
+        return error_response(request_id, "BAD_REQUEST", error.to_string().as_str());
+    }
+    if subserver.target_instance_id() == proxy.id() {
+        return error_response(
+            request_id,
+            "PROXY_TARGET_INVALID",
+            "A proxy cannot target itself",
+        );
+    }
+    match instances.get(subserver.target_instance_id()) {
+        Ok(Some(target)) if target.kind().proxy_topology().allows_backend_count(1) => {
+            return error_response(
+                request_id,
+                "PROXY_TARGET_INVALID",
+                "A proxy subserver target must be a server instance",
+            );
+        }
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return error_response(
+                request_id,
+                "PROXY_TARGET_NOT_FOUND",
+                "Proxy subserver target does not exist",
+            );
+        }
+        Err(error) => return repository_failure_response(request_id, &error),
+    }
+
+    match subservers.upsert(&proxy, subserver) {
+        Ok(item) => success_response(request_id, json!(item)),
+        Err(error) => proxy_subserver_repository_failure_response(request_id, &error),
+    }
+}
+
+fn proxy_subserver_delete_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    instances: &InstanceRepository,
+    subservers: &ProxySubserverRepository,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let proxy = match find_proxy_instance(request_id, params, instances) {
+        Ok(proxy) => proxy,
+        Err(response) => return *response,
+    };
+    let Some(subserver_id) = params
+        .get("subserverId")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "proxy.subserver.delete requires a subserverId",
+        );
+    };
+
+    match subservers.delete(&proxy, subserver_id) {
+        Ok(()) => success_response(request_id, json!({})),
+        Err(error) => proxy_subserver_repository_failure_response(request_id, &error),
+    }
+}
+
+fn find_proxy_instance(
+    request_id: RequestId,
+    params: &Value,
+    instances: &InstanceRepository,
+) -> Result<Instance, Box<WireMessage>> {
+    let Some(proxy_instance_id) = params
+        .get("proxyInstanceId")
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse::<InstanceId>().ok())
+    else {
+        return Err(Box::new(error_response(
+            request_id,
+            "BAD_REQUEST",
+            "proxy operation requires a valid proxyInstanceId",
+        )));
+    };
+    match instances.get(&proxy_instance_id) {
+        Ok(Some(instance)) => Ok(instance),
+        Ok(None) => Err(Box::new(error_response(
+            request_id,
+            "INSTANCE_NOT_FOUND",
+            "Proxy instance does not exist",
+        ))),
+        Err(error) => Err(Box::new(repository_failure_response(request_id, &error))),
+    }
 }
 
 async fn instance_command_response(
@@ -922,6 +1104,40 @@ fn repository_failure_response(
         "INTERNAL_ERROR",
         "Core instance repository is unavailable",
     )
+}
+
+fn proxy_subserver_repository_failure_response(
+    request_id: RequestId,
+    error: &ProxySubserverRepositoryError,
+) -> WireMessage {
+    match error {
+        ProxySubserverRepositoryError::UnsupportedProxy { .. } => error_response(
+            request_id,
+            "PROXY_TOPOLOGY_UNSUPPORTED",
+            "The instance does not support proxy subservers",
+        ),
+        ProxySubserverRepositoryError::TopologyLimit { .. } => error_response(
+            request_id,
+            "PROXY_SUBSERVER_LIMIT_REACHED",
+            "The proxy topology does not allow another subserver",
+        ),
+        ProxySubserverRepositoryError::NotFound { .. } => error_response(
+            request_id,
+            "PROXY_SUBSERVER_NOT_FOUND",
+            "Proxy subserver does not exist",
+        ),
+        ProxySubserverRepositoryError::Invalid(error) => {
+            error_response(request_id, "BAD_REQUEST", error.to_string().as_str())
+        }
+        ProxySubserverRepositoryError::LockPoisoned => {
+            tracing::error!(%error, "Core proxy subserver repository is unavailable");
+            error_response(
+                request_id,
+                "INTERNAL_ERROR",
+                "Core proxy subserver repository is unavailable",
+            )
+        }
+    }
 }
 
 fn protocol_from_hello(params: &Value) -> Option<ProtocolVersion> {

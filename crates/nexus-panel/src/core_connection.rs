@@ -11,6 +11,7 @@ use nexus_domain::InstanceState;
 use nexus_domain::InstanceUpdate;
 use nexus_domain::ManagedRuntime;
 use nexus_domain::PRODUCT_VERSION;
+use nexus_domain::ProxySubserver;
 use nexus_domain::RequestId;
 use nexus_domain::TaskId;
 use nexus_protocol::CURRENT_PROTOCOL_VERSION;
@@ -29,7 +30,14 @@ use tokio::net::TcpStream;
 use crate::CoreConnectionError;
 use crate::CoreEndpoint;
 
-const PANEL_CAPABILITIES: [&str; 5] = ["events", "instances", "metrics", "runtimes", "settings"];
+const PANEL_CAPABILITIES: [&str; 6] = [
+    "events",
+    "instances",
+    "metrics",
+    "proxy-subservers",
+    "runtimes",
+    "settings",
+];
 
 pub struct CoreConnection {
     capabilities: Vec<String>,
@@ -192,6 +200,67 @@ impl CoreConnection {
         from_value(items).map_err(|_| CoreConnectionError::InvalidResponse {
             field: "managedRuntimes",
         })
+    }
+
+    pub async fn list_proxy_subservers(
+        &mut self,
+        proxy_instance_id: &InstanceId,
+    ) -> Result<Vec<ProxySubserver>, CoreConnectionError> {
+        let result = self
+            .request(
+                "proxy.subserver.list",
+                json!({ "proxyInstanceId": proxy_instance_id }),
+            )
+            .await?;
+        let items = response_field(&result, "items")?;
+
+        from_value(items).map_err(|_| CoreConnectionError::InvalidResponse {
+            field: "proxySubservers",
+        })
+    }
+
+    pub async fn upsert_proxy_subserver(
+        &mut self,
+        proxy_instance_id: &InstanceId,
+        subserver: &ProxySubserver,
+        idempotency_key: &str,
+    ) -> Result<ProxySubserver, CoreConnectionError> {
+        let subserver = to_value(subserver).map_err(|_| CoreConnectionError::InvalidResponse {
+            field: "proxySubserver",
+        })?;
+        let result = self
+            .request_with_idempotency(
+                "proxy.subserver.upsert",
+                json!({
+                    "proxyInstanceId": proxy_instance_id,
+                    "subserver": subserver,
+                }),
+                Some(idempotency_key),
+            )
+            .await?;
+
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse {
+            field: "proxySubserver",
+        })
+    }
+
+    pub async fn delete_proxy_subserver(
+        &mut self,
+        proxy_instance_id: &InstanceId,
+        subserver_id: &str,
+        idempotency_key: &str,
+    ) -> Result<(), CoreConnectionError> {
+        self.request_with_idempotency(
+            "proxy.subserver.delete",
+            json!({
+                "proxyInstanceId": proxy_instance_id,
+                "subserverId": subserver_id,
+            }),
+            Some(idempotency_key),
+        )
+        .await?;
+
+        Ok(())
     }
 
     pub async fn create_instance(

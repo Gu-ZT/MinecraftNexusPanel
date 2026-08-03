@@ -8,3 +8,14 @@ pub enum ProxyTopology {
     OneToMany,
     OneToOne,
 }
+
+impl ProxyTopology {
+    #[must_use]
+    pub const fn allows_backend_count(self, count: usize) -> bool {
+        match self {
+            Self::None => count == 0,
+            Self::OneToMany => true,
+            Self::OneToOne => count <= 1,
+        }
+    }
+}

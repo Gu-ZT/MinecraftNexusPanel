@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::slice::from_ref;
 use std::time::Duration;
 
 use nexus_config::CoreConfig;
@@ -10,6 +11,7 @@ use nexus_domain::InstanceLogPage;
 use nexus_domain::InstanceLogStream;
 use nexus_domain::InstanceState;
 use nexus_domain::LaunchConfig;
+use nexus_domain::ProxySubserver;
 use nexus_panel::CoreConnection;
 use nexus_panel::CoreConnectionError;
 use nexus_protocol::PresharedKey;
@@ -77,6 +79,70 @@ async fn connects_to_a_core_and_reads_its_system_info() {
     assert_eq!(instances.items().first(), Some(&created));
     assert_eq!(instances.next_cursor(), None);
     assert_eq!(fetched, created);
+
+    let proxy = instance_create_with_kind("geyser", InstanceKind::Geyser);
+    let first_target = instance_create_with_kind("java-backend", InstanceKind::Paper);
+    let second_target = instance_create_with_kind("java-backend-two", InstanceKind::Paper);
+    connection
+        .create_instance(&proxy)
+        .await
+        .expect("Core creates the Geyser proxy");
+    connection
+        .create_instance(&first_target)
+        .await
+        .expect("Core creates the first proxy target");
+    connection
+        .create_instance(&second_target)
+        .await
+        .expect("Core creates the second proxy target");
+
+    let first_subserver = ProxySubserver::new(
+        "default".to_owned(),
+        "Default".to_owned(),
+        first_target.id().clone(),
+        "127.0.0.1".to_owned(),
+        25565,
+        true,
+    )
+    .expect("first proxy subserver is valid");
+    connection
+        .upsert_proxy_subserver(proxy.id(), &first_subserver, "proxy-upsert")
+        .await
+        .expect("Core accepts the Geyser target");
+    let subservers = connection
+        .list_proxy_subservers(proxy.id())
+        .await
+        .expect("Core lists Geyser targets");
+    assert_eq!(subservers, from_ref(&first_subserver));
+
+    let second_subserver = ProxySubserver::new(
+        "secondary".to_owned(),
+        "Secondary".to_owned(),
+        second_target.id().clone(),
+        "127.0.0.1".to_owned(),
+        25566,
+        true,
+    )
+    .expect("second proxy subserver is valid");
+    let error = connection
+        .upsert_proxy_subserver(proxy.id(), &second_subserver, "proxy-limit")
+        .await
+        .expect_err("Geyser rejects a second target");
+    assert!(matches!(
+        error,
+        CoreConnectionError::Rejected { code } if code == "PROXY_SUBSERVER_LIMIT_REACHED"
+    ));
+    connection
+        .delete_proxy_subserver(proxy.id(), "default", "proxy-delete")
+        .await
+        .expect("Core deletes the Geyser target");
+    assert!(
+        connection
+            .list_proxy_subservers(proxy.id())
+            .await
+            .expect("Core lists the empty Geyser target set")
+            .is_empty()
+    );
 
     server_task.abort();
     let _ = server_task.await;
@@ -213,10 +279,14 @@ async fn wait_for_logs(
 }
 
 fn instance_create(identifier: &str) -> InstanceCreate {
+    instance_create_with_kind(identifier, InstanceKind::Paper)
+}
+
+fn instance_create_with_kind(identifier: &str, kind: InstanceKind) -> InstanceCreate {
     InstanceCreate::new(
         InstanceId::new(identifier.to_owned()).expect("test identifier is valid"),
         identifier.to_owned(),
-        InstanceKind::Paper,
+        kind,
         format!("instances/{identifier}"),
         LaunchConfig::new(
             "java".to_owned(),
