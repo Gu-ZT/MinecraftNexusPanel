@@ -41,6 +41,10 @@ API。通用鉴权、分页、错误、幂等及乐观锁规则沿用 Web API。
 - Catalog 条目必须包含 SHA-256；可选签名验证失败时任务必须失败。
 - 删除被实例引用的 runtime 返回 `RUNTIME_IN_USE`，除非先迁移引用。
 - 实例通过 `runtimeId` 引用环境，不能保存易漂移的“java”字符串作为唯一选择。
+- 运行时安装清单必须包含受支持平台/架构、压缩格式和相对可执行文件路径；Core 会在本地再次校验并复用 SHA-256 缓存。
+- `runtime.install`、`runtime.verify` 和 `runtime.delete` 均要求 `Idempotency-Key`，安装目录使用临时目录完成原子切换。
+
+`runtime.install` 返回 `taskId` 后由 `/runtime-installations/{taskId}` 查询；任务状态为 `RUNNING | SUCCEEDED | FAILED`，失败原因不会执行目录切换。
 
 ## 3. 一键搭建
 

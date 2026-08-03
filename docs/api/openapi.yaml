@@ -433,6 +433,112 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /cores/{coreId}/runtime-installations:
+    post:
+      tags: [ Environments ]
+      operationId: installRuntime
+      summary: Install a verified managed runtime archive
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuntimeInstallationRequest'
+      responses:
+        '202':
+          description: Runtime installed and operation task recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeOperation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/runtime-installations/{taskId}:
+    get:
+      tags: [ Environments ]
+      operationId: getRuntimeInstallation
+      summary: Get a managed runtime installation task
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Runtime installation task state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeOperation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/runtimes/{runtimeId}/actions/verify:
+    post:
+      tags: [ Environments ]
+      operationId: verifyRuntime
+      summary: Verify an installed managed runtime
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/RuntimeId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Runtime validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeOperation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/runtimes/{runtimeId}:
+    delete:
+      tags: [ Environments ]
+      operationId: deleteRuntime
+      summary: Delete an unused managed runtime
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/RuntimeId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Runtime deletion accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskAccepted'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instances/{instanceId}/bedrock-profile:
     parameters:
       - $ref: '#/components/parameters/CoreId'
@@ -1076,6 +1182,13 @@ components:
       required: true
       schema:
         type: string
+    RuntimeId:
+      name: runtimeId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$'
     ProxyInstanceId:
       name: proxyInstanceId
       in: path
@@ -1470,12 +1583,16 @@ components:
       enum: [ VALID, INVALID ]
     ManagedRuntime:
       type: object
-      required: [ kind, source, executable, version, validation ]
+      required: [ runtimeId, kind, source, distribution, executable, version, validation ]
       properties:
+        runtimeId:
+          type: [ string, 'null' ]
         kind:
           $ref: '#/components/schemas/RuntimeKind'
         source:
           $ref: '#/components/schemas/RuntimeSource'
+        distribution:
+          type: [ string, 'null' ]
         executable:
           type: string
         version:
@@ -1490,6 +1607,71 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ManagedRuntime'
+    RuntimeArchiveFormat:
+      type: string
+      enum: [ TAR_GZ, ZIP ]
+    DownloadPlatform:
+      type: string
+      enum: [ LINUX, MACOS, WINDOWS ]
+    DownloadArchitecture:
+      type: string
+      enum: [ AARCH64, X86_64 ]
+    DownloadManifest:
+      type: object
+      required: [ url, sizeBytes, sha256, platform, architecture ]
+      properties:
+        url:
+          type: string
+          format: uri
+        sizeBytes:
+          type: integer
+          minimum: 0
+        sha256:
+          type: string
+          pattern: '^[0-9a-fA-F]{64}$'
+        platform:
+          $ref: '#/components/schemas/DownloadPlatform'
+        architecture:
+          $ref: '#/components/schemas/DownloadArchitecture'
+    RuntimeInstallManifest:
+      type: object
+      required: [ runtimeId, kind, distribution, version, archive, archiveFormat, executablePath ]
+      properties:
+        runtimeId:
+          type: string
+          pattern: '^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$'
+        kind:
+          $ref: '#/components/schemas/RuntimeKind'
+        distribution:
+          type: string
+          minLength: 1
+        version:
+          type: string
+          minLength: 1
+        archive:
+          $ref: '#/components/schemas/DownloadManifest'
+        archiveFormat:
+          $ref: '#/components/schemas/RuntimeArchiveFormat'
+        executablePath:
+          type: string
+          minLength: 1
+    RuntimeInstallationRequest:
+      type: object
+      required: [ manifest ]
+      properties:
+        manifest:
+          $ref: '#/components/schemas/RuntimeInstallManifest'
+        setAsDefault:
+          type: boolean
+          default: false
+    RuntimeOperation:
+      type: object
+      required: [ taskId ]
+      properties:
+        taskId:
+          type: string
+        runtime:
+          $ref: '#/components/schemas/ManagedRuntime'
     VersionMetadataProvider:
       type: object
       required: [ id, name, url ]

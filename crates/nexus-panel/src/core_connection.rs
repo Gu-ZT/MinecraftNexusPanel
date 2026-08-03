@@ -14,6 +14,7 @@ use nexus_domain::ManagedRuntime;
 use nexus_domain::PRODUCT_VERSION;
 use nexus_domain::ProxySubserver;
 use nexus_domain::RequestId;
+use nexus_domain::RuntimeInstallManifest;
 use nexus_domain::TaskId;
 use nexus_protocol::CURRENT_PROTOCOL_VERSION;
 use nexus_protocol::NoiseTransport;
@@ -201,6 +202,64 @@ impl CoreConnection {
         from_value(items).map_err(|_| CoreConnectionError::InvalidResponse {
             field: "managedRuntimes",
         })
+    }
+
+    pub async fn install_runtime(
+        &mut self,
+        manifest: &RuntimeInstallManifest,
+        set_as_default: bool,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreConnectionError> {
+        let manifest = to_value(manifest).map_err(|_| CoreConnectionError::InvalidResponse {
+            field: "runtimeManifest",
+        })?;
+        self.request_with_idempotency(
+            "runtime.install",
+            json!({
+                "manifest": manifest,
+                "setAsDefault": set_as_default,
+            }),
+            Some(idempotency_key),
+        )
+        .await
+    }
+
+    pub async fn verify_runtime(
+        &mut self,
+        runtime_id: &str,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreConnectionError> {
+        self.request_with_idempotency(
+            "runtime.verify",
+            json!({ "runtimeId": runtime_id }),
+            Some(idempotency_key),
+        )
+        .await
+    }
+
+    pub async fn get_runtime_task(
+        &mut self,
+        task_id: &TaskId,
+    ) -> Result<Value, CoreConnectionError> {
+        self.request("runtime.task.get", json!({ "taskId": task_id }))
+            .await
+    }
+
+    pub async fn delete_runtime(
+        &mut self,
+        runtime_id: &str,
+        idempotency_key: &str,
+    ) -> Result<TaskId, CoreConnectionError> {
+        let result = self
+            .request_with_idempotency(
+                "runtime.delete",
+                json!({ "runtimeId": runtime_id }),
+                Some(idempotency_key),
+            )
+            .await?;
+        let task_id = response_field(&result, "taskId")?;
+
+        from_value(task_id).map_err(|_| CoreConnectionError::InvalidResponse { field: "taskId" })
     }
 
     pub async fn get_bedrock_profile(

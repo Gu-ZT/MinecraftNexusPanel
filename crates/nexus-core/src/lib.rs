@@ -1,3 +1,4 @@
+mod archive_extractor;
 mod core_error;
 mod core_request_state;
 mod core_server;
@@ -19,6 +20,8 @@ mod process_output;
 mod proxy_subserver_repository;
 mod proxy_subserver_repository_error;
 mod runtime_discovery;
+mod runtime_manager;
+mod runtime_manager_error;
 
 pub use core_error::CoreError;
 use core_request_state::CoreRequestState;
@@ -41,4 +44,5 @@ pub use instance_repository_error::InstanceRepositoryError;
 use process_output::spawn_output_reader;
 pub use proxy_subserver_repository::ProxySubserverRepository;
 pub use proxy_subserver_repository_error::ProxySubserverRepositoryError;
-use runtime_discovery::RuntimeDiscovery;
+use runtime_manager::RuntimeManager;
+pub use runtime_manager_error::RuntimeManagerError;

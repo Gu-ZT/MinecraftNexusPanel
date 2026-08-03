@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
@@ -50,6 +51,14 @@ impl InstanceRepository {
         let instances = self.lock_instances()?;
 
         Ok(instances.values().cloned().collect())
+    }
+
+    pub fn references_runtime(&self, runtime_path: &Path) -> Result<bool, InstanceRepositoryError> {
+        let instances = self.lock_instances()?;
+        Ok(instances.values().any(|instance| {
+            let executable = Path::new(instance.launch().executable());
+            executable.is_absolute() && executable.starts_with(runtime_path)
+        }))
     }
 
     pub fn set_runtime(

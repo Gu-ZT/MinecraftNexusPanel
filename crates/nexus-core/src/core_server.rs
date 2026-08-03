@@ -15,6 +15,7 @@ use nexus_domain::InstanceUpdate;
 use nexus_domain::PRODUCT_VERSION;
 use nexus_domain::ProxySubserver;
 use nexus_domain::RequestId;
+use nexus_domain::RuntimeInstallManifest;
 use nexus_domain::TaskId;
 use nexus_protocol::CURRENT_PROTOCOL_VERSION;
 use nexus_protocol::NoiseTransport;
@@ -44,7 +45,8 @@ use crate::InstanceRepository;
 use crate::InstanceRepositoryError;
 use crate::ProxySubserverRepository;
 use crate::ProxySubserverRepositoryError;
-use crate::RuntimeDiscovery;
+use crate::RuntimeManager;
+use crate::RuntimeManagerError;
 
 const CORE_CAPABILITIES: [&str; 6] = [
     "events",
@@ -71,7 +73,7 @@ pub struct CoreServer {
     instances: InstanceRepository,
     processes: InstanceProcessManager,
     proxy_subservers: ProxySubserverRepository,
-    runtimes: RuntimeDiscovery,
+    runtimes: RuntimeManager,
     tls_acceptor: TlsAcceptor,
 }
 
@@ -80,7 +82,7 @@ struct CoreResources {
     instances: InstanceRepository,
     processes: InstanceProcessManager,
     proxy_subservers: ProxySubserverRepository,
-    runtimes: RuntimeDiscovery,
+    runtimes: RuntimeManager,
 }
 
 impl CoreServer {
@@ -105,7 +107,8 @@ impl CoreServer {
         let instances = InstanceRepository::new();
         let processes =
             InstanceProcessManager::new(config.data_directory().to_path_buf(), instances.clone());
-        let runtimes = RuntimeDiscovery::new(config.data_directory());
+        let runtimes =
+            RuntimeManager::new(config.data_directory()).map_err(CoreError::RuntimeManager)?;
 
         Ok(Self {
             core_id,
@@ -379,6 +382,14 @@ async fn request_response(
         ),
         "system.ping" => success_response(request_id, json!({ "receivedAt": current_timestamp() })),
         "runtime.list" => environment_list_response(request_id, state.runtimes()).await,
+        "runtime.install" => {
+            runtime_install_response(request_id, params, idempotency_key, state.runtimes())
+        }
+        "runtime.verify" => {
+            runtime_verify_response(request_id, params, idempotency_key, state.runtimes())
+        }
+        "runtime.delete" => runtime_delete_response(request_id, params, idempotency_key, state),
+        "runtime.task.get" => runtime_task_response(request_id, params, state.runtimes()),
         "bedrock.profile" => bedrock_profile_response(request_id, params, state.instances()),
         "proxy.subserver.list" => proxy_subserver_list_response(
             request_id,
@@ -430,9 +441,142 @@ async fn request_response(
 
 async fn environment_list_response(
     request_id: RequestId,
-    runtimes: &RuntimeDiscovery,
+    runtimes: &RuntimeManager,
 ) -> WireMessage {
     success_response(request_id, json!({ "items": runtimes.discover().await }))
+}
+
+fn runtime_install_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    runtimes: &RuntimeManager,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let Some(manifest) = params
+        .get("manifest")
+        .cloned()
+        .and_then(|value| from_value::<RuntimeInstallManifest>(value).ok())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "runtime.install requires a valid manifest",
+        );
+    };
+    let set_as_default = params
+        .get("setAsDefault")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    match runtimes.start_install(&manifest, set_as_default) {
+        Ok(task_id) => task_accepted_response(request_id, task_id),
+        Err(error) => runtime_manager_error_response(request_id, error),
+    }
+}
+
+fn runtime_verify_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    runtimes: &RuntimeManager,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let Some(runtime_id) = params
+        .get("runtimeId")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "runtime.verify requires a runtimeId",
+        );
+    };
+    match runtimes.start_verify(runtime_id) {
+        Ok(task_id) => task_accepted_response(request_id, task_id),
+        Err(error) => runtime_manager_error_response(request_id, error),
+    }
+}
+
+fn runtime_delete_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    state: &CoreRequestState,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let Some(runtime_id) = params
+        .get("runtimeId")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "runtime.delete requires a runtimeId",
+        );
+    };
+    match state.runtimes().start_delete(runtime_id, state.instances()) {
+        Ok(task_id) => task_accepted_response(request_id, task_id),
+        Err(error) => runtime_manager_error_response(request_id, error),
+    }
+}
+
+fn runtime_task_response(
+    request_id: RequestId,
+    params: &Value,
+    runtimes: &RuntimeManager,
+) -> WireMessage {
+    let Some(task_id) = params
+        .get("taskId")
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse::<TaskId>().ok())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "runtime.task.get requires a valid taskId",
+        );
+    };
+    match runtimes.task(task_id) {
+        Ok(Some(task)) => success_response(request_id, task),
+        Ok(None) => error_response(request_id, "TASK_NOT_FOUND", "Runtime task does not exist"),
+        Err(error) => runtime_manager_error_response(request_id, error),
+    }
+}
+
+fn runtime_manager_error_response(
+    request_id: RequestId,
+    error: RuntimeManagerError,
+) -> WireMessage {
+    let (code, message) = match error {
+        RuntimeManagerError::AlreadyExists { .. } => {
+            ("RUNTIME_ALREADY_EXISTS", "The runtime is already installed")
+        }
+        RuntimeManagerError::InUse { .. } => {
+            ("RUNTIME_IN_USE", "The runtime is referenced by an instance")
+        }
+        RuntimeManagerError::NotFound { .. } => ("RUNTIME_NOT_FOUND", "The runtime does not exist"),
+        RuntimeManagerError::InvalidRuntimeId
+        | RuntimeManagerError::InvalidManifest { .. }
+        | RuntimeManagerError::UnsafeArchiveEntry { .. } => {
+            ("BAD_REQUEST", "The runtime manifest or archive is invalid")
+        }
+        _ => {
+            tracing::error!(%error, "Runtime management operation failed");
+            (
+                "RUNTIME_OPERATION_FAILED",
+                "Runtime management operation failed",
+            )
+        }
+    };
+    error_response(request_id, code, message)
 }
 
 fn bedrock_profile_response(

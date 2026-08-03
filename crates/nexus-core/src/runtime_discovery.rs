@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use nexus_domain::ManagedRuntime;
+use nexus_domain::RuntimeInstallManifest;
 use nexus_domain::RuntimeKind;
 use nexus_domain::RuntimeSource;
 use nexus_domain::RuntimeValidation;
@@ -32,6 +33,30 @@ impl RuntimeDiscovery {
         }
 
         runtimes
+    }
+
+    pub(crate) fn managed_root(&self) -> &Path {
+        &self.managed_root
+    }
+
+    pub(crate) async fn find_managed(&self, runtime_id: &str) -> Option<ManagedRuntime> {
+        self.discover()
+            .await
+            .into_iter()
+            .find(|runtime| runtime.runtime_id() == Some(runtime_id))
+    }
+
+    pub(crate) fn find_managed_path(&self, runtime_id: &str) -> Option<PathBuf> {
+        for kind in RuntimeKind::ALL {
+            let path = self
+                .managed_root
+                .join(kind_directory(kind))
+                .join(runtime_id);
+            if path.is_dir() {
+                return Some(path);
+            }
+        }
+        None
     }
 
     fn candidates(&self) -> Vec<RuntimeCandidate> {
@@ -64,12 +89,24 @@ impl RuntimeDiscovery {
                 if !file_type.is_dir() {
                     continue;
                 }
+                if let Some(manifest) = read_manifest(&version.path()) {
+                    candidates.push(RuntimeCandidate {
+                        kind,
+                        source: RuntimeSource::Managed,
+                        runtime_id: Some(manifest.runtime_id().to_owned()),
+                        distribution: Some(manifest.distribution().to_owned()),
+                        executable: normalize_path(version.path().join(manifest.executable_path())),
+                    });
+                    continue;
+                }
                 for executable_name in executable_names(kind) {
                     let executable = version.path().join("bin").join(executable_name);
                     if executable.is_file() {
                         candidates.push(RuntimeCandidate {
                             kind,
                             source: RuntimeSource::Managed,
+                            runtime_id: Some(version.file_name().to_string_lossy().into_owned()),
+                            distribution: None,
                             executable: normalize_path(executable),
                         });
                     }
@@ -85,6 +122,8 @@ impl RuntimeDiscovery {
 struct RuntimeCandidate {
     kind: RuntimeKind,
     source: RuntimeSource,
+    runtime_id: Option<String>,
+    distribution: Option<String>,
     executable: PathBuf,
 }
 
@@ -105,13 +144,23 @@ async fn validate_candidate(candidate: RuntimeCandidate) -> ManagedRuntime {
         RuntimeValidation::Invalid
     };
 
-    ManagedRuntime::new(
-        candidate.kind,
-        candidate.source,
-        candidate.executable.to_string_lossy().into_owned(),
-        version,
-        validation,
-    )
+    match (candidate.runtime_id, candidate.distribution) {
+        (Some(runtime_id), Some(distribution)) => ManagedRuntime::managed(
+            runtime_id,
+            candidate.kind,
+            distribution,
+            candidate.executable.to_string_lossy().into_owned(),
+            version,
+            validation,
+        ),
+        _ => ManagedRuntime::new(
+            candidate.kind,
+            candidate.source,
+            candidate.executable.to_string_lossy().into_owned(),
+            version,
+            validation,
+        ),
+    }
 }
 
 fn system_candidates() -> Vec<RuntimeCandidate> {
@@ -130,6 +179,8 @@ fn system_candidates() -> Vec<RuntimeCandidate> {
                     candidates.push(RuntimeCandidate {
                         kind,
                         source: RuntimeSource::System,
+                        runtime_id: None,
+                        distribution: None,
                         executable: normalize_path(executable),
                     });
                 }
@@ -138,6 +189,12 @@ fn system_candidates() -> Vec<RuntimeCandidate> {
     }
 
     candidates
+}
+
+fn read_manifest(path: &Path) -> Option<RuntimeInstallManifest> {
+    let manifest_path = path.join(".mcnp-runtime.json");
+    let bytes = fs::read(manifest_path).ok()?;
+    serde_json::from_slice(&bytes).ok()
 }
 
 fn normalize_path(path: PathBuf) -> PathBuf {

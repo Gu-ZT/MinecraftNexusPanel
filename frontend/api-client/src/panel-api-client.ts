@@ -56,6 +56,9 @@ export type InstanceKind =
 export type InstanceState = 'CREATED' | 'STARTING' | 'RUNNING' | 'STOPPING' | 'STOPPED' | 'FAILED' | 'UNKNOWN';
 export type LogStream = 'stdout' | 'stderr' | 'system';
 export type RuntimeKind = 'JAVA' | 'NODE_JS' | 'PYTHON';
+export type RuntimeArchiveFormat = 'TAR_GZ' | 'ZIP';
+export type DownloadPlatform = 'LINUX' | 'MACOS' | 'WINDOWS';
+export type DownloadArchitecture = 'AARCH64' | 'X86_64';
 export type BedrockManagementKind = 'DEDICATED_SERVER' | 'POCKET_MINE' | 'NUKKIT' | 'GEYSER';
 export type BedrockTransport = 'RAKNET_UDP';
 export type InstallRuntimeRequirement = 'JAVA' | 'NODE_JS' | 'PYTHON' | 'PHP' | 'NATIVE';
@@ -68,6 +71,7 @@ export interface InstallTemplateExtensionLayout {
 }
 export type RuntimeSource = 'MANAGED' | 'SYSTEM';
 export type RuntimeValidation = 'VALID' | 'INVALID';
+export type RuntimeTaskState = 'RUNNING' | 'SUCCEEDED' | 'FAILED';
 export type InstallTemplateVersionKind = 'GAME' | 'LOADER' | 'SERVER';
 
 export interface User {
@@ -117,8 +121,10 @@ export interface CorePage {
 }
 
 export interface ManagedRuntime {
+  runtimeId: string | null;
   kind: RuntimeKind;
   source: RuntimeSource;
+  distribution: string | null;
   executable: string;
   version: string | null;
   validation: RuntimeValidation;
@@ -126,6 +132,33 @@ export interface ManagedRuntime {
 
 export interface ManagedRuntimePage {
   items: ManagedRuntime[];
+}
+
+export interface DownloadManifest {
+  url: string;
+  sizeBytes: number;
+  sha256: string;
+  platform: DownloadPlatform;
+  architecture: DownloadArchitecture;
+}
+
+export interface RuntimeInstallManifest {
+  runtimeId: string;
+  kind: RuntimeKind;
+  distribution: string;
+  version: string;
+  archive: DownloadManifest;
+  archiveFormat: RuntimeArchiveFormat;
+  executablePath: string;
+}
+
+export interface RuntimeOperation {
+  taskId: string;
+  kind?: string;
+  state?: RuntimeTaskState;
+  progress?: number | null;
+  runtime?: ManagedRuntime;
+  error?: string;
 }
 
 export interface BedrockManagementProfile {
@@ -259,6 +292,14 @@ export interface PanelApiClient {
   listInstallTemplates(): Promise<InstallTemplatePage>;
   listInstallTemplateVersions(templateId: string): Promise<InstallTemplateVersionPage>;
   listManagedRuntimes(coreId: string): Promise<ManagedRuntimePage>;
+  installRuntime(
+    coreId: string,
+    manifest: RuntimeInstallManifest,
+    setAsDefault?: boolean,
+  ): Promise<RuntimeOperation>;
+  getRuntimeInstallation(coreId: string, taskId: string): Promise<RuntimeOperation>;
+  verifyRuntime(coreId: string, runtimeId: string): Promise<RuntimeOperation>;
+  deleteRuntime(coreId: string, runtimeId: string): Promise<TaskAccepted>;
   getBedrockProfile(coreId: string, instanceId: string): Promise<BedrockManagementProfile>;
   listProxySubservers(coreId: string, proxyInstanceId: string): Promise<ProxySubserverPage>;
   upsertProxySubserver(
@@ -361,6 +402,34 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     listManagedRuntimes(coreId) {
       return request<ManagedRuntimePage>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/environments`,
+      );
+    },
+    installRuntime(coreId, manifest, setAsDefault = false) {
+      return request<RuntimeOperation>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/runtime-installations`,
+        {
+          method: 'POST',
+          body: { manifest, setAsDefault },
+          csrf: true,
+          idempotent: true,
+        },
+      );
+    },
+    getRuntimeInstallation(coreId, taskId) {
+      return request<RuntimeOperation>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/runtime-installations/${encodeURIComponent(taskId)}`,
+      );
+    },
+    verifyRuntime(coreId, runtimeId) {
+      return request<RuntimeOperation>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/runtimes/${encodeURIComponent(runtimeId)}/actions/verify`,
+        { method: 'POST', csrf: true, idempotent: true },
+      );
+    },
+    deleteRuntime(coreId, runtimeId) {
+      return request<TaskAccepted>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/runtimes/${encodeURIComponent(runtimeId)}`,
+        { method: 'DELETE', csrf: true, idempotent: true },
       );
     },
     getBedrockProfile(coreId, instanceId) {

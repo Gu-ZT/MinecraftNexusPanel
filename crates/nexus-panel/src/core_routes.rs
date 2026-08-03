@@ -228,6 +228,36 @@ pub(crate) fn registry_error_response(error: CoreRegistryError, request_id: Requ
             )
         }
         CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "RUNTIME_NOT_FOUND" =>
+        {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "RUNTIME_NOT_FOUND",
+                "Runtime does not exist",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "TASK_NOT_FOUND" =>
+        {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "TASK_NOT_FOUND",
+                "Runtime task does not exist",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if matches!(code.as_str(), "RUNTIME_ALREADY_EXISTS" | "RUNTIME_IN_USE") =>
+        {
+            error_response(
+                StatusCode::CONFLICT,
+                code.as_str(),
+                "Runtime operation conflicts with the current state",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
             if code == "INSTANCE_ALREADY_EXISTS" =>
         {
             error_response(

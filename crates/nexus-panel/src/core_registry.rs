@@ -13,6 +13,7 @@ use nexus_domain::InstanceUpdate;
 use nexus_domain::ManagedRuntime;
 use nexus_domain::PRODUCT_NAME;
 use nexus_domain::ProxySubserver;
+use nexus_domain::RuntimeInstallManifest;
 use nexus_domain::TaskId;
 use nexus_protocol::PresharedKey;
 use nexus_protocol::ProtocolVersion;
@@ -294,6 +295,73 @@ impl CoreRegistry {
         let runtimes: Vec<ManagedRuntime> = connection.list_managed_runtimes().await?;
 
         Ok(json!({ "items": runtimes }))
+    }
+
+    pub async fn install_runtime(
+        &self,
+        core_id: CoreId,
+        manifest: &RuntimeInstallManifest,
+        set_as_default: bool,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .install_runtime(manifest, set_as_default, idempotency_key)
+            .await?)
+    }
+
+    pub async fn verify_runtime(
+        &self,
+        core_id: CoreId,
+        runtime_id: &str,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .verify_runtime(runtime_id, idempotency_key)
+            .await?)
+    }
+
+    pub async fn get_runtime_task(
+        &self,
+        core_id: CoreId,
+        task_id: &TaskId,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection.get_runtime_task(task_id).await?)
+    }
+
+    pub async fn delete_runtime(
+        &self,
+        core_id: CoreId,
+        runtime_id: &str,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let task_id = connection
+            .delete_runtime(runtime_id, idempotency_key)
+            .await?;
+
+        Ok(task_accepted_json(task_id))
     }
 
     pub async fn get_bedrock_profile(

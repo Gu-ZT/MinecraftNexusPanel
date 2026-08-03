@@ -21,6 +21,7 @@ use crate::DownloadTask;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(300);
 
+#[derive(Clone)]
 pub struct DownloadManager {
     cache_directory: PathBuf,
     client: Client,
