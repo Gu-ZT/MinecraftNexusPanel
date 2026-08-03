@@ -58,10 +58,11 @@
   - [x] 记录混合端的插件/模组目录，以及一对多和一对一代理拓扑。
   - [x] 提供代理子服务器关系管理，并约束一对多与一对一拓扑。
   - [x] 提供基岩端 RakNet UDP、默认端口、配置文件和插件能力画像。
-  - [x] 解析四种模板的官方版本元数据并通过 Panel API 提供统一版本目录。
+  - [x] 解析 Vanilla、Paper、Velocity、Fabric、Purpur、Folia、Waterfall 七种模板的官方版本元数据并通过 Panel API 提供统一版本目录。
   - [x] 执行模板安装。
-  - [ ] 为 NeoForge、Forge、Bukkit、Spigot、Purpur、Pufferfish、Folia、Leaf、Mohist、Magma、Sponge、Arclight、Youer、AsyncYouer、Silkard、CatServer、Lingshu、Waterfall、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit 和 Cloudburst Nukkit 补齐可验证的官方元数据与安装配方。
-  - [ ] 为每个服务端版本验证归档结构、可执行文件、默认配置、启动参数和更新策略；不能把仅有模板目录误认为完整安装支持。
+  - [ ] 为 NeoForge、Forge、Bukkit、Spigot、Pufferfish、Leaf、Mohist、Magma、Sponge、Arclight、Youer、AsyncYouer、Silkard、CatServer、Lingshu、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit 和 Cloudburst Nukkit 补齐可验证的官方元数据与安装配方。
+  - [ ] 为已接入版本 provider 的七种模板及后续类型补齐按版本验证的归档结构、可执行文件、默认配置、启动参数和更新策略。
+  - [ ] 不能把仅有模板目录或版本元数据 provider 误认为完整安装支持。
 
 ### M2 服务端类型矩阵
 

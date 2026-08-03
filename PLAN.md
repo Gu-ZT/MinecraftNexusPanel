@@ -160,7 +160,7 @@ MinecraftNexusPanel/
 - 混合端的插件和模组必须使用独立的 `ExtensionKind`、安装记录和兼容性结果。目录不能由 Panel 全局硬编码；同一端可以有多个目录，同一目录也可能承载不同扩展种类（例如当前 Sponge 画像），因此扫描和安装必须以模板声明为准。
 - Velocity、Waterfall、BungeeCord、Lightfall 是一对多代理，Geyser 是一对一代理。子服务器关系独立于实例基本设置，目标必须是同一 Core 上已存在的非代理实例；Core 强制拓扑数量上限。
 - Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit 和 Geyser 使用 `BedrockManagementProfile` 描述 RakNet UDP、默认端口、配置文件和插件能力。基岩端的配置、扩展、健康检查、升级、备份恢复和端口冲突处理不能假设为 Java 服务端逻辑。
-- 当前已完成类型枚举、内置目录、扩展布局、代理子服务器关系和基岩画像；各类型的官方版本元数据、归档结构、启动命令和版本化运维配方仍需逐项验证。
+- 当前已完成类型枚举、内置目录、扩展布局、代理子服务器关系和基岩画像；Vanilla、Paper、Velocity、Fabric、Purpur、Folia、Waterfall 已接入官方版本元数据目录，但归档结构、启动命令和版本化运维配方仍需逐项验证，其余类型仍需补充 provider。
 
 ### 4.7 文件管理边界
 
@@ -288,7 +288,7 @@ stateDiagram-v2
 ### M7：发布与生态
 
 - Windows/Linux/macOS 安装包、Docker 镜像、自动更新和签名。
-- Paper/Velocity/Fabric 常用模板和版本元数据提供方。
+- Paper/Velocity/Fabric/Purpur/Folia/Waterfall 常用模板和版本元数据提供方。
 - 导入/导出、迁移、灾难恢复和兼容性矩阵。
 
 ## 8. 测试策略
