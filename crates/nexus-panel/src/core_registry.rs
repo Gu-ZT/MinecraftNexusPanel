@@ -633,6 +633,57 @@ impl CoreRegistry {
         Ok(json!({ "series": series }))
     }
 
+    pub async fn scan_config_documents(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection.scan_config_documents(instance_id).await?)
+    }
+
+    pub async fn get_config_document(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        document_id: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .get_config_document(instance_id, document_id)
+            .await?)
+    }
+
+    pub async fn patch_config_document(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        document_id: &str,
+        revision: &str,
+        patch: &Value,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .patch_config_document(instance_id, document_id, revision, patch, idempotency_key)
+            .await?)
+    }
+
     pub async fn list_instance_files(
         &self,
         core_id: CoreId,

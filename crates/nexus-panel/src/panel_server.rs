@@ -30,6 +30,7 @@ use crate::SecretCipher;
 use crate::VersionMetadataClient;
 use crate::auth_routes::auth_routes;
 use crate::bedrock_routes::bedrock_routes;
+use crate::config_routes::config_routes;
 use crate::core_routes::core_routes;
 use crate::environment_routes::environment_routes;
 use crate::file_routes::file_routes;
@@ -116,6 +117,7 @@ fn router(state: PanelState) -> Router {
         .merge(auth_routes())
         .merge(core_routes())
         .merge(bedrock_routes())
+        .merge(config_routes())
         .merge(environment_routes())
         .merge(file_routes())
         .merge(instance_routes())

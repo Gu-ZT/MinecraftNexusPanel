@@ -1,4 +1,5 @@
 mod archive_extractor;
+mod config_document;
 mod core_error;
 mod core_request_state;
 mod core_server;

@@ -228,6 +228,56 @@ pub(crate) fn registry_error_response(error: CoreRegistryError, request_id: Requ
             )
         }
         CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "CONFIG_DOCUMENT_NOT_FOUND" =>
+        {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "CONFIG_DOCUMENT_NOT_FOUND",
+                "Configuration document does not exist",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "CONFIG_REVISION_MISMATCH" =>
+        {
+            error_response(
+                StatusCode::PRECONDITION_FAILED,
+                "CONFIG_REVISION_MISMATCH",
+                "Configuration document changed",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "CONFIG_PATCH_INVALID" =>
+        {
+            error_response(
+                StatusCode::BAD_REQUEST,
+                "CONFIG_PATCH_INVALID",
+                "Configuration patch is invalid",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "CONFIG_PARSE_FAILED" =>
+        {
+            error_response(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "CONFIG_PARSE_FAILED",
+                "Configuration document could not be parsed",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "CONFIG_SCAN_TOO_LARGE" =>
+        {
+            error_response(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "CONFIG_SCAN_TOO_LARGE",
+                "Too many configuration documents",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
             if code == "FILE_NOT_FOUND" =>
         {
             error_response(

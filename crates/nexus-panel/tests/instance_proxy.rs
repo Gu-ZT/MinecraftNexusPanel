@@ -249,13 +249,74 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     assert_eq!(written_file.status, 200);
     let written_file_body: Value =
         from_slice(&written_file.body).expect("file write response is JSON");
-    let file_etag = written_file
+    assert_eq!(written_file_body["kind"], "FILE");
+    assert_eq!(written_file_body["path"], "server.properties");
+
+    let config_documents = send_json_request(
+        panel_address,
+        "GET",
+        &format!("/api/v1/cores/{core_id}/instances/panel-process/config-documents"),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(config_documents.status, 200);
+    let config_document_id = config_documents.body["documents"][0]["documentId"]
+        .as_str()
+        .expect("Panel returns a configuration document ID")
+        .to_owned();
+    let config_document = send_json_request(
+        panel_address,
+        "GET",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/panel-process/config-documents/{config_document_id}"
+        ),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(config_document.status, 200);
+    assert_eq!(config_document.body["values"]["motd"], "Panel");
+    let config_revision = config_document.body["revision"]
+        .as_str()
+        .expect("Panel returns a configuration revision")
+        .to_owned();
+    let patched_config = send_json_request(
+        panel_address,
+        "PATCH",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/panel-process/config-documents/{config_document_id}/values"
+        ),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        Some(json!({
+            "revision": config_revision,
+            "patch": { "motd": "Nexus" },
+        })),
+    )
+    .await;
+    assert_eq!(patched_config.status, 200);
+    assert_eq!(patched_config.body["values"]["motd"], "Nexus");
+    let config_etag = patched_config
         .headers
         .get("etag")
         .cloned()
-        .expect("file write returns an ETag");
-    assert_eq!(written_file_body["kind"], "FILE");
-    assert_eq!(written_file_body["path"], "server.properties");
+        .expect("configuration patch returns an ETag");
+
+    let raw_config = send_raw_request(
+        panel_address,
+        "GET",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/panel-process/config-documents/{config_document_id}/raw"
+        ),
+        &[("Authorization", authorization.as_str())],
+        &[],
+    )
+    .await;
+    assert_eq!(raw_config.status, 200);
+    assert_eq!(raw_config.body, b"motd=Nexus");
 
     let read_file = send_raw_request(
         panel_address,
@@ -268,8 +329,8 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     )
     .await;
     assert_eq!(read_file.status, 200);
-    assert_eq!(read_file.body, b"motd=Panel");
-    assert_eq!(read_file.headers.get("etag"), Some(&file_etag));
+    assert_eq!(read_file.body, b"motd=Nexus");
+    assert_eq!(read_file.headers.get("etag"), Some(&config_etag));
     assert_eq!(
         read_file.headers.get("x-mcnp-file-eof"),
         Some(&"true".to_owned())

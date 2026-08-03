@@ -38,6 +38,12 @@ use zip::write::SimpleFileOptions;
 
 use crate::FileBatchOperation;
 use crate::FileManagerError;
+use crate::config_document::ConfigDocumentError;
+use crate::config_document::document;
+use crate::config_document::document_id;
+use crate::config_document::is_supported_path;
+use crate::config_document::patch;
+use crate::config_document::summary;
 use crate::file_download::FileDownload;
 use crate::file_upload::FileUpload;
 
@@ -49,9 +55,12 @@ pub const FILE_TRANSFER_CHUNK_BYTES: usize = 1024 * 1024;
 pub const MAXIMUM_FILE_TRANSFER_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 pub const MAXIMUM_FILE_ARCHIVE_ENTRIES: usize = 16 * 1024;
 pub const MAXIMUM_FILE_ARCHIVE_BYTES: u64 = MAXIMUM_FILE_TRANSFER_BYTES;
+pub const MAXIMUM_CONFIG_BYTES: usize = MAXIMUM_FILE_WRITE_BYTES;
 const MAXIMUM_ACTIVE_FILE_TRANSFERS: usize = 16;
 const DEFAULT_FILE_LIST_LIMIT: usize = 50;
 const MAXIMUM_FILE_LIST_LIMIT: usize = 200;
+const MAXIMUM_CONFIG_DOCUMENTS: usize = 512;
+const MAXIMUM_CONFIG_SCAN_DEPTH: usize = 32;
 
 #[derive(Clone)]
 pub struct FileManager {
@@ -180,6 +189,62 @@ impl FileManager {
         buffer.truncate(bytes_read.min(length));
 
         Ok(FileContent::new(STANDARD.encode(buffer), sha256, eof))
+    }
+
+    pub(crate) fn scan_config_documents(
+        &self,
+        instance: &Instance,
+    ) -> Result<Value, FileManagerError> {
+        let root = self.instance_root(instance)?;
+        let mut paths = Vec::new();
+        collect_config_paths(&root, &root, 0, &mut paths)?;
+        paths.sort();
+
+        let mut documents = Vec::with_capacity(paths.len());
+        for path in paths {
+            let relative_path = relative_file_path(&root, &path)?;
+            let content = read_config_content(&path)?;
+            let document = document(&relative_path, &content)
+                .map_err(|error| config_document_error(path.clone(), error))?;
+            documents.push(summary(&document));
+        }
+
+        Ok(json!({ "documents": documents }))
+    }
+
+    pub(crate) fn get_config_document(
+        &self,
+        instance: &Instance,
+        document_id: &str,
+    ) -> Result<Value, FileManagerError> {
+        let (path, relative_path) = self.resolve_config_document(instance, document_id)?;
+        let content = read_config_content(&path)?;
+        document(&relative_path, &content).map_err(|error| config_document_error(path, error))
+    }
+
+    pub(crate) fn patch_config_document(
+        &self,
+        instance: &Instance,
+        document_id: &str,
+        revision: &str,
+        patch_value: &Value,
+        _allow_lossy: bool,
+    ) -> Result<Value, FileManagerError> {
+        validate_hash(revision)?;
+        let (path, relative_path) = self.resolve_config_document(instance, document_id)?;
+        let content = read_config_content(&path)?;
+        let current_hash = sha256_hex(Sha256::digest(&content));
+        if !revision.eq_ignore_ascii_case(&current_hash) {
+            return Err(FileManagerError::ConfigRevisionMismatch {
+                expected: revision.to_owned(),
+                actual: current_hash,
+            });
+        }
+        let updated = patch(&relative_path, &content, patch_value)
+            .map_err(|error| config_document_error(path.clone(), error))?;
+        let _entry = self.write(instance, &relative_path, &updated, Some(&current_hash))?;
+
+        document(&relative_path, &updated).map_err(|error| config_document_error(path, error))
     }
 
     pub fn write(
@@ -1338,6 +1403,26 @@ impl FileManager {
         Ok(instance_directory)
     }
 
+    fn resolve_config_document(
+        &self,
+        instance: &Instance,
+        expected_document_id: &str,
+    ) -> Result<(PathBuf, String), FileManagerError> {
+        let root = self.instance_root(instance)?;
+        let mut paths = Vec::new();
+        collect_config_paths(&root, &root, 0, &mut paths)?;
+        for path in paths {
+            let relative_path = relative_file_path(&root, &path)?;
+            if document_id(&relative_path) == expected_document_id {
+                return Ok((path, relative_path));
+            }
+        }
+
+        Err(FileManagerError::ConfigDocumentNotFound {
+            document_id: expected_document_id.to_owned(),
+        })
+    }
+
     fn resolve_existing(
         &self,
         root: &Path,
@@ -1431,6 +1516,102 @@ fn collect_archive_entries(
     }
     entries.sort_by(|left, right| left.1.cmp(&right.1));
     Ok(entries)
+}
+
+fn collect_config_paths(
+    root: &Path,
+    directory: &Path,
+    depth: usize,
+    paths: &mut Vec<PathBuf>,
+) -> Result<(), FileManagerError> {
+    if depth > MAXIMUM_CONFIG_SCAN_DEPTH {
+        return Err(FileManagerError::InvalidPath {
+            path: directory.to_string_lossy().into_owned(),
+        });
+    }
+    let mut entries = fs::read_dir(directory)
+        .map_err(|source| FileManagerError::Io {
+            operation: "scan configuration directory",
+            path: directory.to_path_buf(),
+            source,
+        })?
+        .map(|entry| {
+            let entry = entry.map_err(|source| FileManagerError::Io {
+                operation: "read configuration directory entry",
+                path: directory.to_path_buf(),
+                source,
+            })?;
+            Ok(entry.path())
+        })
+        .collect::<Result<Vec<_>, FileManagerError>>()?;
+    entries.sort();
+
+    for path in entries {
+        let metadata = fs::symlink_metadata(&path).map_err(|source| FileManagerError::Io {
+            operation: "read configuration metadata",
+            path: path.clone(),
+            source,
+        })?;
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
+        if metadata.is_dir() {
+            collect_config_paths(root, &path, depth + 1, paths)?;
+        } else if metadata.is_file() && is_supported_path(&path) {
+            if paths.len() >= MAXIMUM_CONFIG_DOCUMENTS {
+                return Err(FileManagerError::ConfigScanTooLarge {
+                    maximum_documents: MAXIMUM_CONFIG_DOCUMENTS,
+                });
+            }
+            let canonical = fs::canonicalize(&path).map_err(|source| FileManagerError::Io {
+                operation: "resolve configuration file",
+                path: path.clone(),
+                source,
+            })?;
+            if !canonical.starts_with(root) {
+                return Err(FileManagerError::PathEscapes { path: canonical });
+            }
+            paths.push(canonical);
+        }
+    }
+    Ok(())
+}
+
+fn read_config_content(path: &Path) -> Result<Vec<u8>, FileManagerError> {
+    let metadata = fs::symlink_metadata(path).map_err(|source| FileManagerError::Io {
+        operation: "read configuration metadata",
+        path: path.to_path_buf(),
+        source,
+    })?;
+    if !metadata.is_file() {
+        return Err(FileManagerError::NotFile {
+            path: path.to_path_buf(),
+        });
+    }
+    if metadata.len() > MAXIMUM_CONFIG_BYTES as u64 {
+        return Err(FileManagerError::ContentTooLarge {
+            maximum_bytes: MAXIMUM_CONFIG_BYTES,
+        });
+    }
+    fs::read(path).map_err(|source| FileManagerError::Io {
+        operation: "read configuration",
+        path: path.to_path_buf(),
+        source,
+    })
+}
+
+fn config_document_error(path: PathBuf, error: ConfigDocumentError) -> FileManagerError {
+    match error {
+        ConfigDocumentError::InvalidPatch(message) => {
+            FileManagerError::ConfigPatchInvalid { message }
+        }
+        ConfigDocumentError::InvalidUtf8 | ConfigDocumentError::UnsupportedFormat => {
+            FileManagerError::ConfigParse {
+                path,
+                message: error.to_string(),
+            }
+        }
+    }
 }
 
 fn resolve_archive_source(root: &Path, relative_path: &str) -> Result<PathBuf, FileManagerError> {
@@ -1767,6 +1948,61 @@ mod tests {
         assert_eq!(page.items()[0].kind(), FileKind::Directory);
         assert_eq!(page.items()[0].path(), "plugins");
         assert_eq!(page.items()[1].path(), "server.properties");
+    }
+
+    #[test]
+    fn scans_and_patches_properties_with_revision_control() {
+        let directory = tempdir().expect("temporary directory is created");
+        let instance = instance();
+        let instance_directory = directory.path().join(instance.directory());
+        fs::create_dir_all(&instance_directory).expect("instance directory is created");
+        fs::write(
+            instance_directory.join("server.properties"),
+            b"# keep this\nmotd=MCNP\nonline-mode=true\n",
+        )
+        .expect("configuration file is written");
+
+        let manager = FileManager::new(directory.path());
+        let scan = manager
+            .scan_config_documents(&instance)
+            .expect("configuration files are scanned");
+        let document_id = scan["documents"][0]["documentId"]
+            .as_str()
+            .expect("scan returns a document ID");
+        let document = manager
+            .get_config_document(&instance, document_id)
+            .expect("configuration document is read");
+        let revision = document["revision"]
+            .as_str()
+            .expect("configuration revision is returned");
+        let updated = manager
+            .patch_config_document(
+                &instance,
+                document_id,
+                revision,
+                &json!({ "motd": "Nexus", "online-mode": null }),
+                false,
+            )
+            .expect("configuration patch is applied");
+
+        assert_eq!(updated["values"]["motd"], "Nexus");
+        assert!(updated["values"].get("online-mode").is_none());
+        assert_eq!(
+            fs::read(instance_directory.join("server.properties")).expect("file is readable"),
+            b"# keep this\nmotd=Nexus\n"
+        );
+
+        let stale = manager.patch_config_document(
+            &instance,
+            document_id,
+            revision,
+            &json!({ "motd": "stale" }),
+            false,
+        );
+        assert!(matches!(
+            stale,
+            Err(FileManagerError::ConfigRevisionMismatch { .. })
+        ));
     }
 
     #[test]

@@ -38,7 +38,8 @@ use tokio::net::TcpStream;
 use crate::CoreConnectionError;
 use crate::CoreEndpoint;
 
-const PANEL_CAPABILITIES: [&str; 9] = [
+const PANEL_CAPABILITIES: [&str; 10] = [
+    "config",
     "events",
     "files",
     "instances",
@@ -584,6 +585,51 @@ impl CoreConnection {
         let series = response_field(&result, "series")?;
 
         from_value(series).map_err(|_| CoreConnectionError::InvalidResponse { field: "series" })
+    }
+
+    pub async fn scan_config_documents(
+        &mut self,
+        instance_id: &InstanceId,
+    ) -> Result<Value, CoreConnectionError> {
+        self.request("config.scan", json!({ "instanceId": instance_id }))
+            .await
+    }
+
+    pub async fn get_config_document(
+        &mut self,
+        instance_id: &InstanceId,
+        document_id: &str,
+    ) -> Result<Value, CoreConnectionError> {
+        self.request(
+            "config.get",
+            json!({
+                "instanceId": instance_id,
+                "documentId": document_id,
+            }),
+        )
+        .await
+    }
+
+    pub async fn patch_config_document(
+        &mut self,
+        instance_id: &InstanceId,
+        document_id: &str,
+        revision: &str,
+        patch: &Value,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreConnectionError> {
+        self.request_with_idempotency(
+            "config.patch",
+            json!({
+                "instanceId": instance_id,
+                "documentId": document_id,
+                "revision": revision,
+                "patch": patch,
+                "allowLossy": false,
+            }),
+            Some(idempotency_key),
+        )
+        .await
     }
 
     pub async fn list_instance_files(

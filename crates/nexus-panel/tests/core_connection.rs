@@ -106,6 +106,32 @@ async fn connects_to_a_core_and_reads_its_system_info() {
         .expect("Core writes an instance file");
     assert_eq!(written.kind(), FileKind::File);
     assert_eq!(written.path(), "server.properties");
+    let config_scan = connection
+        .scan_config_documents(definition.id())
+        .await
+        .expect("Core scans configuration documents");
+    let config_document_id = config_scan["documents"][0]["documentId"]
+        .as_str()
+        .expect("configuration document ID is returned");
+    let config_document = connection
+        .get_config_document(definition.id(), config_document_id)
+        .await
+        .expect("Core returns a configuration document");
+    assert_eq!(config_document["values"]["motd"], "MCNP");
+    let config_revision = config_document["revision"]
+        .as_str()
+        .expect("configuration revision is returned");
+    let patched_config = connection
+        .patch_config_document(
+            definition.id(),
+            config_document_id,
+            config_revision,
+            &json!({ "motd": "Nexus" }),
+            "config-patch",
+        )
+        .await
+        .expect("Core patches a configuration document");
+    assert_eq!(patched_config["values"]["motd"], "Nexus");
     let batch_task_id = connection
         .batch_instance_files(
             definition.id(),

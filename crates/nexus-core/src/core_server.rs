@@ -60,7 +60,8 @@ use crate::file_manager::MAXIMUM_FILE_ARCHIVE_PATHS;
 use crate::file_manager::MAXIMUM_FILE_BATCH_OPERATIONS;
 use crate::file_manager::MAXIMUM_FILE_READ_BYTES;
 
-const CORE_CAPABILITIES: [&str; 9] = [
+const CORE_CAPABILITIES: [&str; 10] = [
+    "config",
     "events",
     "files",
     "instances",
@@ -454,6 +455,9 @@ async fn request_response(
         "instance.list" => instance_list_response(request_id, params, state.instances()),
         "instance.logs" => instance_logs_response(request_id, params, state.processes()),
         "instance.metrics" => instance_metrics_response(request_id, params, state.processes()),
+        "config.scan" => config_scan_response(request_id, params, state),
+        "config.get" => config_get_response(request_id, params, state),
+        "config.patch" => config_patch_response(request_id, params, idempotency_key, state),
         "file.list" => file_list_response(request_id, params, state),
         "file.read" => file_read_response(request_id, params, state),
         "file.mkdir" => file_mkdir_response(request_id, params, idempotency_key, state),
@@ -1056,6 +1060,134 @@ fn file_list_response(
 
     match state.files().list(&instance, path, cursor, limit) {
         Ok(page) => success_response(request_id, json!(page)),
+        Err(error) => file_manager_error_response(request_id, error),
+    }
+}
+
+fn config_scan_response(
+    request_id: RequestId,
+    params: &Value,
+    state: &CoreRequestState,
+) -> WireMessage {
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "config.scan requires a valid instanceId",
+        );
+    };
+    let instance = match state.instances().get(&instance_id) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            return error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist");
+        }
+        Err(error) => return repository_failure_response(request_id, &error),
+    };
+
+    match state.files().scan_config_documents(&instance) {
+        Ok(documents) => success_response(request_id, documents),
+        Err(error) => file_manager_error_response(request_id, error),
+    }
+}
+
+fn config_get_response(
+    request_id: RequestId,
+    params: &Value,
+    state: &CoreRequestState,
+) -> WireMessage {
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "config.get requires a valid instanceId",
+        );
+    };
+    let Some(document_id) = params
+        .get("documentId")
+        .and_then(Value::as_str)
+        .filter(|document_id| !document_id.is_empty())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "config.get requires a documentId",
+        );
+    };
+    let instance = match state.instances().get(&instance_id) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            return error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist");
+        }
+        Err(error) => return repository_failure_response(request_id, &error),
+    };
+
+    match state.files().get_config_document(&instance, document_id) {
+        Ok(document) => success_response(request_id, document),
+        Err(error) => file_manager_error_response(request_id, error),
+    }
+}
+
+fn config_patch_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    state: &CoreRequestState,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "config.patch requires a valid instanceId",
+        );
+    };
+    let Some(document_id) = params
+        .get("documentId")
+        .and_then(Value::as_str)
+        .filter(|document_id| !document_id.is_empty())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "config.patch requires a documentId",
+        );
+    };
+    let Some(revision) = params.get("revision").and_then(Value::as_str) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "config.patch requires a revision",
+        );
+    };
+    let Some(patch) = params.get("patch") else {
+        return error_response(request_id, "BAD_REQUEST", "config.patch requires a patch");
+    };
+    let allow_lossy = match params.get("allowLossy") {
+        None => false,
+        Some(Value::Bool(value)) => *value,
+        Some(_) => {
+            return error_response(
+                request_id,
+                "BAD_REQUEST",
+                "config.patch allowLossy is invalid",
+            );
+        }
+    };
+    let instance = match state.instances().get(&instance_id) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            return error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist");
+        }
+        Err(error) => return repository_failure_response(request_id, &error),
+    };
+
+    match state
+        .files()
+        .patch_config_document(&instance, document_id, revision, patch, allow_lossy)
+    {
+        Ok(document) => success_response(request_id, document),
         Err(error) => file_manager_error_response(request_id, error),
     }
 }
@@ -1764,6 +1896,35 @@ fn file_manager_error_response(request_id: RequestId, error: FileManagerError) -
             request_id,
             "FILE_TRANSFER_LIMIT_REACHED",
             "Too many active file transfers",
+        ),
+        FileManagerError::ConfigDocumentNotFound { .. } => error_response(
+            request_id,
+            "CONFIG_DOCUMENT_NOT_FOUND",
+            "Configuration document does not exist",
+        ),
+        FileManagerError::ConfigParse { .. } => error_response(
+            request_id,
+            "CONFIG_PARSE_FAILED",
+            "Configuration document could not be parsed",
+        ),
+        FileManagerError::ConfigPatchInvalid { .. } => error_response(
+            request_id,
+            "CONFIG_PATCH_INVALID",
+            "Configuration patch is invalid",
+        ),
+        FileManagerError::ConfigRevisionMismatch { expected, actual } => {
+            error_response_with_details(
+                request_id,
+                "CONFIG_REVISION_MISMATCH",
+                "Configuration document changed",
+                false,
+                Some(json!({ "expectedRevision": expected, "actualRevision": actual })),
+            )
+        }
+        FileManagerError::ConfigScanTooLarge { .. } => error_response(
+            request_id,
+            "CONFIG_SCAN_TOO_LARGE",
+            "Too many configuration documents",
         ),
         FileManagerError::AlreadyExists { .. } => error_response(
             request_id,

@@ -78,4 +78,14 @@ pub enum FileManagerError {
     TransferChunkTooLarge { maximum_bytes: usize },
     #[error("too many active file transfers")]
     TooManyTransfers,
+    #[error("configuration document does not exist: {document_id}")]
+    ConfigDocumentNotFound { document_id: String },
+    #[error("configuration document could not be parsed: {path}: {message}")]
+    ConfigParse { path: PathBuf, message: String },
+    #[error("configuration patch is invalid: {message}")]
+    ConfigPatchInvalid { message: String },
+    #[error("configuration revision does not match the current file")]
+    ConfigRevisionMismatch { expected: String, actual: String },
+    #[error("too many configuration documents; maximum is {maximum_documents}")]
+    ConfigScanTooLarge { maximum_documents: usize },
 }
