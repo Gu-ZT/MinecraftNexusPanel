@@ -240,6 +240,7 @@ Panel 使用 `MCNP_PANEL_MASTER_KEY` 对 Core PSK 执行 AES-256-GCM 信封加�
 | POST   | `.../{instanceId}/directories`                         | `file.write` | 创建目录       |
 | POST   | `.../{instanceId}/file-actions/move`                   | `file.write` | 移动或重命名   |
 | POST   | `.../{instanceId}/file-actions/batch`                  | `file.write` | 顺序执行批量文件操作 |
+| POST   | `.../{instanceId}/archives`                             | `file.write` | 异步创建 ZIP 下载归档 |
 | DELETE | `.../{instanceId}/files?path=logs/old&confirmation=DELETE` | `file.write` | 异步删除文件/目录 |
 | GET    | `.../cores/{coreId}/file-tasks/{taskId}`              | 已登录       | 查询文件操作任务 |
 | POST   | `.../{instanceId}/uploads`                             | `file.write` | 初始化分块上传 |
@@ -261,6 +262,11 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 `confirmation: "DELETE"`。接口返回 `202 Accepted` 和 `taskId`，任务按数组顺序执行，`FILE_BATCH` 的 `progress` 返回已完成数和总数，
 `results` 返回逐项状态；某项失败时任务为 `FAILED`，保留已执行项和 `failedIndex`，不回滚之前的文件变更。
 
+归档接口请求体为 `{ "paths": ["config", "server.properties"], "outputPath": "downloads/backup.zip" }`，一次最多 128 个源路径，
+`paths` 可以选择文件、目录或实例根目录；输出路径必须位于实例目录内且父目录已存在。接口返回 `202 Accepted` 和 `taskId`，
+`FILE_ARCHIVE_CREATE` 任务按 ZIP 条目报告 `completed`/`total` 进度，成功时在 `archive` 字段返回生成的 `FileEntry`。Core 会拒绝
+绝对路径、父目录段、符号链接和实例目录外路径，并使用同目录临时文件原子落盘；归档生成已实现，但归档内容的流式分块下载、跨重启续传和取消仍未实现。
+
 大文件上传使用会话化分块协议。初始化请求体为
 `{ "path": "world.zip", "sizeBytes": 123456, "sha256": "..." }`，响应状态为 `201 Created`，并返回
 `transferId`、固定 `chunkSize: 1048576`、`nextOffset: 0` 和 `sizeBytes`。分片路径中的 `partNumber` 从 0 开始，服务端按
@@ -268,7 +274,7 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 `Content-SHA256` 和 `Idempotency-Key`。相同分片可安全重试，失序分片会返回冲突。
 
 单个文件最大 4 GiB，单个 Core 最多 16 个活动上传会话。完成接口会再次校验完整文件大小和 SHA-256，并在同一文件系统内原子替换目标；放弃接口删除临时文件。
-上传状态只保存在 Core 内存中，Core 重启会清理未完成会话。任务化大文件下载、跨重启续传和统一任务中心进度仍未实现。
+上传状态只保存在 Core 内存中，Core 重启会清理未完成会话。归档生成任务已支持，但任务化大文件下载、跨重启续传和统一任务中心进度仍未实现。
 
 ### 5.5 任务、用户和审计
 

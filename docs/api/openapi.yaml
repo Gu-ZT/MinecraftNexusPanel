@@ -1181,6 +1181,38 @@ paths:
           $ref: '#/components/responses/PreconditionRequired'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/instances/{instanceId}/archives:
+    post:
+      tags: [ Files ]
+      operationId: createFileArchive
+      summary: Create an asynchronous ZIP archive of instance paths
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileArchiveCreateRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/TaskAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instances/{instanceId}/files:
     get:
       tags: [ Files ]
@@ -2622,6 +2654,19 @@ components:
         sha256:
           type: string
           pattern: '^[A-Fa-f0-9]{64}$'
+    FileArchiveCreateRequest:
+      type: object
+      required: [ paths, outputPath ]
+      properties:
+        paths:
+          type: array
+          minItems: 1
+          maxItems: 128
+          items:
+            type: string
+        outputPath:
+          type: string
+          minLength: 1
     FileUploadStart:
       type: object
       required: [ transferId, chunkSize, nextOffset, sizeBytes ]
@@ -2732,7 +2777,7 @@ components:
           type: string
         kind:
           type: string
-          enum: [ FILE_DELETE, FILE_BATCH ]
+          enum: [ FILE_DELETE, FILE_BATCH, FILE_ARCHIVE_CREATE ]
         state:
           $ref: '#/components/schemas/FileTaskState'
         progress:
@@ -2752,6 +2797,8 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FileBatchTaskResult'
+        archive:
+          $ref: '#/components/schemas/FileEntry'
         error:
           type: string
     FileBatchTaskProgress:

@@ -236,7 +236,7 @@ REST 建立快照和游标基线。Panel 由 HTTPS 提供时使用 WSS，否则�
 | 方法 | 路径                                    | 权限         | 说明              |
 |------|-----------------------------------------|--------------|-------------------|
 | POST | `.../{instanceId}/archives:extract`     | `file.write` | 安全解压          |
-| POST | `.../{instanceId}/archives:create`      | `file.read`  | 创建下载归档      |
+| POST | `.../{instanceId}/archives`             | `file.write` | 异步创建 ZIP 下载归档 |
 | POST | `.../{instanceId}/file-actions/copy`    | `file.write` | Core 内复制       |
 | GET  | `.../{instanceId}/file-content:preview` | `file.read`  | 限长文本/图片预览 |
 
