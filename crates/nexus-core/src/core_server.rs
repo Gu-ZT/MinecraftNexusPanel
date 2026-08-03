@@ -56,6 +56,7 @@ use crate::ProxySubserverRepositoryError;
 use crate::RuntimeManager;
 use crate::RuntimeManagerError;
 use crate::file_manager::FILE_TRANSFER_CHUNK_BYTES;
+use crate::file_manager::MAXIMUM_FILE_ARCHIVE_PATHS;
 use crate::file_manager::MAXIMUM_FILE_BATCH_OPERATIONS;
 use crate::file_manager::MAXIMUM_FILE_READ_BYTES;
 
@@ -459,6 +460,9 @@ async fn request_response(
         "file.move" => file_move_response(request_id, params, idempotency_key, state),
         "file.delete" => file_delete_response(request_id, params, idempotency_key, state),
         "file.batch" => file_batch_response(request_id, params, idempotency_key, state),
+        "file.archive.create" => {
+            file_archive_create_response(request_id, params, idempotency_key, state)
+        }
         "file.task.get" => file_task_response(request_id, params, state),
         "file.write" => file_write_response(request_id, params, idempotency_key, state),
         "transfer.begin" => transfer_begin_response(request_id, params, idempotency_key, state),
@@ -1361,6 +1365,82 @@ fn file_batch_response(
     };
 
     match state.files().start_batch(&instance, operations) {
+        Ok(task_id) => task_accepted_response(request_id, task_id),
+        Err(error) => file_manager_error_response(request_id, error),
+    }
+}
+
+fn file_archive_create_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    state: &CoreRequestState,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    if params.get("format").and_then(Value::as_str) != Some("ZIP") {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.archive.create format is invalid",
+        );
+    }
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.archive.create requires a valid instanceId",
+        );
+    };
+    let Some(path_values) = params.get("paths").and_then(Value::as_array) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.archive.create requires paths",
+        );
+    };
+    if path_values.is_empty() || path_values.len() > MAXIMUM_FILE_ARCHIVE_PATHS {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.archive.create path count is invalid",
+        );
+    }
+    let Some(paths) = path_values
+        .iter()
+        .map(|value| value.as_str().map(|value| value.to_owned()))
+        .collect::<Option<Vec<_>>>()
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.archive.create contains an invalid path",
+        );
+    };
+    let Some(output_path) = params
+        .get("outputPath")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.archive.create requires outputPath",
+        );
+    };
+    let instance = match state.instances().get(&instance_id) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            return error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist");
+        }
+        Err(error) => return repository_failure_response(request_id, &error),
+    };
+
+    match state
+        .files()
+        .start_archive(&instance, paths, output_path.to_owned())
+    {
         Ok(task_id) => task_accepted_response(request_id, task_id),
         Err(error) => file_manager_error_response(request_id, error),
     }

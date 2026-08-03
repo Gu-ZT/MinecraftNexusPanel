@@ -1,11 +1,15 @@
+use std::collections::BTreeSet;
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::fs;
 use std::fs::File;
+use std::io::Error;
 use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
+use std::io::copy;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -28,6 +32,9 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tokio::spawn;
 use tokio::task::spawn_blocking;
+use zip::CompressionMethod;
+use zip::ZipWriter;
+use zip::write::SimpleFileOptions;
 
 use crate::FileBatchOperation;
 use crate::FileManagerError;
@@ -36,6 +43,7 @@ use crate::file_upload::FileUpload;
 pub const MAXIMUM_FILE_READ_BYTES: usize = 32 * 1024;
 pub const MAXIMUM_FILE_WRITE_BYTES: usize = 1024 * 1024;
 pub const MAXIMUM_FILE_BATCH_OPERATIONS: usize = 64;
+pub const MAXIMUM_FILE_ARCHIVE_PATHS: usize = 128;
 pub const FILE_TRANSFER_CHUNK_BYTES: usize = 1024 * 1024;
 pub const MAXIMUM_FILE_TRANSFER_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 const MAXIMUM_ACTIVE_FILE_TRANSFERS: usize = 16;
@@ -475,6 +483,65 @@ impl FileManager {
                 Err(error) => Err(error.to_string()),
             };
             manager.finish_delete_task(task_id, result);
+        });
+
+        Ok(task_id)
+    }
+
+    pub(crate) fn start_archive(
+        &self,
+        instance: &Instance,
+        paths: Vec<String>,
+        output_path: String,
+    ) -> Result<TaskId, FileManagerError> {
+        if paths.is_empty() || paths.len() > MAXIMUM_FILE_ARCHIVE_PATHS {
+            return Err(FileManagerError::InvalidPath {
+                path: format!("paths={}", paths.len()),
+            });
+        }
+        let root = self.instance_root(instance)?;
+        let target = self.resolve_write_target(&root, &output_path)?;
+        if paths.iter().any(|path| path == &output_path) {
+            return Err(FileManagerError::InvalidPath {
+                path: output_path.clone(),
+            });
+        }
+        let entries = collect_archive_entries(&root, &paths, &output_path)?;
+        let total = entries.len().max(1);
+        let task_id = TaskId::new();
+        {
+            let mut tasks = self
+                .tasks
+                .lock()
+                .map_err(|_| FileManagerError::TaskStorePoisoned)?;
+            if tasks.len() >= 512 {
+                tasks.clear();
+            }
+            tasks.insert(
+                task_id,
+                json!({
+                    "taskId": task_id,
+                    "kind": "FILE_ARCHIVE_CREATE",
+                    "state": "RUNNING",
+                    "progress": { "completed": 0, "total": total },
+                }),
+            );
+        }
+
+        let manager = self.clone();
+        let worker = manager.clone();
+        spawn(async move {
+            let result = spawn_blocking(move || {
+                worker.create_archive(task_id, root, target, entries, total)
+            })
+            .await;
+            match result {
+                Ok(Ok(entry)) => manager.finish_archive_task(task_id, Ok(entry), total),
+                Ok(Err(error)) => {
+                    manager.finish_archive_task(task_id, Err(error.to_string()), total)
+                }
+                Err(error) => manager.finish_archive_task(task_id, Err(error.to_string()), total),
+            }
         });
 
         Ok(task_id)
@@ -941,6 +1008,106 @@ impl FileManager {
         }
     }
 
+    fn create_archive(
+        &self,
+        task_id: TaskId,
+        root: PathBuf,
+        target: PathBuf,
+        entries: Vec<(PathBuf, String, bool)>,
+        total: usize,
+    ) -> Result<FileEntry, FileManagerError> {
+        let parent = target
+            .parent()
+            .ok_or_else(|| FileManagerError::InvalidPath {
+                path: target.to_string_lossy().into_owned(),
+            })?;
+        let mut temporary =
+            NamedTempFile::new_in(parent).map_err(|source| FileManagerError::Io {
+                operation: "create archive temporary file in",
+                path: parent.to_path_buf(),
+                source,
+            })?;
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+        let mut archive = ZipWriter::new(temporary.as_file_mut());
+        for (index, (path, relative_path, is_directory)) in entries.iter().enumerate() {
+            if *is_directory {
+                let directory_path = format!("{relative_path}/");
+                archive
+                    .add_directory(directory_path, options)
+                    .map_err(|error| archive_error("add archive directory", path, error))?;
+            } else {
+                archive
+                    .start_file(relative_path, options)
+                    .map_err(|error| archive_error("add archive file", path, error))?;
+                let mut source = File::open(path).map_err(|source| FileManagerError::Io {
+                    operation: "open archive source",
+                    path: path.clone(),
+                    source,
+                })?;
+                copy(&mut source, &mut archive).map_err(|source| FileManagerError::Io {
+                    operation: "write archive file",
+                    path: path.clone(),
+                    source,
+                })?;
+            }
+            self.update_archive_progress(task_id, index + 1, total);
+        }
+        archive
+            .finish()
+            .map_err(|error| archive_error("finish archive", &target, error))?;
+        temporary
+            .as_file()
+            .sync_all()
+            .map_err(|source| FileManagerError::Io {
+                operation: "sync archive",
+                path: target.clone(),
+                source,
+            })?;
+        temporary
+            .persist(&target)
+            .map_err(|error| FileManagerError::Io {
+                operation: "replace archive",
+                path: target.clone(),
+                source: error.error,
+            })?;
+        relative_file_entry(&root, &target)
+    }
+
+    fn update_archive_progress(&self, task_id: TaskId, completed: usize, total: usize) {
+        let Ok(mut tasks) = self.tasks.lock() else {
+            return;
+        };
+        let Some(task) = tasks.get_mut(&task_id) else {
+            return;
+        };
+        task["progress"] = json!({ "completed": completed, "total": total });
+    }
+
+    fn finish_archive_task(
+        &self,
+        task_id: TaskId,
+        result: Result<FileEntry, String>,
+        total: usize,
+    ) {
+        let Ok(mut tasks) = self.tasks.lock() else {
+            return;
+        };
+        let Some(task) = tasks.get_mut(&task_id) else {
+            return;
+        };
+        match result {
+            Ok(entry) => {
+                task["state"] = json!("SUCCEEDED");
+                task["progress"] = json!({ "completed": total, "total": total });
+                task["archive"] = json!(entry);
+            }
+            Err(error) => {
+                task["state"] = json!("FAILED");
+                task["error"] = json!(error);
+            }
+        }
+    }
+
     fn instance_root(&self, instance: &Instance) -> Result<PathBuf, FileManagerError> {
         let data_directory = fs::canonicalize(self.data_directory.as_ref()).map_err(|source| {
             FileManagerError::CanonicalizeDataDirectory {
@@ -1039,6 +1206,125 @@ impl FileManager {
         }
 
         Ok(path)
+    }
+}
+
+fn collect_archive_entries(
+    root: &Path,
+    paths: &[String],
+    output_path: &str,
+) -> Result<Vec<(PathBuf, String, bool)>, FileManagerError> {
+    let mut entries = Vec::new();
+    let mut seen = BTreeSet::new();
+    for relative_path in paths {
+        let path = resolve_archive_source(root, relative_path)?;
+        collect_archive_entry(&path, relative_path, output_path, &mut seen, &mut entries)?;
+    }
+    entries.sort_by(|left, right| left.1.cmp(&right.1));
+    Ok(entries)
+}
+
+fn resolve_archive_source(root: &Path, relative_path: &str) -> Result<PathBuf, FileManagerError> {
+    let relative = parse_relative_path(relative_path, true)?;
+    let path = root.join(relative);
+    let metadata = fs::symlink_metadata(&path).map_err(|source| {
+        if source.kind() == ErrorKind::NotFound {
+            FileManagerError::NotFound { path: path.clone() }
+        } else {
+            FileManagerError::Io {
+                operation: "read archive source metadata",
+                path: path.clone(),
+                source,
+            }
+        }
+    })?;
+    if metadata.file_type().is_symlink() {
+        return Err(FileManagerError::SymlinkNotAllowed { path });
+    }
+    let canonical = fs::canonicalize(&path).map_err(|source| FileManagerError::Io {
+        operation: "resolve archive source",
+        path: path.clone(),
+        source,
+    })?;
+    if !canonical.starts_with(root) {
+        return Err(FileManagerError::PathEscapes { path: canonical });
+    }
+    Ok(canonical)
+}
+
+fn collect_archive_entry(
+    path: &Path,
+    relative_path: &str,
+    output_path: &str,
+    seen: &mut BTreeSet<String>,
+    entries: &mut Vec<(PathBuf, String, bool)>,
+) -> Result<(), FileManagerError> {
+    if relative_path == output_path {
+        return Ok(());
+    }
+    let metadata = fs::symlink_metadata(path).map_err(|source| FileManagerError::Io {
+        operation: "read archive entry metadata",
+        path: path.to_path_buf(),
+        source,
+    })?;
+    if metadata.file_type().is_symlink() {
+        return Err(FileManagerError::SymlinkNotAllowed {
+            path: path.to_path_buf(),
+        });
+    }
+    let is_directory = metadata.is_dir();
+    if !relative_path.is_empty() && seen.insert(relative_path.to_owned()) {
+        entries.push((path.to_path_buf(), relative_path.to_owned(), is_directory));
+    }
+    if !is_directory {
+        if !metadata.is_file() {
+            return Err(FileManagerError::NotFile {
+                path: path.to_path_buf(),
+            });
+        }
+        return Ok(());
+    }
+
+    let mut children = fs::read_dir(path)
+        .map_err(|source| FileManagerError::Io {
+            operation: "read archive directory",
+            path: path.to_path_buf(),
+            source,
+        })?
+        .map(|entry| {
+            let entry = entry.map_err(|source| FileManagerError::Io {
+                operation: "read archive directory entry",
+                path: path.to_path_buf(),
+                source,
+            })?;
+            let child_path = entry.path();
+            let child_name = entry
+                .file_name()
+                .to_str()
+                .ok_or_else(|| FileManagerError::NonUtf8Path {
+                    path: child_path.clone(),
+                })?
+                .to_owned();
+            Ok((child_name, child_path))
+        })
+        .collect::<Result<Vec<_>, FileManagerError>>()?;
+    children.sort_by(|left, right| left.0.cmp(&right.0));
+    for (child_name, child_path) in children {
+        let child_relative = if relative_path.is_empty() {
+            child_name
+        } else {
+            format!("{relative_path}/{child_name}")
+        };
+        collect_archive_entry(&child_path, &child_relative, output_path, seen, entries)?;
+    }
+    Ok(())
+}
+
+fn archive_error(operation: &'static str, path: &Path, error: impl Display) -> FileManagerError {
+    FileManagerError::Io {
+        operation,
+        path: path.to_path_buf(),
+        source: Error::other(error.to_string()),
     }
 }
 
@@ -1200,6 +1486,8 @@ fn current_timestamp() -> String {
 mod tests {
     use std::collections::BTreeMap;
     use std::fs;
+    use std::fs::File;
+    use std::io::Read;
     use std::time::Duration;
 
     use nexus_domain::FileKind;
@@ -1210,9 +1498,11 @@ mod tests {
     use nexus_domain::LaunchConfig;
     use nexus_domain::TaskId;
     use serde_json::Value;
+    use serde_json::json;
     use tempfile::tempdir;
     use tokio::time::sleep;
     use tokio::time::timeout;
+    use zip::ZipArchive;
 
     use super::FileManager;
     use super::FileManagerError;
@@ -1369,6 +1659,105 @@ mod tests {
         assert_eq!(directory_task["state"], "SUCCEEDED");
         assert_eq!(directory_task["path"], "nested");
         assert!(!instance_directory.join("nested").exists());
+    }
+
+    #[tokio::test]
+    async fn creates_zip_archive_task_with_selected_files_and_directories() {
+        let directory = tempdir().expect("temporary directory is created");
+        let instance = instance();
+        let instance_directory = directory.path().join(instance.directory());
+        fs::create_dir_all(instance_directory.join("config/nested"))
+            .expect("archive source directories are created");
+        fs::create_dir(instance_directory.join("config/empty"))
+            .expect("empty archive directory is created");
+        fs::create_dir(instance_directory.join("downloads"))
+            .expect("archive output directory is created");
+        fs::write(
+            instance_directory.join("config/nested/server.properties"),
+            b"motd=MCNP",
+        )
+        .expect("nested archive source file is written");
+        fs::write(
+            instance_directory.join("server.properties"),
+            b"level-name=world",
+        )
+        .expect("archive source file is written");
+        let manager = FileManager::new(directory.path());
+
+        let task_id = manager
+            .start_archive(
+                &instance,
+                vec!["config".to_owned(), "server.properties".to_owned()],
+                "downloads/backup.zip".to_owned(),
+            )
+            .expect("archive task is accepted");
+        let task = wait_for_task(&manager, task_id).await;
+
+        assert_eq!(task["kind"], "FILE_ARCHIVE_CREATE");
+        assert_eq!(task["state"], "SUCCEEDED");
+        assert_eq!(task["progress"], json!({ "completed": 5, "total": 5 }));
+        assert_eq!(task["archive"]["path"], "downloads/backup.zip");
+        assert_eq!(task["archive"]["kind"], "FILE");
+
+        let archive_file = File::open(instance_directory.join("downloads/backup.zip"))
+            .expect("created archive is readable");
+        let mut archive = ZipArchive::new(archive_file).expect("created archive is valid ZIP");
+        let names = (0..archive.len())
+            .map(|index| {
+                archive
+                    .by_index(index)
+                    .expect("archive entry is readable")
+                    .name()
+                    .to_owned()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec![
+                "config/",
+                "config/empty/",
+                "config/nested/",
+                "config/nested/server.properties",
+                "server.properties",
+            ]
+        );
+        let mut nested_file = archive
+            .by_name("config/nested/server.properties")
+            .expect("nested archive file exists");
+        let mut content = Vec::new();
+        nested_file
+            .read_to_end(&mut content)
+            .expect("nested archive file is readable");
+        assert_eq!(content, b"motd=MCNP");
+    }
+
+    #[test]
+    fn rejects_unsafe_archive_paths_before_creating_a_task() {
+        let directory = tempdir().expect("temporary directory is created");
+        let instance = instance();
+        let instance_directory = directory.path().join(instance.directory());
+        fs::create_dir_all(instance_directory.join("downloads"))
+            .expect("archive output directory is created");
+        fs::write(instance_directory.join("server.properties"), b"motd=MCNP")
+            .expect("archive source file is written");
+        let manager = FileManager::new(directory.path());
+
+        assert!(matches!(
+            manager.start_archive(
+                &instance,
+                vec!["../outside".to_owned()],
+                "downloads/backup.zip".to_owned(),
+            ),
+            Err(FileManagerError::InvalidPath { .. })
+        ));
+        assert!(matches!(
+            manager.start_archive(
+                &instance,
+                vec!["server.properties".to_owned()],
+                "server.properties".to_owned(),
+            ),
+            Err(FileManagerError::InvalidPath { .. })
+        ));
     }
 
     async fn wait_for_task(manager: &FileManager, task_id: TaskId) -> Value {
