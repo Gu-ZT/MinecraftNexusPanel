@@ -46,6 +46,8 @@ pub const MAXIMUM_FILE_BATCH_OPERATIONS: usize = 64;
 pub const MAXIMUM_FILE_ARCHIVE_PATHS: usize = 128;
 pub const FILE_TRANSFER_CHUNK_BYTES: usize = 1024 * 1024;
 pub const MAXIMUM_FILE_TRANSFER_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+pub const MAXIMUM_FILE_ARCHIVE_ENTRIES: usize = 16 * 1024;
+pub const MAXIMUM_FILE_ARCHIVE_BYTES: u64 = MAXIMUM_FILE_TRANSFER_BYTES;
 const MAXIMUM_ACTIVE_FILE_TRANSFERS: usize = 16;
 const DEFAULT_FILE_LIST_LIMIT: usize = 50;
 const MAXIMUM_FILE_LIST_LIMIT: usize = 200;
@@ -1216,9 +1218,17 @@ fn collect_archive_entries(
 ) -> Result<Vec<(PathBuf, String, bool)>, FileManagerError> {
     let mut entries = Vec::new();
     let mut seen = BTreeSet::new();
+    let mut total_bytes = 0;
     for relative_path in paths {
         let path = resolve_archive_source(root, relative_path)?;
-        collect_archive_entry(&path, relative_path, output_path, &mut seen, &mut entries)?;
+        collect_archive_entry(
+            &path,
+            relative_path,
+            output_path,
+            &mut seen,
+            &mut entries,
+            &mut total_bytes,
+        )?;
     }
     entries.sort_by(|left, right| left.1.cmp(&right.1));
     Ok(entries)
@@ -1258,6 +1268,7 @@ fn collect_archive_entry(
     output_path: &str,
     seen: &mut BTreeSet<String>,
     entries: &mut Vec<(PathBuf, String, bool)>,
+    total_bytes: &mut u64,
 ) -> Result<(), FileManagerError> {
     if relative_path == output_path {
         return Ok(());
@@ -1273,15 +1284,36 @@ fn collect_archive_entry(
         });
     }
     let is_directory = metadata.is_dir();
+    if !is_directory && !metadata.is_file() {
+        return Err(FileManagerError::NotFile {
+            path: path.to_path_buf(),
+        });
+    }
     if !relative_path.is_empty() && seen.insert(relative_path.to_owned()) {
+        if entries.len() >= MAXIMUM_FILE_ARCHIVE_ENTRIES {
+            return Err(FileManagerError::ArchiveTooLarge {
+                maximum_entries: MAXIMUM_FILE_ARCHIVE_ENTRIES,
+                maximum_bytes: MAXIMUM_FILE_ARCHIVE_BYTES,
+            });
+        }
+        if !is_directory {
+            let next_total = total_bytes.checked_add(metadata.len()).ok_or(
+                FileManagerError::ArchiveTooLarge {
+                    maximum_entries: MAXIMUM_FILE_ARCHIVE_ENTRIES,
+                    maximum_bytes: MAXIMUM_FILE_ARCHIVE_BYTES,
+                },
+            )?;
+            if next_total > MAXIMUM_FILE_ARCHIVE_BYTES {
+                return Err(FileManagerError::ArchiveTooLarge {
+                    maximum_entries: MAXIMUM_FILE_ARCHIVE_ENTRIES,
+                    maximum_bytes: MAXIMUM_FILE_ARCHIVE_BYTES,
+                });
+            }
+            *total_bytes = next_total;
+        }
         entries.push((path.to_path_buf(), relative_path.to_owned(), is_directory));
     }
     if !is_directory {
-        if !metadata.is_file() {
-            return Err(FileManagerError::NotFile {
-                path: path.to_path_buf(),
-            });
-        }
         return Ok(());
     }
 
@@ -1315,7 +1347,14 @@ fn collect_archive_entry(
         } else {
             format!("{relative_path}/{child_name}")
         };
-        collect_archive_entry(&child_path, &child_relative, output_path, seen, entries)?;
+        collect_archive_entry(
+            &child_path,
+            &child_relative,
+            output_path,
+            seen,
+            entries,
+            total_bytes,
+        )?;
     }
     Ok(())
 }
@@ -1485,9 +1524,11 @@ fn current_timestamp() -> String {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::collections::BTreeSet;
     use std::fs;
     use std::fs::File;
     use std::io::Read;
+    use std::path::PathBuf;
     use std::time::Duration;
 
     use nexus_domain::FileKind;
@@ -1757,6 +1798,58 @@ mod tests {
                 "server.properties".to_owned(),
             ),
             Err(FileManagerError::InvalidPath { .. })
+        ));
+
+        let too_many_paths = (0..=super::MAXIMUM_FILE_ARCHIVE_PATHS)
+            .map(|index| format!("missing-{index}"))
+            .collect();
+        assert!(matches!(
+            manager.start_archive(&instance, too_many_paths, "downloads/backup.zip".to_owned()),
+            Err(FileManagerError::InvalidPath { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_archive_entry_and_source_size_limits() {
+        let directory = tempdir().expect("temporary directory is created");
+        let instance = instance();
+        let instance_directory = directory.path().join(instance.directory());
+        fs::create_dir_all(&instance_directory).expect("instance directory is created");
+        let source = instance_directory.join("server.properties");
+        fs::write(&source, b"motd=MCNP").expect("archive source file is written");
+
+        let mut seen = (0..super::MAXIMUM_FILE_ARCHIVE_ENTRIES)
+            .map(|index| format!("existing-{index}"))
+            .collect::<BTreeSet<_>>();
+        let mut entries = (0..super::MAXIMUM_FILE_ARCHIVE_ENTRIES)
+            .map(|index| (PathBuf::new(), format!("existing-{index}"), false))
+            .collect::<Vec<_>>();
+        let mut total_bytes = 0;
+        assert!(matches!(
+            super::collect_archive_entry(
+                &source,
+                "server.properties",
+                "backup.zip",
+                &mut seen,
+                &mut entries,
+                &mut total_bytes,
+            ),
+            Err(FileManagerError::ArchiveTooLarge { .. })
+        ));
+
+        let mut seen = BTreeSet::new();
+        let mut entries = Vec::new();
+        let mut total_bytes = super::MAXIMUM_FILE_ARCHIVE_BYTES;
+        assert!(matches!(
+            super::collect_archive_entry(
+                &source,
+                "server.properties",
+                "backup.zip",
+                &mut seen,
+                &mut entries,
+                &mut total_bytes,
+            ),
+            Err(FileManagerError::ArchiveTooLarge { .. })
         ));
     }
 

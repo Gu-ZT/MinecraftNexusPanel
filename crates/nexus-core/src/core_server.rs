@@ -1665,6 +1665,11 @@ fn file_manager_error_response(request_id: RequestId, error: FileManagerError) -
             "PAYLOAD_TOO_LARGE",
             "File content exceeds the maximum size",
         ),
+        FileManagerError::ArchiveTooLarge { .. } => error_response(
+            request_id,
+            "PAYLOAD_TOO_LARGE",
+            "File archive exceeds the maximum size",
+        ),
         FileManagerError::TransferChunkTooLarge { .. } => error_response(
             request_id,
             "PAYLOAD_TOO_LARGE",

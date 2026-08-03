@@ -2662,6 +2662,7 @@ components:
           type: array
           minItems: 1
           maxItems: 128
+          description: Recursive selection is limited to 16,384 ZIP entries and 4 GiB of uncompressed source data.
           items:
             type: string
         outputPath:

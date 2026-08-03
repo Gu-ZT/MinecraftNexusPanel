@@ -263,7 +263,7 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 `results` 返回逐项状态；某项失败时任务为 `FAILED`，保留已执行项和 `failedIndex`，不回滚之前的文件变更。
 
 归档接口请求体为 `{ "paths": ["config", "server.properties"], "outputPath": "downloads/backup.zip" }`，一次最多 128 个源路径，
-`paths` 可以选择文件、目录或实例根目录；输出路径必须位于实例目录内且父目录已存在。接口返回 `202 Accepted` 和 `taskId`，
+递归结果最多 16,384 个 ZIP 条目且未压缩源数据最多 4 GiB；`paths` 可以选择文件、目录或实例根目录；输出路径必须位于实例目录内且父目录已存在。接口返回 `202 Accepted` 和 `taskId`，
 `FILE_ARCHIVE_CREATE` 任务按 ZIP 条目报告 `completed`/`total` 进度，成功时在 `archive` 字段返回生成的 `FileEntry`。Core 会拒绝
 绝对路径、父目录段、符号链接和实例目录外路径，并使用同目录临时文件原子落盘；归档生成已实现，但归档内容的流式分块下载、跨重启续传和取消仍未实现。
 

@@ -45,6 +45,11 @@ pub enum FileManagerError {
     PathEscapes { path: PathBuf },
     #[error("file content exceeds the maximum size of {maximum_bytes} bytes")]
     ContentTooLarge { maximum_bytes: usize },
+    #[error("file archive exceeds its entry or source size limit")]
+    ArchiveTooLarge {
+        maximum_entries: usize,
+        maximum_bytes: u64,
+    },
     #[error("file hash is invalid: {value}")]
     InvalidHash { value: String },
     #[error("file hash does not match the expected value")]
