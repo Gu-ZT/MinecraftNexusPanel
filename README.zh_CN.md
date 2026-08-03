@@ -23,7 +23,7 @@
 | 反向代理端 | Velocity、Waterfall、BungeeCord、Lightfall、Geyser |
 | 基岩版服务端 | Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit |
 
-模板目录与已验证安装器是两个层次：当前已为 Vanilla、Paper、Velocity、Fabric、NeoForge、Forge、Purpur、Pufferfish、Folia、Leaf、Magma、Sponge、Arclight、Waterfall、BungeeCord、Geyser、PocketMine-MP、Nukkit、Cloudburst Nukkit 接入版本元数据提供方。NeoForge 使用官方 Maven XML 目录，Pufferfish 聚合五个官方 Jenkins job，GitHub provider 要求存在 JAR/PHAR 资产，Nukkit 变体使用 OpenCollab Maven 元数据；Sponge 当前对应官方历史 SpongeVanilla Releases，Magma 主要提供开发构建。归档结构、启动配方和安装验证仍需按类型与版本逐项补充。
+模板目录与已验证安装器是两个层次：当前已为 Vanilla、Paper、Velocity、Fabric、NeoForge、Forge、Purpur、Pufferfish、Folia、Leaf、Magma、Sponge、Arclight、CatServer、Waterfall、BungeeCord、Lightfall、Geyser、PocketMine-MP、Nukkit、Cloudburst Nukkit 接入版本元数据提供方。NeoForge 使用官方 Maven XML 目录，Pufferfish 聚合五个官方 Jenkins job，GitHub provider 要求存在 JAR/PHAR 资产，Nukkit 变体使用 OpenCollab Maven 元数据；Sponge 当前对应官方历史 SpongeVanilla Releases，Magma 主要提供开发构建。归档结构、启动配方和安装验证仍需按类型与版本逐项补充。
 
 - 混合端的插件与模组分别管理，扩展目录由模板和版本声明，不能使用全局固定路径。
 - Velocity、Waterfall、BungeeCord、Lightfall 使用一对多后端拓扑；Geyser 使用一对一拓扑，并提供专门的基岩版管理能力。
