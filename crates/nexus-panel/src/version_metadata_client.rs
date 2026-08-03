@@ -32,12 +32,18 @@ const PUFFERFISH_PROVIDER_IDS: [&str; 5] = [
     "pufferfish-1.18-jenkins-service",
     "pufferfish-1.17-jenkins-service",
 ];
+const MAGMA_PROVIDER_ID: &str = "magma-github-releases";
+const SPONGE_PROVIDER_ID: &str = "sponge-github-releases";
+const ARCLIGHT_PROVIDER_ID: &str = "arclight-github-releases";
 const VELOCITY_PROVIDER_ID: &str = "velocity-downloads-service";
 const FOLIA_PROVIDER_ID: &str = "folia-downloads-service";
 const WATERFALL_PROVIDER_ID: &str = "waterfall-downloads-service";
 const BUNGEECORD_PROVIDER_ID: &str = "bungeecord-jenkins-service";
 const GEYSER_PROVIDER_ID: &str = "geyser-version-service";
 const LEAF_PROVIDER_ID: &str = "leaf-github-releases";
+const POCKETMINE_PROVIDER_ID: &str = "pocketmine-github-releases";
+const NUKKIT_PROVIDER_ID: &str = "nukkit-opencollab-maven-service";
+const CLOUDBURST_NUKKIT_PROVIDER_ID: &str = "cloudburst-nukkit-opencollab-maven-service";
 const FABRIC_GAME_PROVIDER_ID: &str = "fabric-game-versions";
 const FABRIC_LOADER_PROVIDER_ID: &str = "fabric-loader-versions";
 const PAPERMC_CONTACT_URL: &str = "https://github.com/Gu-ZT/MinecraftNexusPanel";
@@ -99,6 +105,24 @@ impl VersionMetadataClient {
 
                 parse_purpur_versions(provider, &metadata)
             }
+            "magma" => {
+                let provider = provider(template, MAGMA_PROVIDER_ID)?;
+                let metadata = self.fetch(provider).await?;
+
+                parse_github_release_versions(provider, &metadata, &[".jar"], true)
+            }
+            "sponge" => {
+                let provider = provider(template, SPONGE_PROVIDER_ID)?;
+                let metadata = self.fetch(provider).await?;
+
+                parse_github_release_versions(provider, &metadata, &[".jar"], false)
+            }
+            "arclight" => {
+                let provider = provider(template, ARCLIGHT_PROVIDER_ID)?;
+                let metadata = self.fetch(provider).await?;
+
+                parse_github_release_versions(provider, &metadata, &[".jar"], false)
+            }
             "pufferfish" => {
                 let mut versions = Vec::new();
                 for provider_id in PUFFERFISH_PROVIDER_IDS {
@@ -143,7 +167,25 @@ impl VersionMetadataClient {
                 let provider = provider(template, LEAF_PROVIDER_ID)?;
                 let metadata = self.fetch(provider).await?;
 
-                parse_leaf_versions(provider, &metadata)
+                parse_github_release_versions(provider, &metadata, &[".jar"], false)
+            }
+            "pocketmine-mp" => {
+                let provider = provider(template, POCKETMINE_PROVIDER_ID)?;
+                let metadata = self.fetch(provider).await?;
+
+                parse_github_release_versions(provider, &metadata, &[".phar"], false)
+            }
+            "nukkit" => {
+                let provider = provider(template, NUKKIT_PROVIDER_ID)?;
+                let metadata = self.fetch(provider).await?;
+
+                parse_string_versions(provider, &metadata, InstallTemplateVersionKind::Server)
+            }
+            "cloudburst-nukkit" => {
+                let provider = provider(template, CLOUDBURST_NUKKIT_PROVIDER_ID)?;
+                let metadata = self.fetch(provider).await?;
+
+                parse_string_versions(provider, &metadata, InstallTemplateVersionKind::Server)
             }
             "fabric" => {
                 let game_provider = provider(template, FABRIC_GAME_PROVIDER_ID)?;
@@ -445,9 +487,11 @@ fn parse_geyser_versions(
     parse_string_versions(provider, metadata, InstallTemplateVersionKind::Server)
 }
 
-fn parse_leaf_versions(
+fn parse_github_release_versions(
     provider: &VersionMetadataProvider,
     metadata: &Value,
+    asset_suffixes: &[&str],
+    include_prereleases: bool,
 ) -> Result<Vec<InstallTemplateVersion>, VersionMetadataError> {
     let entries = metadata
         .as_array()
@@ -457,18 +501,21 @@ fn parse_leaf_versions(
         .iter()
         .filter(|entry| {
             entry.get("draft").and_then(Value::as_bool) != Some(true)
-                && entry.get("prerelease").and_then(Value::as_bool) != Some(true)
-                && has_github_jar_asset(entry)
+                && (include_prereleases
+                    || entry.get("prerelease").and_then(Value::as_bool) != Some(true))
+                && has_github_asset(entry, asset_suffixes)
         })
         .map(|entry| {
             let id = required_string(provider, entry, "tag_name")?;
             let metadata_url = required_string(provider, entry, "html_url")?;
+            let stable = entry.get("prerelease").and_then(Value::as_bool) != Some(true)
+                && is_stable_version(&id);
 
             Ok(InstallTemplateVersion::new(
                 id,
                 provider.id().to_owned(),
                 InstallTemplateVersionKind::Server,
-                true,
+                stable,
                 Some(metadata_url),
             ))
         })
@@ -481,7 +528,7 @@ fn parse_leaf_versions(
     }
 }
 
-fn has_github_jar_asset(entry: &Value) -> bool {
+fn has_github_asset(entry: &Value, asset_suffixes: &[&str]) -> bool {
     entry
         .get("assets")
         .and_then(Value::as_array)
@@ -490,7 +537,7 @@ fn has_github_jar_asset(entry: &Value) -> bool {
                 asset
                     .get("name")
                     .and_then(Value::as_str)
-                    .is_some_and(|name| name.ends_with(".jar"))
+                    .is_some_and(|name| asset_suffixes.iter().any(|suffix| name.ends_with(suffix)))
                     && asset
                         .get("browser_download_url")
                         .and_then(Value::as_str)
@@ -625,6 +672,7 @@ fn is_stable_version(version: &str) -> bool {
     !version.contains("SNAPSHOT")
         && !version.contains("-alpha")
         && !version.contains("-beta")
+        && !version.contains("-DEV")
         && !version.contains("-pre")
         && !version.contains("-rc")
 }
@@ -669,12 +717,13 @@ mod tests {
     use super::parse_fabric_versions;
     use super::parse_forge_versions;
     use super::parse_geyser_versions;
-    use super::parse_leaf_versions;
+    use super::parse_github_release_versions;
     use super::parse_mojang_versions;
     use super::parse_neoforge_versions;
     use super::parse_paper_versions;
     use super::parse_pufferfish_versions;
     use super::parse_purpur_versions;
+    use super::parse_string_versions;
     use super::parse_velocity_versions;
 
     #[test]
@@ -854,7 +903,7 @@ mod tests {
 
     #[test]
     fn parses_leaf_published_releases_with_jars() {
-        let versions = parse_leaf_versions(
+        let versions = parse_github_release_versions(
             &provider("leaf-github-releases"),
             &json!([
                 {
@@ -885,6 +934,8 @@ mod tests {
                     "assets": []
                 }
             ]),
+            &[".jar"],
+            false,
         )
         .expect("Leaf metadata is valid");
 
@@ -892,6 +943,58 @@ mod tests {
         assert_eq!(versions[0].id(), "ver-1.21.8");
         assert_eq!(versions[0].kind(), InstallTemplateVersionKind::Server);
         assert!(versions[0].stable());
+    }
+
+    #[test]
+    fn parses_prerelease_phar_assets_and_opencollab_versions() {
+        let pocketmine = parse_github_release_versions(
+            &provider("pocketmine-github-releases"),
+            &json!([
+                {
+                    "tag_name": "5.44.3",
+                    "draft": false,
+                    "prerelease": false,
+                    "html_url": "https://example.invalid/pocketmine/5.44.3",
+                    "assets": [{
+                        "name": "PocketMine-MP.phar",
+                        "browser_download_url": "https://example.invalid/PocketMine-MP.phar"
+                    }]
+                }
+            ]),
+            &[".phar"],
+            false,
+        )
+        .expect("PocketMine-MP metadata is valid");
+        let magma = parse_github_release_versions(
+            &provider("magma-github-releases"),
+            &json!([
+                {
+                    "tag_name": "va549e0d-DEV",
+                    "draft": false,
+                    "prerelease": true,
+                    "html_url": "https://example.invalid/magma/dev",
+                    "assets": [{
+                        "name": "Magma-server.jar",
+                        "browser_download_url": "https://example.invalid/Magma-server.jar"
+                    }]
+                }
+            ]),
+            &[".jar"],
+            true,
+        )
+        .expect("Magma metadata is valid");
+        let nukkit = parse_string_versions(
+            &provider("nukkit-opencollab-maven-service"),
+            &json!({ "versions": ["1.0-SNAPSHOT", "2.0.0-SNAPSHOT"] }),
+            InstallTemplateVersionKind::Server,
+        )
+        .expect("OpenCollab metadata is valid");
+
+        assert_eq!(pocketmine[0].id(), "5.44.3");
+        assert!(pocketmine[0].stable());
+        assert_eq!(magma[0].id(), "va549e0d-DEV");
+        assert!(!magma[0].stable());
+        assert!(nukkit.iter().all(|version| !version.stable()));
     }
 
     #[test]

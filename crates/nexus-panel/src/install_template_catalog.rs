@@ -180,14 +180,48 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
         )
         .with_extension_layouts(plugin_layout()),
         java_server("mohist", "Mohist", InstanceKind::Mohist, hybrid_layout()),
-        java_server("magma", "Magma", InstanceKind::Magma, hybrid_layout()),
-        java_server("sponge", "Sponge", InstanceKind::Sponge, sponge_layout()),
-        java_server(
+        template(
+            "magma",
+            "Magma",
+            InstanceKind::Magma,
+            InstallTemplateFamily::JavaServer,
+            InstallRuntimeRequirement::Java,
+            ProxyTopology::None,
+            vec![provider(
+                "magma-github-releases",
+                "Magma GitHub releases",
+                "https://api.github.com/repos/magmafoundation/Magma-Forge/releases?per_page=100",
+            )],
+        )
+        .with_extension_layouts(hybrid_layout()),
+        template(
+            "sponge",
+            "Sponge",
+            InstanceKind::Sponge,
+            InstallTemplateFamily::JavaServer,
+            InstallRuntimeRequirement::Java,
+            ProxyTopology::None,
+            vec![provider(
+                "sponge-github-releases",
+                "SpongeVanilla GitHub releases",
+                "https://api.github.com/repos/SpongePowered/SpongeVanilla/releases?per_page=100",
+            )],
+        )
+        .with_extension_layouts(sponge_layout()),
+        template(
             "arclight",
             "Arclight",
             InstanceKind::Arclight,
-            hybrid_layout(),
-        ),
+            InstallTemplateFamily::JavaServer,
+            InstallRuntimeRequirement::Java,
+            ProxyTopology::None,
+            vec![provider(
+                "arclight-github-releases",
+                "Arclight GitHub releases",
+                "https://api.github.com/repos/IzzelAliz/Arclight/releases?per_page=100",
+            )],
+        )
+        .with_extension_layouts(hybrid_layout()),
         java_server("youer", "Youer", InstanceKind::Youer, hybrid_layout()),
         java_server(
             "async-youer",
@@ -258,7 +292,11 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             InstallTemplateFamily::BedrockServer,
             InstallRuntimeRequirement::Php,
             ProxyTopology::None,
-            Vec::new(),
+            vec![provider(
+                "pocketmine-github-releases",
+                "PocketMine-MP GitHub releases",
+                "https://api.github.com/repos/pmmp/PocketMine-MP/releases?per_page=100",
+            )],
         )
         .with_extension_layouts(plugin_layout()),
         template(
@@ -268,7 +306,11 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             InstallTemplateFamily::BedrockServer,
             InstallRuntimeRequirement::Java,
             ProxyTopology::None,
-            Vec::new(),
+            vec![provider(
+                "nukkit-opencollab-maven-service",
+                "Nukkit OpenCollab Maven service",
+                "https://repo.opencollab.dev/api/maven/versions/maven-snapshots/cn/nukkit/nukkit",
+            )],
         )
         .with_extension_layouts(plugin_layout()),
         template(
@@ -278,7 +320,11 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             InstallTemplateFamily::BedrockServer,
             InstallRuntimeRequirement::Java,
             ProxyTopology::None,
-            Vec::new(),
+            vec![provider(
+                "cloudburst-nukkit-opencollab-maven-service",
+                "Cloudburst Nukkit OpenCollab Maven service",
+                "https://repo.opencollab.dev/api/maven/versions/maven-snapshots/org/cloudburstmc/cloudburst-server",
+            )],
         )
         .with_extension_layouts(plugin_layout()),
     ]
@@ -483,6 +529,60 @@ mod tests {
                 .metadata_providers()[0]
                 .url(),
             "https://api.github.com/repos/Winds-Studio/Leaf/releases?per_page=100"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "magma")
+                .expect("Magma template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://api.github.com/repos/magmafoundation/Magma-Forge/releases?per_page=100"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "arclight")
+                .expect("Arclight template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://api.github.com/repos/IzzelAliz/Arclight/releases?per_page=100"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "sponge")
+                .expect("Sponge template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://api.github.com/repos/SpongePowered/SpongeVanilla/releases?per_page=100"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "pocketmine-mp")
+                .expect("PocketMine-MP template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://api.github.com/repos/pmmp/PocketMine-MP/releases?per_page=100"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "nukkit")
+                .expect("Nukkit template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://repo.opencollab.dev/api/maven/versions/maven-snapshots/cn/nukkit/nukkit"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "cloudburst-nukkit")
+                .expect("Cloudburst Nukkit template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://repo.opencollab.dev/api/maven/versions/maven-snapshots/org/cloudburstmc/cloudburst-server"
         );
         assert_eq!(
             templates
