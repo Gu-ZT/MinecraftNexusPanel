@@ -58,12 +58,13 @@
   - [x] 记录混合端的插件/模组目录，以及一对多和一对一代理拓扑。
   - [x] 提供代理子服务器关系管理，并约束一对多与一对一拓扑。
   - [x] 提供基岩端 RakNet UDP、默认端口、配置文件和插件能力画像。
-  - [x] 解析 Vanilla、Paper、Velocity、Fabric、NeoForge、Forge、Purpur、Pufferfish、Folia、Leaf、Magma、Sponge、Arclight、CatServer、Waterfall、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit 和 Cloudburst Nukkit 二十二种模板的官方版本元数据并通过 Panel API 提供统一版本目录。
+  - [x] 解析 Vanilla、Paper、Velocity、Fabric、NeoForge、Forge、Bukkit、Spigot、Purpur、Pufferfish、Folia、Leaf、Magma、Sponge、Arclight、CatServer、Waterfall、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit 和 Cloudburst Nukkit 二十四种模板的官方版本元数据并通过 Panel API 提供统一版本目录。
     - [x] NeoForge 使用官方 Maven XML 版本目录；Pufferfish 使用五个官方 Jenkins job；Leaf 使用官方 GitHub Releases，并过滤无 JAR、草稿、预发布或失败构建。
     - [x] Magma、SpongeVanilla、Arclight、CatServer 和 Lightfall 使用官方 GitHub Releases；BDS 使用 Mojang 官方下载链接 API 解析 Windows/Linux 稳定版和 Preview ZIP；PocketMine-MP 使用 PHAR 资产；Nukkit 和 Cloudburst Nukkit 使用官方 OpenCollab Maven 版本 API。
+    - [x] Bukkit 和 Spigot 使用官方 Jenkins RSS Atom feed，解析稳定构建编号和构建页链接；RSS 元数据不代表构建产物已验证可直接安装。
   - [x] 执行模板安装。
-  - [ ] 为 Bukkit、Spigot、Mohist、Youer、AsyncYouer、Silkard 和 Lingshu 补齐可验证的官方元数据与安装配方。
-  - [ ] 为已接入版本 provider 的二十二种模板及后续类型补齐按版本验证的归档结构、可执行文件、默认配置、启动参数和更新策略。
+  - [ ] 为 Mohist、Youer、AsyncYouer、Silkard 和 Lingshu 补齐可验证的官方元数据与安装配方。
+  - [ ] 为已接入版本 provider 的二十四种模板及后续类型补齐按版本验证的归档结构、可执行文件、默认配置、启动参数和更新策略。
   - [ ] 不能把仅有模板目录或版本元数据 provider 误认为完整安装支持。
 
 ### M2 服务端类型矩阵
