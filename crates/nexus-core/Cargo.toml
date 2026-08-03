@@ -9,15 +9,18 @@ nexus-domain.workspace = true
 nexus-config.workspace = true
 nexus-protocol.workspace = true
 rcgen.workspace = true
+reqwest.workspace = true
 rustls.workspace = true
 rustls-pemfile.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 sysinfo.workspace = true
 thiserror.workspace = true
 time.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
 tracing.workspace = true
+url.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

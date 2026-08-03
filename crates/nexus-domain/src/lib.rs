@@ -1,4 +1,7 @@
 mod core_id;
+mod download_architecture;
+mod download_manifest;
+mod download_platform;
 mod event_id;
 mod install_template;
 mod instance;
@@ -23,10 +26,15 @@ mod request_id;
 mod runtime_kind;
 mod runtime_source;
 mod runtime_validation;
+mod sha256_digest;
+mod sha256_digest_error;
 mod task_id;
 mod version_metadata_provider;
 
 pub use core_id::CoreId;
+pub use download_architecture::DownloadArchitecture;
+pub use download_manifest::DownloadManifest;
+pub use download_platform::DownloadPlatform;
 pub use event_id::EventId;
 pub use install_template::InstallTemplate;
 pub use instance::Instance;
@@ -51,6 +59,8 @@ pub use request_id::RequestId;
 pub use runtime_kind::RuntimeKind;
 pub use runtime_source::RuntimeSource;
 pub use runtime_validation::RuntimeValidation;
+pub use sha256_digest::Sha256Digest;
+pub use sha256_digest_error::Sha256DigestError;
 pub use task_id::TaskId;
 pub use version_metadata_provider::VersionMetadataProvider;
 
