@@ -283,9 +283,9 @@ M1 的 `instance.metrics` 返回一个当前进程样本组成的 `series`，字
 | `file.batch`      | instanceId、operations                             | taskId                  |
 | `file.archive.create` | instanceId、format、paths、outputPath           | taskId                  |
 | `file.task.get`   | taskId                                             | `FileTask`         |
-| `transfer.begin`  | instanceId、path、size、sha256、mode               | transferId、chunkSize   |
-| `transfer.chunk`  | transferId、offset、dataBase64                     | nextOffset              |
-| `transfer.commit` | transferId                                         | entry                   |
+| `transfer.begin`  | UPLOAD: instanceId、path、size、sha256；DOWNLOAD: instanceId、path、mode | transferId、chunkSize、nextOffset、sizeBytes、sha256 |
+| `transfer.chunk`  | UPLOAD: transferId、offset、dataBase64；DOWNLOAD: transferId、offset | 上传 nextOffset；下载 dataBase64、分片 sha256 和游标 |
+| `transfer.commit` | transferId                                         | 上传 entry；下载空对象  |
 | `transfer.abort`  | transferId                                         | 空对象                  |
 
 - `file.read` 单次最多读取 32 KiB 原始字节。
@@ -296,10 +296,10 @@ M1 的 `instance.metrics` 返回一个当前进程样本组成的 `series`，字
 - `file.batch` 要求 `idempotencyKey`，一次最多 64 项，支持 `MKDIR`、`MOVE`、`WRITE` 和 `DELETE`。操作按数组顺序在后台任务中执行，任务进度包含 `completed`/`total`，结果包含每项状态；失败时保留已完成项和失败索引，不执行伪回滚。
 - `file.archive.create` 要求 `idempotencyKey` 和 `format: "ZIP"`，一次最多 128 个源路径；递归结果最多 16,384 个 ZIP 条目，未压缩源数据最多 4 GiB。路径可指向文件、目录或实例根目录，输出路径必须位于实例目录内且父目录已存在。Core 按条目写入同目录临时文件，完成后原子落盘；目录条目、空目录和文件内容都会写入 ZIP，输出归档不会再次包含自身。任务 kind 为 `FILE_ARCHIVE_CREATE`，进度为已处理归档条目数/总数，成功结果的 `archive` 字段为 `FileEntry`，超限返回 `PAYLOAD_TOO_LARGE`。
 - 当前 Core 已实现 `file.list`、`file.read`、`file.write`、`file.mkdir`、`file.move`、`file.delete`、`file.batch`、`file.archive.create`、`file.task.get` 和 `transfer.*`，并通过 `files` 与 `transfer-v1` capability 协商。
-- `transfer.begin` 只接受 `UPLOAD` 模式；单文件最多 4 GiB，返回固定 1 MiB 的 `chunkSize` 和从 0 开始的 `nextOffset`。
-- `transfer.chunk` 必须按服务端返回的 offset 顺序提交；相同 offset 的相同内容允许重试，提交前写入同文件系统临时文件。每个分片最多 1 MiB，可携带分片 SHA-256。
-- `transfer.commit` 先校验完整文件大小和 SHA-256，再原子替换目标；`transfer.abort` 删除临时文件并释放上传状态。
-- 每个 Core 最多同时保留 16 个上传会话；会话状态保存在内存中，Core 重启会清理未完成上传。ZIP 归档生成已任务化，但归档的流式传输、分块下载、跨重启续传和统一任务中心取消仍属于后续版本。
+- `transfer.begin` 接受 `UPLOAD` 和 `DOWNLOAD` 两种模式；单文件最多 4 GiB，返回固定 1 MiB 的 `chunkSize` 和从 0 开始的 `nextOffset`。下载模式会在初始化时记录源文件大小和完整 SHA-256。
+- 上传 `transfer.chunk` 必须按服务端返回的 offset 顺序提交；相同 offset 的相同内容允许重试，提交前写入同文件系统临时文件。下载 `transfer.chunk` 不携带 `dataBase64`，按 offset 返回 Base64 分片、分片 SHA-256、完整文件摘要和 EOF；已读分片可以重试，跳跃到未到达的 offset 会被拒绝。每个分片最多 1 MiB。
+- `transfer.commit` 对上传先校验完整文件大小和 SHA-256，再原子替换目标；对下载校验已经读完且源文件摘要未变化。`transfer.abort` 删除上传临时文件或释放下载状态。
+- 每个 Core 最多同时保留 16 个上传会话和 16 个下载会话；会话状态保存在内存中，Core 重启会清理未完成会话。归档生成和归档文件的分块读取已支持，但跨重启续传、快照、差异比较和统一任务中心进度仍属于后续版本。
 
 ### 5.4 任务
 

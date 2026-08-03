@@ -1326,6 +1326,44 @@ paths:
           $ref: '#/components/responses/PreconditionRequired'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/instances/{instanceId}/downloads:
+    post:
+      tags: [ Files ]
+      operationId: beginFileDownload
+      summary: Initialize a chunked instance file download
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileDownloadBeginRequest'
+      responses:
+        '201':
+          description: Download session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileDownloadStart'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/uploads/{transferId}/parts/{partNumber}:
     put:
       tags: [ Files ]
@@ -1419,6 +1457,117 @@ paths:
       responses:
         '204':
           description: Upload aborted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/downloads/{transferId}/parts/{partNumber}:
+    get:
+      tags: [ Files ]
+      operationId: downloadFilePart
+      summary: Download one chunk of an instance file
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/TransferId'
+        - $ref: '#/components/parameters/PartNumber'
+      responses:
+        '200':
+          description: Binary download chunk
+          headers:
+            ETag:
+              description: SHA-256 based ETag of the complete file
+              schema:
+                type: string
+            Content-SHA256:
+              description: SHA-256 digest of this binary chunk
+              schema:
+                type: string
+                pattern: '^[A-Fa-f0-9]{64}$'
+            X-MCNP-File-Transfer-Offset:
+              description: Byte offset of this chunk
+              schema:
+                type: integer
+                format: int64
+            X-MCNP-File-Transfer-Next-Offset:
+              description: Next sequential byte offset accepted by the session
+              schema:
+                type: integer
+                format: int64
+            X-MCNP-File-Transfer-Size:
+              description: Complete file size in bytes
+              schema:
+                type: integer
+                format: int64
+            X-MCNP-File-Eof:
+              description: Whether this chunk reaches the end of the file
+              schema:
+                type: string
+                enum: [ 'true', 'false' ]
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/downloads/{transferId}/complete:
+    post:
+      tags: [ Files ]
+      operationId: completeFileDownload
+      summary: Validate and close a chunked instance file download
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/TransferId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: Download session closed
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/downloads/{transferId}:
+    delete:
+      tags: [ Files ]
+      operationId: abortFileDownload
+      summary: Abort a chunked instance file download
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/TransferId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: Download aborted
         '400':
           $ref: '#/components/responses/BadRequest'
         '403':
@@ -2654,6 +2803,13 @@ components:
         sha256:
           type: string
           pattern: '^[A-Fa-f0-9]{64}$'
+    FileDownloadBeginRequest:
+      type: object
+      required: [ path ]
+      properties:
+        path:
+          type: string
+          minLength: 1
     FileArchiveCreateRequest:
       type: object
       required: [ paths, outputPath ]
@@ -2687,6 +2843,28 @@ components:
           format: int64
           minimum: 0
           maximum: 4294967296
+    FileDownloadStart:
+      type: object
+      required: [ transferId, chunkSize, nextOffset, sizeBytes, sha256 ]
+      properties:
+        transferId:
+          type: string
+        chunkSize:
+          type: integer
+          format: int64
+          const: 1048576
+        nextOffset:
+          type: integer
+          format: int64
+          minimum: 0
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 4294967296
+        sha256:
+          type: string
+          pattern: '^[A-Fa-f0-9]{64}$'
     FileUploadPart:
       type: object
       required: [ transferId, nextOffset, sizeBytes ]

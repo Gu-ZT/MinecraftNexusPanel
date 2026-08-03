@@ -41,9 +41,10 @@ The first file-management slice is now available through the Core `files` capabi
 - ordered batch file tasks for `MKDIR`, `MOVE`, `WRITE`, and `DELETE`, with per-item progress and partial-failure results;
 - asynchronous ZIP archive preparation for up to 128 files or directories, including empty directories and the instance root, with entry progress and atomic output;
 - session-based chunked uploads with fixed 1 MiB parts, per-part and full-file SHA-256 checks, ordered offsets, retries, cancellation, and atomic replacement;
+- session-based chunked downloads with fixed 1 MiB parts, full-file and per-part SHA-256 metadata, ordered offsets, retryable completed parts, and completion verification;
 - binary Panel responses and TypeScript Client methods for the same contract.
 
-Archive creation is available, while streaming large-file downloads, cross-restart transfer resume, snapshots, and difference comparison remain planned M3 work.
+Archive creation and session-based large-file downloads are available. Cross-restart transfer resume, snapshots, difference comparison, and unified task-center progress remain planned M3 work.
 
 ## Project Layout
 

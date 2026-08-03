@@ -247,6 +247,10 @@ Panel 使用 `MCNP_PANEL_MASTER_KEY` 对 Core PSK 执行 AES-256-GCM 信封加�
 | PUT    | `.../cores/{coreId}/uploads/{transferId}/parts/{partNumber}` | `file.write` | 上传分块       |
 | POST   | `.../cores/{coreId}/uploads/{transferId}/complete`     | `file.write` | 校验并提交     |
 | DELETE | `.../cores/{coreId}/uploads/{transferId}`              | `file.write` | 放弃上传       |
+| POST   | `.../{instanceId}/downloads`                          | `file.read`  | 初始化分块下载 |
+| GET    | `.../cores/{coreId}/downloads/{transferId}/parts/{partNumber}` | `file.read` | 下载分块       |
+| POST   | `.../cores/{coreId}/downloads/{transferId}/complete`   | `file.write` | 校验并关闭下载 |
+| DELETE | `.../cores/{coreId}/downloads/{transferId}`            | `file.write` | 放弃下载       |
 
 路径必须使用 UTF-8 和 `/`，以实例根目录为 `/`。Panel 与 Core 都必须拒绝绝对宿主机路径、NUL、`..` 段和逃逸实例根目录的符号链接。
 
@@ -265,7 +269,7 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 归档接口请求体为 `{ "paths": ["config", "server.properties"], "outputPath": "downloads/backup.zip" }`，一次最多 128 个源路径，
 递归结果最多 16,384 个 ZIP 条目且未压缩源数据最多 4 GiB；`paths` 可以选择文件、目录或实例根目录；输出路径必须位于实例目录内且父目录已存在。接口返回 `202 Accepted` 和 `taskId`，
 `FILE_ARCHIVE_CREATE` 任务按 ZIP 条目报告 `completed`/`total` 进度，成功时在 `archive` 字段返回生成的 `FileEntry`。Core 会拒绝
-绝对路径、父目录段、符号链接和实例目录外路径，并使用同目录临时文件原子落盘；归档生成已实现，但归档内容的流式分块下载、跨重启续传和取消仍未实现。
+绝对路径、父目录段、符号链接和实例目录外路径，并使用同目录临时文件原子落盘；归档生成已实现，归档文件可以通过下述分块下载会话读取。
 
 大文件上传使用会话化分块协议。初始化请求体为
 `{ "path": "world.zip", "sizeBytes": 123456, "sha256": "..." }`，响应状态为 `201 Created`，并返回
@@ -274,7 +278,12 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 `Content-SHA256` 和 `Idempotency-Key`。相同分片可安全重试，失序分片会返回冲突。
 
 单个文件最大 4 GiB，单个 Core 最多 16 个活动上传会话。完成接口会再次校验完整文件大小和 SHA-256，并在同一文件系统内原子替换目标；放弃接口删除临时文件。
-上传状态只保存在 Core 内存中，Core 重启会清理未完成会话。归档生成任务已支持，但任务化大文件下载、跨重启续传和统一任务中心进度仍未实现。
+上传状态只保存在 Core 内存中，Core 重启会清理未完成会话。下载初始化请求体为 `{ "path": "world.zip" }`，响应会返回
+`transferId`、固定 `chunkSize`、当前 `nextOffset`、完整文件 `sizeBytes` 和 `sha256`。客户端使用
+`GET /cores/{coreId}/downloads/{transferId}/parts/{partNumber}` 读取二进制分片；响应通过 `Content-SHA256`、完整文件
+`ETag`、`X-MCNP-File-Transfer-Offset`、`X-MCNP-File-Transfer-Next-Offset`、`X-MCNP-File-Transfer-Size` 和
+`X-MCNP-File-Eof` 传递校验和游标。已读分片可以重试，跳过当前游标的分片会被拒绝；完成时 Core 会重新校验源文件摘要，
+放弃会释放会话。上传和下载会话状态目前都只保存在 Core 内存中，跨 Core 重启续传、快照和差异比较仍未实现。
 
 ### 5.5 任务、用户和审计
 
