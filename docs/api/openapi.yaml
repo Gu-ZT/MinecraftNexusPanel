@@ -1055,6 +1055,92 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /cores/{coreId}/instances/{instanceId}/directories:
+    post:
+      tags: [ Files ]
+      operationId: createInstanceDirectory
+      summary: Create an instance directory
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ path ]
+              properties:
+                path:
+                  type: string
+                recursive:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: Directory created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+  /cores/{coreId}/instances/{instanceId}/file-actions/move:
+    post:
+      tags: [ Files ]
+      operationId: moveInstanceFile
+      summary: Move an instance file or directory
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ from, to ]
+              properties:
+                from:
+                  type: string
+                to:
+                  type: string
+                overwrite:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: File or directory moved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
   /cores/{coreId}/instances/{instanceId}/files:
     get:
       tags: [ Files ]

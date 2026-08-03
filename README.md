@@ -36,9 +36,10 @@ The first file-management slice is now available through the Core `files` capabi
 - sandboxed directory listing with pagination;
 - 32 KiB chunked reads with full-file SHA-256 and EOF metadata;
 - atomic writes up to 1 MiB with optional `ETag`/`If-Match` protection and idempotency keys;
+- recursive directory creation and same-instance moves with overwrite and non-empty-directory guards;
 - binary Panel responses and TypeScript Client methods for the same contract.
 
-Directory creation, moving, deletion, and task-based large-file transfer remain planned M3 work.
+Deletion, batch operations, and task-based large-file transfer remain planned M3 work.
 
 ## Project Layout
 
