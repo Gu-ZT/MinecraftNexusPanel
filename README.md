@@ -39,9 +39,10 @@ The first file-management slice is now available through the Core `files` capabi
 - recursive directory creation and same-instance moves with overwrite and non-empty-directory guards;
 - asynchronous file and recursive-directory deletion with explicit `DELETE` confirmation, task polling, and path-safety guards;
 - ordered batch file tasks for `MKDIR`, `MOVE`, `WRITE`, and `DELETE`, with per-item progress and partial-failure results;
+- session-based chunked uploads with fixed 1 MiB parts, per-part and full-file SHA-256 checks, ordered offsets, retries, cancellation, and atomic replacement;
 - binary Panel responses and TypeScript Client methods for the same contract.
 
-Task-based large-file transfer, snapshots, and difference comparison remain planned M3 work.
+Task-based large-file downloads, cross-restart transfer resume, snapshots, and difference comparison remain planned M3 work.
 
 ## Project Layout
 

@@ -1256,6 +1256,147 @@ paths:
           $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/instances/{instanceId}/uploads:
+    post:
+      tags: [ Files ]
+      operationId: beginFileUpload
+      summary: Initialize a chunked instance file upload
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileUploadBeginRequest'
+      responses:
+        '201':
+          description: Upload session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadStart'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/uploads/{transferId}/parts/{partNumber}:
+    put:
+      tags: [ Files ]
+      operationId: uploadFilePart
+      summary: Upload one chunk of an instance file
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/TransferId'
+        - $ref: '#/components/parameters/PartNumber'
+        - $ref: '#/components/parameters/ContentSha256'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              minLength: 1
+              maxLength: 1048576
+      responses:
+        '200':
+          description: Upload chunk accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadPart'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/uploads/{transferId}/complete:
+    post:
+      tags: [ Files ]
+      operationId: completeFileUpload
+      summary: Validate and commit a chunked instance file upload
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/TransferId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Uploaded file committed atomically
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/uploads/{transferId}:
+    delete:
+      tags: [ Files ]
+      operationId: abortFileUpload
+      summary: Abort a chunked instance file upload
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/TransferId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: Upload aborted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instances/{instanceId}/file-content:
     get:
       tags: [ Files ]
@@ -1491,6 +1632,28 @@ components:
         minimum: 1
         maximum: 32768
         default: 32768
+    TransferId:
+      name: transferId
+      in: path
+      required: true
+      schema:
+        type: string
+    PartNumber:
+      name: partNumber
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    ContentSha256:
+      name: Content-SHA256
+      in: header
+      required: true
+      description: SHA-256 digest of the binary upload chunk
+      schema:
+        type: string
+        pattern: '^[A-Fa-f0-9]{64}$'
     FileIfMatch:
       name: If-Match
       in: header
@@ -2444,6 +2607,55 @@ components:
             $ref: '#/components/schemas/FileEntry'
         nextCursor:
           type: [ string, 'null' ]
+    FileUploadBeginRequest:
+      type: object
+      required: [ path, sizeBytes, sha256 ]
+      properties:
+        path:
+          type: string
+          minLength: 1
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 4294967296
+        sha256:
+          type: string
+          pattern: '^[A-Fa-f0-9]{64}$'
+    FileUploadStart:
+      type: object
+      required: [ transferId, chunkSize, nextOffset, sizeBytes ]
+      properties:
+        transferId:
+          type: string
+        chunkSize:
+          type: integer
+          format: int64
+          const: 1048576
+        nextOffset:
+          type: integer
+          format: int64
+          minimum: 0
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 4294967296
+    FileUploadPart:
+      type: object
+      required: [ transferId, nextOffset, sizeBytes ]
+      properties:
+        transferId:
+          type: string
+        nextOffset:
+          type: integer
+          format: int64
+          minimum: 0
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 4294967296
     FileBatchOperation:
       oneOf:
         - $ref: '#/components/schemas/FileBatchMkdirOperation'

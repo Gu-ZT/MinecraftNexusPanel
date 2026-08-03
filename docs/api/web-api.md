@@ -243,9 +243,9 @@ Panel 使用 `MCNP_PANEL_MASTER_KEY` 对 Core PSK 执行 AES-256-GCM 信封加�
 | DELETE | `.../{instanceId}/files?path=logs/old&confirmation=DELETE` | `file.write` | 异步删除文件/目录 |
 | GET    | `.../cores/{coreId}/file-tasks/{taskId}`              | 已登录       | 查询文件操作任务 |
 | POST   | `.../{instanceId}/uploads`                             | `file.write` | 初始化分块上传 |
-| PUT    | `/uploads/{uploadId}/parts/{partNumber}`               | `file.write` | 上传分块       |
-| POST   | `/uploads/{uploadId}/complete`                         | `file.write` | 校验并提交     |
-| DELETE | `/uploads/{uploadId}`                                  | `file.write` | 放弃上传       |
+| PUT    | `.../cores/{coreId}/uploads/{transferId}/parts/{partNumber}` | `file.write` | 上传分块       |
+| POST   | `.../cores/{coreId}/uploads/{transferId}/complete`     | `file.write` | 校验并提交     |
+| DELETE | `.../cores/{coreId}/uploads/{transferId}`              | `file.write` | 放弃上传       |
 
 路径必须使用 UTF-8 和 `/`，以实例根目录为 `/`。Panel 与 Core 都必须拒绝绝对宿主机路径、NUL、`..` 段和逃逸实例根目录的符号链接。
 
@@ -261,8 +261,14 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 `confirmation: "DELETE"`。接口返回 `202 Accepted` 和 `taskId`，任务按数组顺序执行，`FILE_BATCH` 的 `progress` 返回已完成数和总数，
 `results` 返回逐项状态；某项失败时任务为 `FAILED`，保留已执行项和 `failedIndex`，不回滚之前的文件变更。
 
-大文件上传分块由初始化响应指定，默认 1 MiB；每个 part 使用
-`Content-Type: application/octet-stream` 和 `Content-SHA256`。
+大文件上传使用会话化分块协议。初始化请求体为
+`{ "path": "world.zip", "sizeBytes": 123456, "sha256": "..." }`，响应状态为 `201 Created`，并返回
+`transferId`、固定 `chunkSize: 1048576`、`nextOffset: 0` 和 `sizeBytes`。分片路径中的 `partNumber` 从 0 开始，服务端按
+`partNumber * chunkSize` 计算 offset；每个 part 使用 `Content-Type: application/octet-stream`、必需的
+`Content-SHA256` 和 `Idempotency-Key`。相同分片可安全重试，失序分片会返回冲突。
+
+单个文件最大 4 GiB，单个 Core 最多 16 个活动上传会话。完成接口会再次校验完整文件大小和 SHA-256，并在同一文件系统内原子替换目标；放弃接口删除临时文件。
+上传状态只保存在 Core 内存中，Core 重启会清理未完成会话。任务化大文件下载、跨重启续传和统一任务中心进度仍未实现。
 
 ### 5.5 任务、用户和审计
 
