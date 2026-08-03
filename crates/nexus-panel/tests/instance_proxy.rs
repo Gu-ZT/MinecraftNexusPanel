@@ -323,6 +323,54 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     assert_eq!(moved_file.body["kind"], "FILE");
     assert_eq!(moved_file.body["path"], "config/server/server.properties");
 
+    let batch_file_action = send_json_request(
+        panel_address,
+        "POST",
+        &format!("/api/v1/cores/{core_id}/instances/panel-process/file-actions/batch"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        Some(json!({
+            "operations": [
+                { "kind": "MKDIR", "path": "batch", "recursive": true },
+                {
+                    "kind": "WRITE",
+                    "path": "batch/source.txt",
+                    "dataBase64": "YmF0Y2g="
+                },
+                {
+                    "kind": "MOVE",
+                    "from": "batch/source.txt",
+                    "to": "batch/renamed.txt"
+                },
+                {
+                    "kind": "DELETE",
+                    "path": "batch/renamed.txt",
+                    "confirmation": "DELETE"
+                },
+                {
+                    "kind": "DELETE",
+                    "path": "batch",
+                    "recursive": true,
+                    "confirmation": "DELETE"
+                }
+            ]
+        })),
+    )
+    .await;
+    assert_eq!(batch_file_action.status, 202);
+    let batch_task_id = batch_file_action.body["taskId"]
+        .as_str()
+        .expect("batch file task ID is returned")
+        .to_owned();
+    let batch_task =
+        wait_for_file_task(panel_address, &authorization, &core_id, &batch_task_id).await;
+    assert_eq!(batch_task["kind"], "FILE_BATCH");
+    assert_eq!(batch_task["state"], "SUCCEEDED");
+    assert_eq!(batch_task["progress"]["completed"], 5);
+    assert_eq!(batch_task["results"].as_array().map(Vec::len), Some(5));
+
     let non_recursive_delete = send_json_request(
         panel_address,
         "DELETE",

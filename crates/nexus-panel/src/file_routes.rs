@@ -35,6 +35,7 @@ use crate::core_routes::registry_error_response;
 
 const MAXIMUM_FILE_READ_BYTES: usize = 32 * 1024;
 const MAXIMUM_FILE_WRITE_BYTES: usize = 1024 * 1024;
+const MAXIMUM_FILE_BATCH_OPERATIONS: usize = 64;
 
 pub(crate) fn file_routes() -> Router<PanelState> {
     Router::new()
@@ -49,6 +50,10 @@ pub(crate) fn file_routes() -> Router<PanelState> {
         .route(
             "/api/v1/cores/{core_id}/instances/{instance_id}/file-actions/move",
             post(move_instance_file),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/instances/{instance_id}/file-actions/batch",
+            post(batch_instance_files),
         )
         .route(
             "/api/v1/cores/{core_id}/file-tasks/{task_id}",
@@ -151,6 +156,43 @@ async fn get_file_task(
 
     match state.cores().get_file_task(core_id, &task_id).await {
         Ok(task) => Json(task).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn batch_instance_files(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, instance_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    payload: Result<Json<Value>, JsonRejection>,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Json(payload) = match payload {
+        Ok(payload) => payload,
+        Err(_) => return validation_error(request_id),
+    };
+    let Some(operations) = payload.get("operations").and_then(Value::as_array) else {
+        return validation_error(request_id);
+    };
+    if operations.is_empty() || operations.len() > MAXIMUM_FILE_BATCH_OPERATIONS {
+        return validation_error(request_id);
+    }
+    let Some(idempotency_key) = idempotency_key(&headers) else {
+        return precondition_required_response(request_id);
+    };
+    let Some((core_id, instance_id)) = parse_ids(&core_id, &instance_id) else {
+        return validation_error(request_id);
+    };
+
+    match state
+        .cores()
+        .batch_instance_files(core_id, &instance_id, operations.clone(), idempotency_key)
+        .await
+    {
+        Ok(task) => (StatusCode::ACCEPTED, Json(task)).into_response(),
         Err(error) => registry_error_response(error, request_id),
     }
 }

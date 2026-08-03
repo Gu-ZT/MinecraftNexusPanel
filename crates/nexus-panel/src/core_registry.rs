@@ -750,6 +750,25 @@ impl CoreRegistry {
         Ok(task_accepted_json(task_id))
     }
 
+    pub async fn batch_instance_files(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        operations: Vec<Value>,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        let task_id = connection
+            .batch_instance_files(instance_id, operations, idempotency_key)
+            .await?;
+        Ok(task_accepted_json(task_id))
+    }
+
     pub async fn get_file_task(
         &self,
         core_id: CoreId,
