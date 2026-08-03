@@ -56,6 +56,7 @@ const FABRIC_GAME_PROVIDER_ID: &str = "fabric-game-versions";
 const FABRIC_LOADER_PROVIDER_ID: &str = "fabric-loader-versions";
 const MOHIST_PROJECT_PROVIDER_ID: &str = "mohist-project-api";
 const YOUER_PROJECT_PROVIDER_ID: &str = "youer-project-api";
+const SILKARD_BRANCH_PROVIDER_ID: &str = "silkard-github-branches";
 const PAPERMC_CONTACT_URL: &str = "https://github.com/Gu-ZT/MinecraftNexusPanel";
 
 #[derive(Clone)]
@@ -156,6 +157,12 @@ impl VersionMetadataClient {
                 let metadata = self.fetch(provider).await?;
 
                 parse_project_versions(provider, &metadata)
+            }
+            "silkard" => {
+                let provider = provider(template, SILKARD_BRANCH_PROVIDER_ID)?;
+                let metadata = self.fetch(provider).await?;
+
+                parse_github_branch_versions(provider, &metadata)
             }
             "catserver" => {
                 let provider = provider(template, CATSERVER_PROVIDER_ID)?;
@@ -771,6 +778,44 @@ fn parse_project_versions(
         .collect()
 }
 
+fn parse_github_branch_versions(
+    provider: &VersionMetadataProvider,
+    metadata: &Value,
+) -> Result<Vec<InstallTemplateVersion>, VersionMetadataError> {
+    let entries = metadata
+        .as_array()
+        .ok_or_else(|| invalid_response(provider))?;
+    let versions = entries
+        .iter()
+        .filter_map(|entry| {
+            let id = entry.get("name")?.as_str()?.to_owned();
+            is_version_branch(&id).then_some(InstallTemplateVersion::new(
+                id.clone(),
+                provider.id().to_owned(),
+                InstallTemplateVersionKind::Server,
+                is_stable_version(&id),
+                None,
+            ))
+        })
+        .collect::<Vec<_>>();
+
+    if versions.is_empty() {
+        Err(invalid_response(provider))
+    } else {
+        Ok(versions)
+    }
+}
+
+fn is_version_branch(branch: &str) -> bool {
+    branch
+        .chars()
+        .next()
+        .is_some_and(|character| character.is_ascii_digit())
+        && branch.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_')
+        })
+}
+
 fn parse_string_versions(
     provider: &VersionMetadataProvider,
     metadata: &Value,
@@ -898,6 +943,7 @@ fn is_stable_version(version: &str) -> bool {
         && !version.contains("-alpha")
         && !version.contains("-beta")
         && !version.contains("-DEV")
+        && !version.contains("-dev")
         && !version.contains("-pre")
         && !version.contains("-rc")
 }
@@ -943,6 +989,7 @@ mod tests {
     use super::parse_fabric_versions;
     use super::parse_forge_versions;
     use super::parse_geyser_versions;
+    use super::parse_github_branch_versions;
     use super::parse_github_release_versions;
     use super::parse_jenkins_rss_versions;
     use super::parse_mojang_versions;
@@ -1312,6 +1359,24 @@ mod tests {
         assert_eq!(versions.len(), 2);
         assert_eq!(versions[0].id(), "1.21.1");
         assert_eq!(versions[0].kind(), InstallTemplateVersionKind::Server);
+        assert!(versions[0].stable());
+        assert!(!versions[1].stable());
+    }
+
+    #[test]
+    fn parses_silkard_version_branches() {
+        let versions = parse_github_branch_versions(
+            &provider("silkard-github-branches"),
+            &json!([
+                { "name": "main" },
+                { "name": "26.3" },
+                { "name": "26.3-dev" }
+            ]),
+        )
+        .expect("Silkard branch metadata is valid");
+
+        assert_eq!(versions.len(), 2);
+        assert_eq!(versions[0].id(), "26.3");
         assert!(versions[0].stable());
         assert!(!versions[1].stable());
     }

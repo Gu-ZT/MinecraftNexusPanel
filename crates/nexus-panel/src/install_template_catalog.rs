@@ -281,7 +281,20 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             InstanceKind::AsyncYouer,
             hybrid_layout(),
         ),
-        java_server("silkard", "Silkard", InstanceKind::Silkard, hybrid_layout()),
+        template(
+            "silkard",
+            "Silkard",
+            InstanceKind::Silkard,
+            InstallTemplateFamily::JavaServer,
+            InstallRuntimeRequirement::Java,
+            ProxyTopology::None,
+            vec![provider(
+                "silkard-github-branches",
+                "Silkard GitHub branches",
+                "https://api.github.com/repos/MohistMC/Silkard/branches?per_page=100",
+            )],
+        )
+        .with_extension_layouts(hybrid_layout()),
         template(
             "catserver",
             "CatServer",
@@ -669,6 +682,15 @@ mod tests {
                 .metadata_providers()[0]
                 .url(),
             "https://api.mohistmc.com/project/youer/versions"
+        );
+        assert_eq!(
+            templates
+                .iter()
+                .find(|template| template.id() == "silkard")
+                .expect("Silkard template exists")
+                .metadata_providers()[0]
+                .url(),
+            "https://api.github.com/repos/MohistMC/Silkard/branches?per_page=100"
         );
         assert_eq!(
             templates
