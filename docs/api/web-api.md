@@ -239,8 +239,9 @@ Panel 使用 `MCNP_PANEL_MASTER_KEY` 对 Core PSK 执行 AES-256-GCM 信封加�
 | PUT    | `.../{instanceId}/file-content?path=server.properties` | `file.write` | 小文件整体写入 |
 | POST   | `.../{instanceId}/directories`                         | `file.write` | 创建目录       |
 | POST   | `.../{instanceId}/file-actions/move`                   | `file.write` | 移动或重命名   |
+| POST   | `.../{instanceId}/file-actions/batch`                  | `file.write` | 顺序执行批量文件操作 |
 | DELETE | `.../{instanceId}/files?path=logs/old&confirmation=DELETE` | `file.write` | 异步删除文件/目录 |
-| GET    | `.../cores/{coreId}/file-tasks/{taskId}`              | 已登录       | 查询文件删除任务 |
+| GET    | `.../cores/{coreId}/file-tasks/{taskId}`              | 已登录       | 查询文件操作任务 |
 | POST   | `.../{instanceId}/uploads`                             | `file.write` | 初始化分块上传 |
 | PUT    | `/uploads/{uploadId}/parts/{partNumber}`               | `file.write` | 上传分块       |
 | POST   | `/uploads/{uploadId}/complete`                         | `file.write` | 校验并提交     |
@@ -255,6 +256,10 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 删除必须携带查询参数 `confirmation=DELETE`。默认只能删除文件或空目录，`recursive=true` 才能删除非空目录；删除接口返回 `202 Accepted`
 和 `taskId`，客户端通过 `/cores/{coreId}/file-tasks/{taskId}` 轮询 `RUNNING`、`SUCCEEDED` 或 `FAILED` 状态。Core 和 Panel 都拒绝符号链接、
 绝对路径、`NUL`、`.`/`..` 段以及逃逸实例根目录的路径。
+
+批量接口请求体为 `{ "operations": [...] }`，最多 64 项，支持 `MKDIR`、`MOVE`、`WRITE` 和 `DELETE`；每个删除项必须携带
+`confirmation: "DELETE"`。接口返回 `202 Accepted` 和 `taskId`，任务按数组顺序执行，`FILE_BATCH` 的 `progress` 返回已完成数和总数，
+`results` 返回逐项状态；某项失败时任务为 `FAILED`，保留已执行项和 `failedIndex`，不回滚之前的文件变更。
 
 大文件上传分块由初始化响应指定，默认 1 MiB；每个 part 使用
 `Content-Type: application/octet-stream` 和 `Content-SHA256`。

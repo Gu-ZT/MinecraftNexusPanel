@@ -38,9 +38,10 @@ The first file-management slice is now available through the Core `files` capabi
 - atomic writes up to 1 MiB with optional `ETag`/`If-Match` protection and idempotency keys;
 - recursive directory creation and same-instance moves with overwrite and non-empty-directory guards;
 - asynchronous file and recursive-directory deletion with explicit `DELETE` confirmation, task polling, and path-safety guards;
+- ordered batch file tasks for `MKDIR`, `MOVE`, `WRITE`, and `DELETE`, with per-item progress and partial-failure results;
 - binary Panel responses and TypeScript Client methods for the same contract.
 
-Batch operations and task-based large-file transfer remain planned M3 work.
+Task-based large-file transfer, snapshots, and difference comparison remain planned M3 work.
 
 ## Project Layout
 

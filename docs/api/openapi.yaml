@@ -1141,6 +1141,46 @@ paths:
           $ref: '#/components/responses/Conflict'
         '428':
           $ref: '#/components/responses/PreconditionRequired'
+  /cores/{coreId}/instances/{instanceId}/file-actions/batch:
+    post:
+      tags: [ Files ]
+      operationId: batchInstanceFiles
+      summary: Execute an ordered batch of instance file operations
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ operations ]
+              properties:
+                operations:
+                  type: array
+                  minItems: 1
+                  maxItems: 64
+                  items:
+                    $ref: '#/components/schemas/FileBatchOperation'
+      responses:
+        '202':
+          $ref: '#/components/responses/TaskAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instances/{instanceId}/files:
     get:
       tags: [ Files ]
@@ -2404,6 +2444,71 @@ components:
             $ref: '#/components/schemas/FileEntry'
         nextCursor:
           type: [ string, 'null' ]
+    FileBatchOperation:
+      oneOf:
+        - $ref: '#/components/schemas/FileBatchMkdirOperation'
+        - $ref: '#/components/schemas/FileBatchMoveOperation'
+        - $ref: '#/components/schemas/FileBatchWriteOperation'
+        - $ref: '#/components/schemas/FileBatchDeleteOperation'
+      discriminator:
+        propertyName: kind
+    FileBatchMkdirOperation:
+      type: object
+      required: [ kind, path ]
+      properties:
+        kind:
+          type: string
+          const: MKDIR
+        path:
+          type: string
+        recursive:
+          type: boolean
+          default: false
+    FileBatchMoveOperation:
+      type: object
+      required: [ kind, from, to ]
+      properties:
+        kind:
+          type: string
+          const: MOVE
+        from:
+          type: string
+        to:
+          type: string
+        overwrite:
+          type: boolean
+          default: false
+    FileBatchWriteOperation:
+      type: object
+      required: [ kind, path, dataBase64 ]
+      properties:
+        kind:
+          type: string
+          const: WRITE
+        path:
+          type: string
+        dataBase64:
+          type: string
+          format: byte
+          description: Base64 encoded content of at most 1 MiB after decoding
+        expectedSha256:
+          type: string
+          pattern: '^[A-Fa-f0-9]{64}$'
+    FileBatchDeleteOperation:
+      type: object
+      required: [ kind, path, confirmation ]
+      properties:
+        kind:
+          type: string
+          const: DELETE
+        path:
+          type: string
+        recursive:
+          type: boolean
+          default: false
+        confirmation:
+          type: string
+          const: DELETE
     FileTaskState:
       type: string
       enum: [ RUNNING, SUCCEEDED, FAILED ]
@@ -2415,17 +2520,51 @@ components:
           type: string
         kind:
           type: string
-          const: FILE_DELETE
+          enum: [ FILE_DELETE, FILE_BATCH ]
         state:
           $ref: '#/components/schemas/FileTaskState'
         progress:
-          type: [ number, 'null' ]
-          minimum: 0
-          maximum: 1
+          oneOf:
+            - type: [ number, 'null' ]
+              minimum: 0
+              maximum: 1
+            - $ref: '#/components/schemas/FileBatchTaskProgress'
         path:
           type: string
         deleted:
           type: boolean
+        failedIndex:
+          type: integer
+          minimum: 0
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/FileBatchTaskResult'
+        error:
+          type: string
+    FileBatchTaskProgress:
+      type: object
+      required: [ completed, total ]
+      properties:
+        completed:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          minimum: 1
+    FileBatchTaskResult:
+      type: object
+      required: [ index, state ]
+      properties:
+        index:
+          type: integer
+          minimum: 0
+        state:
+          type: string
+          enum: [ SUCCEEDED, FAILED ]
+        result:
+          type: object
+          additionalProperties: true
         error:
           type: string
     TaskState:
