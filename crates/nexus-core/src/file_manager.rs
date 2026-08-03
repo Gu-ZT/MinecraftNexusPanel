@@ -228,7 +228,7 @@ impl FileManager {
         document_id: &str,
         revision: &str,
         patch_value: &Value,
-        _allow_lossy: bool,
+        allow_lossy: bool,
     ) -> Result<Value, FileManagerError> {
         validate_hash(revision)?;
         let (path, relative_path) = self.resolve_config_document(instance, document_id)?;
@@ -240,7 +240,7 @@ impl FileManager {
                 actual: current_hash,
             });
         }
-        let updated = patch(&relative_path, &content, patch_value)
+        let updated = patch(&relative_path, &content, patch_value, allow_lossy)
             .map_err(|error| config_document_error(path.clone(), error))?;
         let _entry = self.write(instance, &relative_path, &updated, Some(&current_hash))?;
 
@@ -1604,6 +1604,12 @@ fn config_document_error(path: PathBuf, error: ConfigDocumentError) -> FileManag
     match error {
         ConfigDocumentError::InvalidPatch(message) => {
             FileManagerError::ConfigPatchInvalid { message }
+        }
+        ConfigDocumentError::LossyPatch => FileManagerError::ConfigPatchInvalid {
+            message: "configuration patch requires allowLossy=true".to_owned(),
+        },
+        ConfigDocumentError::InvalidDocument(message) => {
+            FileManagerError::ConfigParse { path, message }
         }
         ConfigDocumentError::InvalidUtf8 | ConfigDocumentError::UnsupportedFormat => {
             FileManagerError::ConfigParse {

@@ -91,7 +91,8 @@
 - [ ] properties、YAML、JSON、TOML 配置识别与无损补丁。
   - [x] Core/Panel `PROPERTIES` 提供者：递归扫描、JSON Schema/UI Schema、SHA-256 revision 和原文读写。
   - [x] `server.properties` 顶层标量 Merge Patch：保留注释、顺序、换行和未修改文本，并使用原子写入与并发校验。
-  - [ ] YAML、JSON、TOML 和 provider-specific Schema 提供者。
+  - [x] JSON provider：递归扫描、类型化 JSON Schema/UI Schema 和顶层 Merge Patch；规范化写入必须显式确认 `allowLossy=true`。
+  - [ ] YAML、TOML 和 provider-specific Schema 提供者。
   - [ ] 跨文件校验、敏感字段标记和复杂结构化控件。
 - [ ] 实例文件浏览、上传、下载、移动、删除与路径逃逸防护。
   - [x] Core 文件沙箱：目录列表、分页游标、32 KiB 分块读取、SHA-256 和 1 MiB 内原子写入。

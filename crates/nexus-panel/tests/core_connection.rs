@@ -106,6 +106,16 @@ async fn connects_to_a_core_and_reads_its_system_info() {
         .expect("Core writes an instance file");
     assert_eq!(written.kind(), FileKind::File);
     assert_eq!(written.path(), "server.properties");
+    connection
+        .write_instance_file(
+            definition.id(),
+            "settings.json",
+            br#"{"enabled":true,"nested":{"debug":false}}"#,
+            None,
+            &RequestId::new().to_string(),
+        )
+        .await
+        .expect("Core writes a JSON configuration file");
     let config_scan = connection
         .scan_config_documents(definition.id())
         .await
@@ -128,10 +138,57 @@ async fn connects_to_a_core_and_reads_its_system_info() {
             config_revision,
             &json!({ "motd": "Nexus" }),
             "config-patch",
+            false,
         )
         .await
         .expect("Core patches a configuration document");
     assert_eq!(patched_config["values"]["motd"], "Nexus");
+    let json_document_id = config_scan["documents"]
+        .as_array()
+        .and_then(|documents| {
+            documents
+                .iter()
+                .find(|document| document["path"] == "settings.json")
+        })
+        .and_then(|document| document["documentId"].as_str())
+        .expect("JSON configuration document ID is returned");
+    let json_document = connection
+        .get_config_document(definition.id(), json_document_id)
+        .await
+        .expect("Core returns the JSON configuration document");
+    assert_eq!(json_document["format"], "JSON");
+    assert_eq!(json_document["lossy"], true);
+    let json_revision = json_document["revision"]
+        .as_str()
+        .expect("JSON configuration revision is returned");
+    let rejected_json_patch = connection
+        .patch_config_document(
+            definition.id(),
+            json_document_id,
+            json_revision,
+            &json!({ "enabled": false }),
+            "json-patch-rejected",
+            false,
+        )
+        .await
+        .expect_err("JSON patch without lossy confirmation is rejected");
+    assert!(matches!(
+        rejected_json_patch,
+        CoreConnectionError::Rejected { code } if code == "CONFIG_PATCH_INVALID"
+    ));
+    let patched_json = connection
+        .patch_config_document(
+            definition.id(),
+            json_document_id,
+            json_revision,
+            &json!({ "enabled": false, "nested": { "debug": true } }),
+            "json-patch-accepted",
+            true,
+        )
+        .await
+        .expect("Core applies JSON patch after lossy confirmation");
+    assert_eq!(patched_json["values"]["enabled"], false);
+    assert_eq!(patched_json["values"]["nested"]["debug"], true);
     let batch_task_id = connection
         .batch_instance_files(
             definition.id(),
@@ -173,8 +230,19 @@ async fn connects_to_a_core_and_reads_its_system_info() {
         .list_instance_files(definition.id(), "", None, None)
         .await
         .expect("Core lists instance files");
-    assert_eq!(files.items().len(), 1);
-    assert_eq!(files.items()[0].path(), "server.properties");
+    assert_eq!(files.items().len(), 2);
+    assert!(
+        files
+            .items()
+            .iter()
+            .any(|entry| entry.path() == "server.properties")
+    );
+    assert!(
+        files
+            .items()
+            .iter()
+            .any(|entry| entry.path() == "settings.json")
+    );
     let content = connection
         .read_instance_file(definition.id(), "server.properties", 0, 4)
         .await

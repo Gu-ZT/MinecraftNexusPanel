@@ -52,10 +52,11 @@ The first configuration provider is now available through Core TCP and the Panel
 
 - recursive discovery of UTF-8 `.properties` documents up to 1 MiB;
 - JSON Schema/UI Schema values with stable path-derived document IDs and SHA-256 revisions;
-- top-level scalar JSON Merge Patch updates that preserve comments, ordering, and line endings;
+- lossless top-level scalar Merge Patch updates for properties files that preserve comments, ordering, and line endings;
+- JSON object discovery with typed JSON Schema/UI Schema and nested top-level Merge Patch updates; normalized writes require explicit `allowLossy=true`;
 - raw text reads and writes with the same sandbox, ETag, If-Match, and idempotency protections as file management.
 
-YAML, JSON, TOML, provider-specific schemas, and cross-file validation remain planned M3 work.
+YAML, TOML, provider-specific schemas, and cross-file validation remain planned M3 work.
 
 ## Project Layout
 

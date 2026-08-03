@@ -2969,6 +2969,7 @@ components:
           pattern: '^[A-Fa-f0-9]{64}$'
         lossy:
           type: boolean
+          description: True when structured writes may rewrite source layout and require allowLossy.
     ConfigDocumentPage:
       type: object
       required: [ documents ]
@@ -3019,6 +3020,7 @@ components:
             type: string
         lossy:
           type: boolean
+          description: True when structured writes may rewrite source layout and require allowLossy.
     ConfigPatchRequest:
       type: object
       required: [ revision, patch ]
@@ -3032,6 +3034,7 @@ components:
           additionalProperties: true
         allowLossy:
           type: boolean
+          description: Explicitly permit a provider's lossy normalized rewrite.
           default: false
     FileEntry:
       type: object

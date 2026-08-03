@@ -2,7 +2,9 @@ use std::path::Path;
 
 use serde_json::Map;
 use serde_json::Value;
+use serde_json::from_slice;
 use serde_json::json;
+use serde_json::to_vec_pretty;
 use sha2::Digest;
 use sha2::Sha256;
 use thiserror::Error;
@@ -13,8 +15,18 @@ pub(crate) enum ConfigDocumentError {
     InvalidUtf8,
     #[error("configuration file format is not supported")]
     UnsupportedFormat,
+    #[error("configuration document is invalid: {0}")]
+    InvalidDocument(String),
     #[error("configuration patch is invalid: {0}")]
     InvalidPatch(String),
+    #[error("configuration patch requires explicit lossy confirmation")]
+    LossyPatch,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum ConfigFormat {
+    Properties,
+    Json,
 }
 
 struct PropertyLine {
@@ -28,7 +40,9 @@ struct PropertyLine {
 pub(crate) fn is_supported_path(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("properties"))
+        .is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("properties") || extension.eq_ignore_ascii_case("json")
+        })
 }
 
 pub(crate) fn document_id(path: &str) -> String {
@@ -36,12 +50,14 @@ pub(crate) fn document_id(path: &str) -> String {
 }
 
 pub(crate) fn document(path: &str, content: &[u8]) -> Result<Value, ConfigDocumentError> {
-    if !path
-        .rsplit_once('.')
-        .is_some_and(|(_, extension)| extension.eq_ignore_ascii_case("properties"))
-    {
-        return Err(ConfigDocumentError::UnsupportedFormat);
+    match config_format(path) {
+        Some(ConfigFormat::Properties) => properties_document(path, content),
+        Some(ConfigFormat::Json) => json_document(path, content),
+        None => Err(ConfigDocumentError::UnsupportedFormat),
     }
+}
+
+fn properties_document(path: &str, content: &[u8]) -> Result<Value, ConfigDocumentError> {
     let content = std::str::from_utf8(content).map_err(|_| ConfigDocumentError::InvalidUtf8)?;
     let lines = parse_property_lines(content);
     let mut values = Map::new();
@@ -89,6 +105,42 @@ pub(crate) fn document(path: &str, content: &[u8]) -> Result<Value, ConfigDocume
     }))
 }
 
+fn json_document(path: &str, content: &[u8]) -> Result<Value, ConfigDocumentError> {
+    let content_value: Value = from_slice(content)
+        .map_err(|error| ConfigDocumentError::InvalidDocument(error.to_string()))?;
+    let values = content_value.as_object().ok_or_else(|| {
+        ConfigDocumentError::InvalidDocument("JSON configuration root must be an object".to_owned())
+    })?;
+    let mut schema_properties = Map::new();
+    let mut ui_properties = Map::new();
+    for (key, value) in values {
+        schema_properties.insert(key.clone(), json_schema_for(value));
+        ui_properties.insert(key.clone(), json_ui_schema_for(value));
+    }
+
+    let content_hash = sha256_hex(content);
+    Ok(json!({
+        "documentId": document_id(path),
+        "path": path,
+        "format": "JSON",
+        "schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": schema_properties,
+            "additionalProperties": true,
+        },
+        "uiSchema": {
+            "type": "object",
+            "properties": ui_properties,
+        },
+        "values": content_value,
+        "revision": content_hash,
+        "contentHash": content_hash,
+        "unmapped": [],
+        "lossy": true,
+    }))
+}
+
 pub(crate) fn summary(document: &Value) -> Value {
     json!({
         "documentId": document.get("documentId"),
@@ -104,13 +156,16 @@ pub(crate) fn patch(
     path: &str,
     content: &[u8],
     patch: &Value,
+    allow_lossy: bool,
 ) -> Result<Vec<u8>, ConfigDocumentError> {
-    if !path
-        .rsplit_once('.')
-        .is_some_and(|(_, extension)| extension.eq_ignore_ascii_case("properties"))
-    {
-        return Err(ConfigDocumentError::UnsupportedFormat);
+    match config_format(path) {
+        Some(ConfigFormat::Properties) => properties_patch(content, patch),
+        Some(ConfigFormat::Json) => json_patch(content, patch, allow_lossy),
+        None => Err(ConfigDocumentError::UnsupportedFormat),
     }
+}
+
+fn properties_patch(content: &[u8], patch: &Value) -> Result<Vec<u8>, ConfigDocumentError> {
     let content = std::str::from_utf8(content).map_err(|_| ConfigDocumentError::InvalidUtf8)?;
     let patch = patch.as_object().ok_or_else(|| {
         ConfigDocumentError::InvalidPatch("the merge patch must be an object".to_owned())
@@ -159,6 +214,95 @@ pub(crate) fn patch(
     }
 
     Ok(output.into_bytes())
+}
+
+fn json_patch(
+    content: &[u8],
+    patch: &Value,
+    allow_lossy: bool,
+) -> Result<Vec<u8>, ConfigDocumentError> {
+    if !allow_lossy {
+        return Err(ConfigDocumentError::LossyPatch);
+    }
+    let mut content_value: Value = from_slice(content)
+        .map_err(|error| ConfigDocumentError::InvalidDocument(error.to_string()))?;
+    let Some(content_object) = content_value.as_object_mut() else {
+        return Err(ConfigDocumentError::InvalidDocument(
+            "JSON configuration root must be an object".to_owned(),
+        ));
+    };
+    let patch = patch.as_object().ok_or_else(|| {
+        ConfigDocumentError::InvalidPatch("the merge patch must be an object".to_owned())
+    })?;
+    for (key, value) in patch {
+        if value.is_null() {
+            content_object.remove(key);
+            continue;
+        }
+        let current = content_object.entry(key.clone()).or_insert(Value::Null);
+        apply_json_merge_patch(current, value);
+    }
+    let mut output = to_vec_pretty(&content_value)
+        .map_err(|error| ConfigDocumentError::InvalidDocument(error.to_string()))?;
+    output.push(b'\n');
+    Ok(output)
+}
+
+fn apply_json_merge_patch(target: &mut Value, patch: &Value) {
+    let Some(patch_object) = patch.as_object() else {
+        *target = patch.clone();
+        return;
+    };
+    if !target.is_object() {
+        *target = Value::Object(Map::new());
+    }
+    let Some(target_object) = target.as_object_mut() else {
+        return;
+    };
+    for (key, value) in patch_object {
+        if value.is_null() {
+            target_object.remove(key);
+        } else {
+            let current = target_object.entry(key.clone()).or_insert(Value::Null);
+            apply_json_merge_patch(current, value);
+        }
+    }
+}
+
+fn config_format(path: &str) -> Option<ConfigFormat> {
+    let extension = path.rsplit_once('.')?.1;
+    if extension.eq_ignore_ascii_case("properties") {
+        Some(ConfigFormat::Properties)
+    } else if extension.eq_ignore_ascii_case("json") {
+        Some(ConfigFormat::Json)
+    } else {
+        None
+    }
+}
+
+fn json_schema_for(value: &Value) -> Value {
+    match value {
+        Value::Null => json!({ "type": "null" }),
+        Value::Bool(_) => json!({ "type": "boolean" }),
+        Value::Number(value) if value.is_i64() || value.is_u64() => {
+            json!({ "type": "integer" })
+        }
+        Value::Number(_) => json!({ "type": "number" }),
+        Value::String(_) => json!({ "type": "string" }),
+        Value::Array(_) => json!({ "type": "array", "items": {} }),
+        Value::Object(_) => json!({ "type": "object", "additionalProperties": true }),
+    }
+}
+
+fn json_ui_schema_for(value: &Value) -> Value {
+    let widget = match value {
+        Value::Null => "text",
+        Value::Bool(_) => "checkbox",
+        Value::Number(_) => "number",
+        Value::String(_) => "text",
+        Value::Array(_) | Value::Object(_) => "json",
+    };
+    json!({ "widget": widget })
 }
 
 fn parse_property_lines(content: &str) -> Vec<PropertyLine> {
@@ -351,8 +495,11 @@ fn sha256_hex(content: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::Value;
+    use serde_json::from_slice;
     use serde_json::json;
 
+    use super::ConfigDocumentError;
     use super::document;
     use super::patch;
 
@@ -374,6 +521,7 @@ mod tests {
             "server.properties",
             content,
             &json!({ "first": "changed", "second": null, "third": false }),
+            false,
         )
         .expect("properties are patched");
 
@@ -382,9 +530,57 @@ mod tests {
 
     #[test]
     fn rejects_structured_property_values() {
-        let error = patch("server.properties", b"motd=MCNP", &json!({ "motd": [] }))
-            .expect_err("array values cannot be represented in properties");
+        let error = patch(
+            "server.properties",
+            b"motd=MCNP",
+            &json!({ "motd": [] }),
+            false,
+        )
+        .expect_err("array values cannot be represented in properties");
 
         assert!(error.to_string().contains("strings"));
+    }
+
+    #[test]
+    fn recognizes_json_and_builds_typed_schema() {
+        let document = document(
+            "config/settings.json",
+            br#"{"enabled":true,"maxPlayers":12,"motd":"MCNP","nested":{"debug":false}}"#,
+        )
+        .expect("JSON configuration is parsed");
+
+        assert_eq!(document["format"], "JSON");
+        assert_eq!(document["values"]["enabled"], true);
+        assert_eq!(
+            document["schema"]["properties"]["maxPlayers"]["type"],
+            "integer"
+        );
+        assert_eq!(
+            document["uiSchema"]["properties"]["enabled"]["widget"],
+            "checkbox"
+        );
+        assert_eq!(document["lossy"], true);
+        assert_eq!(document["unmapped"], json!([]));
+    }
+
+    #[test]
+    fn requires_lossy_confirmation_for_json_merge_patch() {
+        let content = br#"{"enabled":true,"nested":{"debug":false},"removed":"value"}"#;
+        let patch_value = json!({
+            "enabled": false,
+            "nested": { "debug": true, "level": 2 },
+            "removed": null,
+        });
+        let error = patch("settings.json", content, &patch_value, false)
+            .expect_err("JSON formatting requires explicit lossy confirmation");
+        assert!(matches!(error, ConfigDocumentError::LossyPatch));
+
+        let updated = patch("settings.json", content, &patch_value, true)
+            .expect("JSON merge patch is applied");
+        let updated: Value = from_slice(&updated).expect("patched JSON remains valid");
+        assert_eq!(updated["enabled"], false);
+        assert_eq!(updated["nested"]["debug"], true);
+        assert_eq!(updated["nested"]["level"], 2);
+        assert!(updated.get("removed").is_none());
     }
 }

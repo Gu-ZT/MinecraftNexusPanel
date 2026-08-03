@@ -664,6 +664,7 @@ impl CoreRegistry {
             .await?)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn patch_config_document(
         &self,
         core_id: CoreId,
@@ -672,6 +673,7 @@ impl CoreRegistry {
         revision: &str,
         patch: &Value,
         idempotency_key: &str,
+        allow_lossy: bool,
     ) -> Result<Value, CoreRegistryError> {
         let core = self.find(core_id).await?;
         let mut connection = core.connection.lock().await;
@@ -680,7 +682,14 @@ impl CoreRegistry {
             .ok_or(CoreRegistryError::ConnectionUnavailable)?;
 
         Ok(connection
-            .patch_config_document(instance_id, document_id, revision, patch, idempotency_key)
+            .patch_config_document(
+                instance_id,
+                document_id,
+                revision,
+                patch,
+                idempotency_key,
+                allow_lossy,
+            )
             .await?)
     }
 

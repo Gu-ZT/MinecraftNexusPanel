@@ -617,6 +617,7 @@ impl CoreConnection {
         revision: &str,
         patch: &Value,
         idempotency_key: &str,
+        allow_lossy: bool,
     ) -> Result<Value, CoreConnectionError> {
         self.request_with_idempotency(
             "config.patch",
@@ -625,7 +626,7 @@ impl CoreConnection {
                 "documentId": document_id,
                 "revision": revision,
                 "patch": patch,
-                "allowLossy": false,
+                "allowLossy": allow_lossy,
             }),
             Some(idempotency_key),
         )

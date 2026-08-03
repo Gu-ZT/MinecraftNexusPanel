@@ -146,10 +146,11 @@ async fn patch_config_document(
     let Some(patch) = payload.get("patch").filter(|value| value.is_object()) else {
         return validation_error(request_id);
     };
-    match payload.get("allowLossy") {
-        None | Some(Value::Bool(_)) => {}
+    let allow_lossy = match payload.get("allowLossy") {
+        None => false,
+        Some(Value::Bool(value)) => *value,
         Some(_) => return validation_error(request_id),
-    }
+    };
     let Some(idempotency_key) = idempotency_key(&headers) else {
         return precondition_required_response(request_id);
     };
@@ -169,6 +170,7 @@ async fn patch_config_document(
             revision,
             patch,
             idempotency_key,
+            allow_lossy,
         )
         .await
     {

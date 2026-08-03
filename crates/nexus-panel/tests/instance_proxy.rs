@@ -251,6 +251,18 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
         from_slice(&written_file.body).expect("file write response is JSON");
     assert_eq!(written_file_body["kind"], "FILE");
     assert_eq!(written_file_body["path"], "server.properties");
+    let written_json = send_raw_request(
+        panel_address,
+        "PUT",
+        &format!("/api/v1/cores/{core_id}/instances/panel-process/file-content?path=settings.json"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        br#"{"enabled":true,"nested":{"debug":false}}"#,
+    )
+    .await;
+    assert_eq!(written_json.status, 200);
 
     let config_documents = send_json_request(
         panel_address,
@@ -261,8 +273,14 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     )
     .await;
     assert_eq!(config_documents.status, 200);
-    let config_document_id = config_documents.body["documents"][0]["documentId"]
-        .as_str()
+    let config_document_id = config_documents.body["documents"]
+        .as_array()
+        .and_then(|documents| {
+            documents
+                .iter()
+                .find(|document| document["path"] == "server.properties")
+        })
+        .and_then(|document| document["documentId"].as_str())
         .expect("Panel returns a configuration document ID")
         .to_owned();
     let config_document = send_json_request(
@@ -317,6 +335,54 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     .await;
     assert_eq!(raw_config.status, 200);
     assert_eq!(raw_config.body, b"motd=Nexus");
+
+    let json_document_id = config_documents.body["documents"]
+        .as_array()
+        .and_then(|documents| {
+            documents
+                .iter()
+                .find(|document| document["path"] == "settings.json")
+        })
+        .and_then(|document| document["documentId"].as_str())
+        .expect("Panel returns the JSON configuration document ID")
+        .to_owned();
+    let json_document = send_json_request(
+        panel_address,
+        "GET",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/panel-process/config-documents/{json_document_id}"
+        ),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(json_document.status, 200);
+    assert_eq!(json_document.body["format"], "JSON");
+    assert_eq!(json_document.body["lossy"], true);
+    let json_revision = json_document.body["revision"]
+        .as_str()
+        .expect("Panel returns the JSON configuration revision")
+        .to_owned();
+    let patched_json = send_json_request(
+        panel_address,
+        "PATCH",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/panel-process/config-documents/{json_document_id}/values"
+        ),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", &RequestId::new().to_string()),
+        ],
+        Some(json!({
+            "revision": json_revision,
+            "patch": { "enabled": false, "nested": { "debug": true } },
+            "allowLossy": true,
+        })),
+    )
+    .await;
+    assert_eq!(patched_json.status, 200);
+    assert_eq!(patched_json.body["values"]["enabled"], false);
+    assert_eq!(patched_json.body["values"]["nested"]["debug"], true);
 
     let read_file = send_raw_request(
         panel_address,
