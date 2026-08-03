@@ -280,6 +280,7 @@ M1 的 `instance.metrics` 返回一个当前进程样本组成的 `series`，字
 | `file.mkdir`      | instanceId、path、recursive                        | entry                   |
 | `file.move`       | instanceId、from、to、overwrite                    | entry                   |
 | `file.delete`     | instanceId、path、recursive、confirmation          | taskId                  |
+| `file.task.get`   | taskId                                             | `FileTask`         |
 | `transfer.begin`  | instanceId、path、size、sha256、mode               | transferId、chunkSize   |
 | `transfer.chunk`  | transferId、offset、dataBase64                     | nextOffset              |
 | `transfer.commit` | transferId                                         | entry                   |
@@ -289,7 +290,8 @@ M1 的 `instance.metrics` 返回一个当前进程样本组成的 `series`，字
 - `file.list` 的 `limit` 默认为 50，最大为 200；`file.read` 的 `length` 必须为 1 至 32 KiB，`eof` 表示本次读取是否到达文件末尾，`sha256` 始终是完整文件摘要。
 - `file.write` 当前最多接收 1 MiB 原始字节，要求请求携带 `idempotencyKey`，并在提供 `expectedSha256` 时校验完整文件摘要；Core 在同一目录使用临时文件完成原子替换。
 - `file.mkdir` 支持递归创建目录；`file.move` 仅允许在实例根目录内移动，支持可选覆盖，但拒绝覆盖非空目录，并且两者都要求 `idempotencyKey`。
-- 当前 Core 已实现 `file.list`、`file.read`、`file.write`、`file.mkdir` 和 `file.move`，并通过 `files` capability 协商；删除和 `transfer.*` 仍属于后续版本。
+- `file.delete` 要求携带 `idempotencyKey` 和字面值为 `DELETE` 的 `confirmation`；默认只删除文件或空目录，`recursive=true` 才删除非空目录。请求接受后返回任务，使用 `file.task.get` 查询 `RUNNING`、`SUCCEEDED` 或 `FAILED` 状态。
+- 当前 Core 已实现 `file.list`、`file.read`、`file.write`、`file.mkdir`、`file.move`、`file.delete` 和 `file.task.get`，并通过 `files` capability 协商；`transfer.*` 仍属于后续版本。
 - `transfer.chunk` 必须按服务端返回的 offset 顺序提交；提交前写入同文件系统临时文件。
 - `transfer.commit` 先校验大小和 SHA-256，再原子替换目标。
 - Core 必须设置单 Panel 和单实例的并发传输及磁盘配额。

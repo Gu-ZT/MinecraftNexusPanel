@@ -121,6 +121,13 @@
 |--------------------------|-----:|----------------------------------------|
 | `FILE_NOT_FOUND`         |  404 | 文件或目录不存在                       |
 | `FILE_ALREADY_EXISTS`    |  409 | 目标存在且不允许覆盖                   |
+| `FILE_NOT_DIRECTORY`     |  409 | 路径不是目录                           |
+| `FILE_NOT_REGULAR`       |  409 | 路径不是普通文件                       |
+| `FILE_DIRECTORY_NOT_EMPTY` | 409 | 非递归删除拒绝非空目录                 |
+| `FILE_TASK_NOT_FOUND`    |  404 | 文件删除任务不存在                     |
+| `FILE_PATH_FORBIDDEN`    |  403 | 路径或符号链接逃逸实例根目录           |
+| `FILE_REVISION_MISMATCH` |  412 | 文件 `If-Match` 摘要不一致       |
+| `FILE_OPERATION_FAILED`  |  503 | Core 文件操作失败                      |
 | `FILE_PATH_INVALID`      |  400 | 路径格式不合法                         |
 | `FILE_PATH_ESCAPE`       |  403 | 路径或符号链接逃逸实例根目录           |
 | `FILE_TOO_LARGE`         |  413 | 超过端点或配额限制                     |

@@ -239,7 +239,8 @@ Panel 使用 `MCNP_PANEL_MASTER_KEY` 对 Core PSK 执行 AES-256-GCM 信封加�
 | PUT    | `.../{instanceId}/file-content?path=server.properties` | `file.write` | 小文件整体写入 |
 | POST   | `.../{instanceId}/directories`                         | `file.write` | 创建目录       |
 | POST   | `.../{instanceId}/file-actions/move`                   | `file.write` | 移动或重命名   |
-| DELETE | `.../{instanceId}/files?path=logs/old`                 | `file.write` | 删除文件/目录  |
+| DELETE | `.../{instanceId}/files?path=logs/old&confirmation=DELETE` | `file.write` | 异步删除文件/目录 |
+| GET    | `.../cores/{coreId}/file-tasks/{taskId}`              | 已登录       | 查询文件删除任务 |
 | POST   | `.../{instanceId}/uploads`                             | `file.write` | 初始化分块上传 |
 | PUT    | `/uploads/{uploadId}/parts/{partNumber}`               | `file.write` | 上传分块       |
 | POST   | `/uploads/{uploadId}/complete`                         | `file.write` | 校验并提交     |
@@ -247,8 +248,13 @@ Panel 使用 `MCNP_PANEL_MASTER_KEY` 对 Core PSK 执行 AES-256-GCM 信封加�
 
 路径必须使用 UTF-8 和 `/`，以实例根目录为 `/`。Panel 与 Core 都必须拒绝绝对宿主机路径、NUL、`..` 段和逃逸实例根目录的符号链接。
 
-当前文件接口已提供目录分页、单次最多 32 KiB 的分块读取和最多 1 MiB 的原子写入。读取响应使用完整文件 SHA-256 的 `ETag`，并通过
-`X-MCNP-File-Eof: true|false` 表示是否到达末尾；写入使用 `Idempotency-Key`，可选 `If-Match` 传入带引号的当前文件 SHA-256。
+当前文件接口已提供目录分页、单次最多 32 KiB 的分块读取、最多 1 MiB 的原子写入、目录创建、移动和异步删除。读取响应使用完整文件
+SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达末尾；写入、移动、目录创建和删除使用 `Idempotency-Key`，写入可选
+`If-Match` 传入带引号的当前文件 SHA-256。
+
+删除必须携带查询参数 `confirmation=DELETE`。默认只能删除文件或空目录，`recursive=true` 才能删除非空目录；删除接口返回 `202 Accepted`
+和 `taskId`，客户端通过 `/cores/{coreId}/file-tasks/{taskId}` 轮询 `RUNNING`、`SUCCEEDED` 或 `FAILED` 状态。Core 和 Panel 都拒绝符号链接、
+绝对路径、`NUL`、`.`/`..` 段以及逃逸实例根目录的路径。
 
 大文件上传分块由初始化响应指定，默认 1 MiB；每个 part 使用
 `Content-Type: application/octet-stream` 和 `Content-SHA256`。

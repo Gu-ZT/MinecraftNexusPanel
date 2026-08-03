@@ -1173,6 +1173,7 @@ paths:
         - $ref: '#/components/parameters/CoreId'
         - $ref: '#/components/parameters/InstanceId'
         - $ref: '#/components/parameters/FilePath'
+        - $ref: '#/components/parameters/FileDeleteConfirmation'
         - $ref: '#/components/parameters/IdempotencyKey'
         - name: recursive
           in: query
@@ -1182,10 +1183,39 @@ paths:
       responses:
         '202':
           $ref: '#/components/responses/TaskAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/file-tasks/{taskId}:
+    get:
+      tags: [ Files ]
+      operationId: getFileTask
+      summary: Get a file operation task
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: File operation task status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileTask'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instances/{instanceId}/file-content:
     get:
       tags: [ Files ]
@@ -1395,6 +1425,14 @@ components:
       description: UTF-8 path relative to the instance root
       schema:
         type: string
+    FileDeleteConfirmation:
+      name: confirmation
+      in: query
+      required: true
+      description: Explicit confirmation for destructive file deletion
+      schema:
+        type: string
+        const: DELETE
     FileOffset:
       name: offset
       in: query
@@ -2366,6 +2404,30 @@ components:
             $ref: '#/components/schemas/FileEntry'
         nextCursor:
           type: [ string, 'null' ]
+    FileTaskState:
+      type: string
+      enum: [ RUNNING, SUCCEEDED, FAILED ]
+    FileTask:
+      type: object
+      required: [ taskId, kind, state, progress ]
+      properties:
+        taskId:
+          type: string
+        kind:
+          type: string
+          const: FILE_DELETE
+        state:
+          $ref: '#/components/schemas/FileTaskState'
+        progress:
+          type: [ number, 'null' ]
+          minimum: 0
+          maximum: 1
+        path:
+          type: string
+        deleted:
+          type: boolean
+        error:
+          type: string
     TaskState:
       type: string
       enum: [ QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLED ]
@@ -2398,13 +2460,13 @@ components:
             - type: 'null'
     TaskAccepted:
       type: object
-      required: [ taskId, state, acceptedAt ]
+      required: [ taskId, acceptedAt ]
       properties:
         taskId:
           type: string
         state:
           type: string
-          const: QUEUED
+          enum: [ QUEUED, RUNNING ]
         acceptedAt:
           type: string
           format: date-time
