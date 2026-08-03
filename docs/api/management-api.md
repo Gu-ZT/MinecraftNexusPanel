@@ -52,7 +52,7 @@ API。通用鉴权、分页、错误、幂等及乐观锁规则沿用 Web API。
 
 | 方法 | 路径                                              | 权限              | 说明                                 |
 |------|---------------------------------------------------|-------------------|--------------------------------------|
-| GET  | `/server-catalog/templates`                       | `instance.read`   | Vanilla/Paper/Velocity/Fabric 等模板 |
+| GET  | `/server-catalog/templates`                       | `instance.read`   | Java 原版/模组/插件/混合端、代理端和基岩端模板目录 |
 | GET  | `/server-catalog/templates/{templateId}/versions` | `instance.read`   | Minecraft、加载器与构建版本          |
 | POST | `/cores/{coreId}/provision-plans:resolve`         | `instance.create` | 解析依赖、下载量和最终设置           |
 | POST | `/cores/{coreId}/instance-provisions`             | `instance.create` | 执行一键搭建                         |

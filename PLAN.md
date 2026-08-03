@@ -130,7 +130,7 @@ MinecraftNexusPanel/
 
 - **环境管理**：Core 将 Java、Node.js、Python 安装到受管工具链目录，不默认修改系统 PATH；来源清单记录版本、平台、架构、下载地址和
   SHA-256。
-- **一键搭建**：由可版本化的安装模板描述服务端来源、所需环境、下载/解压步骤、默认配置和启动命令；模板执行是可审计异步任务。
+- **一键搭建**：由可版本化的安装模板描述服务端来源、所需环境、下载/解压步骤、默认配置和启动命令；当前目录已覆盖 Java 原版、模组端、插件端、混合端、代理端和基岩版端，模板执行是可审计异步任务。
 - **进程包装**：实例分别配置 `runtimeMode=HOST|CONTAINER` 与 `supervisorMode=DIRECT|MCDR`，避免用一个布尔值混合容器和
   MCDR。
 - **配置识别**：配置提供者输出 JSON Schema、UI Schema 和保留注释/顺序的 round-trip 补丁；无法识别时退回安全的原始文本编辑器。
@@ -140,12 +140,33 @@ MinecraftNexusPanel/
 - **大核调度**：Core 启动时识别 CPU 拓扑、性能类别、NUMA 和可用逻辑 CPU；实例可选择自动优先性能核、手动 CPU 集合、独占/共享和
   NUMA 策略。
 
+### 4.6 服务端类型、扩展布局与代理拓扑
+
+`InstanceKind` 是服务端类型的稳定领域枚举，`InstallTemplate` 是版本化安装能力的边界。当前 M2 目录按下表建模：
+
+| 分类 | 类型 | 运行时/扩展/拓扑 |
+|------|------|------------------|
+| Java 原版端 | Vanilla | Java；无默认扩展布局。 |
+| Java 模组端 | NeoForge、Forge、Fabric | Java；模组独立管理，常见目录为 `mods/`。 |
+| Java 插件端 | Bukkit、Spigot、Paper、Purpur、Pufferfish、Folia、Leaf | Java；插件独立管理，常见目录为 `plugins/`。 |
+| Java 混合端 | Mohist、Magma、Sponge、Arclight、Youer、AsyncYouer、Silkard、CatServer、Lingshu | Java；插件和模组分别建模，目录由 `InstallTemplateExtensionLayout` 按端/版本声明。 |
+| 一对多代理端 | Velocity、Waterfall、BungeeCord、Lightfall | Java；`ProxyTopology::OneToMany`，通过 `ProxySubserver` 管理多个后端。 |
+| 一对一基岩代理端 | Geyser | Java；`ProxyTopology::OneToOne`，管理一个 Java 后端，同时提供 Bedrock/RakNet 画像。 |
+| 基岩版服务端 | Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit | Native/PHP/Java 运行时按类型决定；默认 RakNet UDP 端口 `19132`，配置与扩展能力按端区分。 |
+
+实现规则：
+
+- 混合端的插件和模组必须使用独立的 `ExtensionKind`、安装记录和兼容性结果。目录不能由 Panel 全局硬编码；同一端可以有多个目录，同一目录也可能承载不同扩展种类（例如当前 Sponge 画像），因此扫描和安装必须以模板声明为准。
+- Velocity、Waterfall、BungeeCord、Lightfall 是一对多代理，Geyser 是一对一代理。子服务器关系独立于实例基本设置，目标必须是同一 Core 上已存在的非代理实例；Core 强制拓扑数量上限。
+- Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit 和 Geyser 使用 `BedrockManagementProfile` 描述 RakNet UDP、默认端口、配置文件和插件能力。基岩端的配置、扩展、健康检查、升级、备份恢复和端口冲突处理不能假设为 Java 服务端逻辑。
+- 当前已完成类型枚举、内置目录、扩展布局、代理子服务器关系和基岩画像；各类型的官方版本元数据、归档结构、启动命令和版本化运维配方仍需逐项验证。
+
 ## 5. 功能范围
 
 | 功能域    | 首版能力                                                  | 后续扩展                              |
 |-----------|-----------------------------------------------------------|---------------------------------------|
 | 环境管理  | Java/Node.js/Python 版本发现、安装、校验、删除            | 镜像源、代理、共享缓存、离线包        |
-| 一键搭建  | Vanilla/Paper/Velocity/Fabric 模板，选择 MCDR             | 模板市场、自定义签名模板、整包导入    |
+| 一键搭建  | 29 类服务端/代理/基岩模板目录、版本计划解析与异步安装     | 各类型官方元数据、版本化安装配方、模板市场、自定义签名模板、整包导入 |
 | 配置识别  | properties/YAML/JSON/TOML 常用配置表单                    | 插件贡献 Schema、跨文件校验、配置差异 |
 | 模组/插件 | 搜索、安装、更新、删除、兼容性提示                        | 依赖求解、整合包、批量升级与回滚      |
 | 终端      | 实时 stdout/stderr、stdin 命令、历史游标                  | 搜索、导出、命令片段、多人协作提示    |
@@ -166,6 +187,9 @@ MinecraftNexusPanel/
 - **InstanceRuntime**：进程 PID、运行状态、启动时间、退出码、资源使用量。
 - **ManagedRuntime**：Core 上受管的 Java、Node.js 或 Python 版本。
 - **InstallTemplate / InstallSource**：服务端一键安装模板和可信下载来源。
+- **InstanceKind / InstallTemplateFamily / InstallTemplateExtensionLayout**：服务端类型、模板家族和按扩展种类声明的目录布局。
+- **ProxyTopology / ProxySubserver**：代理一对多/一对一拓扑和后端实例关系。
+- **BedrockManagementProfile**：基岩传输、默认端口、配置文件和扩展能力画像。
 - **ConfigDocument / ConfigSchema**：识别后的配置文件、Schema、revision 和原始格式信息。
 - **ExtensionProject / ExtensionInstall**：模组或插件的来源项目及本地安装记录。
 - **Image / ImageBuild**：Docker 镜像元数据和构建任务。
@@ -217,14 +241,16 @@ stateDiagram-v2
 ### M2：环境与一键搭建
 
 - Java/Node.js/Python 受管安装、版本选择、校验与清理。
-- 服务端目录、安装模板、下载缓存和校验；支持 Direct/MCDR 包装。
+- 服务端目录、安装模板、下载缓存和校验；支持 Direct/MCDR 包装。模板目录覆盖 Vanilla、NeoForge、Forge、Fabric、Bukkit、Spigot、Paper、Purpur、Pufferfish、Folia、Leaf、Mohist、Magma、Sponge、Arclight、Youer、AsyncYouer、Silkard、CatServer、Lingshu、Velocity、Waterfall、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit 和 Cloudburst Nukkit。
+- 混合端分别管理插件与模组，按模板/版本解析不同扩展目录；代理端按一对多或一对一拓扑管理子服务器；基岩端按 RakNet、端口、配置和扩展能力提供专门运维画像。
 - 实例完整设置：名称、类型、到期时间、工作目录、启动/更新命令。
-- 验收：在空 Core 上选择模板与 Java 版本，一次操作完成下载、配置和首次启动。
+- 验收：在空 Core 上选择已验证模板与运行时，一次操作完成下载、配置和首次启动；代理拓扑和基岩端专门约束不能被普通 Java 实例路径绕过。
 
 ### M3：日常运维能力
 
 - 配置识别和结构化表单、文件管理、分块上传、实例终端。
-- 模组/插件聚合搜索、安装、更新、删除和兼容性提示。
+- 模组/插件聚合搜索、安装、更新、删除和兼容性提示；混合端插件/模组分开处理，目录由模板布局决定。
+- 代理子服务器连通性与启停编排；基岩端 RakNet 端口、配置文件、扩展目录、健康检查和升级运维。
 - Cron/事件计划任务、执行历史、任务中心、备份/恢复。
 - 细粒度用户组权限和实例可见清单。
 - 验收：受限用户只看到授权实例，能使用终端但不能访问文件或修改启动/容器设置。
@@ -270,6 +296,7 @@ stateDiagram-v2
 - **权限测试**：每个设置字段、终端、文件、扩展、镜像和实例 scope 的允许/拒绝矩阵。
 - **安全测试**：目录穿越、CSRF、越权、WebSocket 订阅越权、日志/错误中的密钥泄漏。
 - **兼容性测试**：Panel 新版本连接当前及前一个 Core 次版本。
+- **服务端矩阵测试**：逐类型验证模板家族、所需运行时、归档可执行文件、启动命令、默认配置和更新策略；混合端分别验证插件/模组目录，代理端验证一对多/一对一数量约束，基岩端验证 RakNet UDP 和 `19132` 默认端口画像。
 
 ## 9. 非功能要求
 
@@ -344,7 +371,7 @@ sequenceDiagram
 以下选择不阻塞 M0，但应在 M1 中期前确定：
 
 1. 首发支持的系统范围：建议 Linux + Windows，macOS 仅支持开发和 Desktop。
-2. 首发服务端类型：建议 Vanilla、Paper、Velocity，其他类型通过自定义命令运行。
+2. 首发服务端类型：类型矩阵按 §4.6 冻结；当前所有类型已进入领域枚举和模板目录，但各类型是否进入“可验证一键安装”范围，取决于官方版本元数据、归档结构和启动/升级配方完成情况。
 3. Panel 是否允许原生 HTTPS：建议支持，同时文档默认由 Caddy/Nginx 终止 TLS。
 4. 商业模块与社区版的交付/授权边界，但两者应继续共享协议和核心领域实现。
 5. 产品展示名、二进制名和默认端口在首次公开发布前冻结。

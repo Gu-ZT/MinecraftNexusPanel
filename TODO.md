@@ -6,6 +6,7 @@
 
 - [x] 完成 M0：工程契约、配置、日志、请求 ID、协议编解码与 CI。
 - [x] 启动 M1：Core/Panel 最小纵向链路。
+- [x] 完成 M2 受管运行时、可信下载缓存和模板计划执行的基础链路。
 
 ## M0：设计冻结与工程骨架
 
@@ -46,19 +47,42 @@
 
 ## M2：环境与一键搭建
 
-- [ ] Java、Node.js、Python 受管环境管理。
+- [x] Java、Node.js、Python 受管环境管理。
   - [x] 发现系统与受管目录中的 Java、Node.js、Python，并校验可执行文件和版本。
   - [x] 受管环境安装、删除与缓存。
-- [ ] 可信下载清单、SHA-256 校验、平台/架构校验和取消机制。
+- [x] 可信下载清单、SHA-256 校验、平台/架构校验和取消机制。
   - [x] 定义带 SHA-256、平台和架构约束的下载清单，并实现 Core 本地校验下载缓存。
   - [x] 下载过程支持取消，并在失败或取消时清理临时文件。
-- [ ] Vanilla、Paper、Velocity、Fabric 及更多服务端安装模板与版本元数据。
+- [ ] Java、代理端、混合端和基岩版服务端安装模板、版本元数据与按类型安装配方。
   - [x] 提供 Java 服务端、插件端、混合端、代理端和基岩端的内置模板目录。
   - [x] 记录混合端的插件/模组目录，以及一对多和一对一代理拓扑。
   - [x] 提供代理子服务器关系管理，并约束一对多与一对一拓扑。
   - [x] 提供基岩端 RakNet UDP、默认端口、配置文件和插件能力画像。
   - [x] 解析四种模板的官方版本元数据并通过 Panel API 提供统一版本目录。
   - [x] 执行模板安装。
+  - [ ] 为 NeoForge、Forge、Bukkit、Spigot、Purpur、Pufferfish、Folia、Leaf、Mohist、Magma、Sponge、Arclight、Youer、AsyncYouer、Silkard、CatServer、Lingshu、Waterfall、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit 和 Cloudburst Nukkit 补齐可验证的官方元数据与安装配方。
+  - [ ] 为每个服务端版本验证归档结构、可执行文件、默认配置、启动参数和更新策略；不能把仅有模板目录误认为完整安装支持。
+
+### M2 服务端类型矩阵
+
+下列类型已经进入 `InstanceKind` 与内置模板目录；“已建模”不等于每个版本都已完成官方元数据和安装验证。
+
+| 分类 | 类型 | 管理约束 |
+|------|------|----------|
+| Java 原版端 | Vanilla | Java 运行时；无默认模组/插件扩展布局。 |
+| Java 模组端 | NeoForge、Forge、Fabric | 模组独立管理；当前通用布局为 `mods/`，但最终目录由模板/版本决定。 |
+| Java 插件端 | Bukkit、Spigot、Paper、Purpur、Pufferfish、Folia、Leaf | 插件独立管理；当前通用布局为 `plugins/`，但最终目录由模板/版本决定。 |
+| Java 混合端 | Mohist、Magma、Sponge、Arclight、Youer、AsyncYouer、Silkard、CatServer、Lingshu | 插件与模组分别管理；每种端可声明不同目录，不能共用单一默认路径。 |
+| 反向代理端 | Velocity、Waterfall、BungeeCord、Lightfall | 一对多代理；使用独立的子服务器关系，可关联多个非代理实例。 |
+| 基岩版反向代理端 | Geyser | 一对一代理；面向 Bedrock 使用 RakNet UDP，并且只关联一个 Java 后端实例。 |
+| 基岩版服务端 | Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit | 使用专门的基岩端运维画像；默认端口 `19132`，配置与扩展能力按端区分。 |
+
+### M2 专门管理边界
+
+- 混合端的插件和模组必须在扫描、安装、更新、删除、兼容性提示和审计记录中保持独立的 `ExtensionKind`；目录解析必须消费模板声明，不能在 Panel 中写死全局路径。
+- Velocity、Waterfall、BungeeCord、Lightfall 使用一对多子服务器拓扑，Geyser 使用一对一拓扑；子服务器关系需要独立的列表、创建/替换和删除操作，不能伪装成普通实例字段。
+- 基岩版端需要独立处理 RakNet UDP 监听、端口占用、`server.properties`/`config.yml` 等配置、插件能力、扩展目录、启动健康检查、备份恢复和版本升级；不能复用只适用于 Java 服务端的探针和配置假设。
+- 当前 `BedrockManagementProfile` 已提供传输、默认端口、配置文件和扩展能力画像；完整的基岩端配置编辑、扩展生命周期和专门运维流程仍属于后续 TODO。
 - [ ] Direct 与 MCDR 进程包装配置及审计任务。
 - [x] 实例名称、类型、到期、工作目录、启动命令和更新命令设置。
 
@@ -67,6 +91,9 @@
 - [ ] properties、YAML、JSON、TOML 配置识别与无损补丁。
 - [ ] 实例文件浏览、上传、下载、移动、删除与路径逃逸防护。
 - [ ] 模组/插件搜索、解析、安装、更新、删除与兼容性提示。
+  - [ ] 按模板声明的扩展目录分别扫描和管理混合端插件与模组。
+  - [ ] 为不同基岩端提供插件/扩展目录、配置和版本兼容性策略。
+- [ ] 代理端与基岩端专门运维：子服务器连通性、Bedrock/RakNet 监听、端口冲突、健康检查、升级和备份恢复。
 - [ ] Cron/事件计划任务、去重、执行记录和任务中心。
 - [ ] RBAC、用户组、实例 scope 与审计日志。
 
