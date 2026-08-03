@@ -42,7 +42,7 @@ use crate::InstanceRepository;
 use crate::InstanceRepositoryError;
 use crate::RuntimeDiscovery;
 
-const CORE_CAPABILITIES: [&str; 5] = ["environments", "events", "instances", "metrics", "settings"];
+const CORE_CAPABILITIES: [&str; 5] = ["events", "instances", "metrics", "runtimes", "settings"];
 const CORE_ID_FILE_NAME: &str = "core-id";
 const EVENT_TOPICS: [&str; 2] = ["instance.console", "instance.state"];
 const HEARTBEAT_SECONDS: u64 = 20;
@@ -352,7 +352,7 @@ async fn request_response(
             }),
         ),
         "system.ping" => success_response(request_id, json!({ "receivedAt": current_timestamp() })),
-        "environment.list" => environment_list_response(request_id, state.runtimes()).await,
+        "runtime.list" => environment_list_response(request_id, state.runtimes()).await,
         "instance.command" => {
             instance_command_response(request_id, params, state.processes()).await
         }

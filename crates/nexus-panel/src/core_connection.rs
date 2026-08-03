@@ -29,8 +29,7 @@ use tokio::net::TcpStream;
 use crate::CoreConnectionError;
 use crate::CoreEndpoint;
 
-const PANEL_CAPABILITIES: [&str; 5] =
-    ["environments", "events", "instances", "metrics", "settings"];
+const PANEL_CAPABILITIES: [&str; 5] = ["events", "instances", "metrics", "runtimes", "settings"];
 
 pub struct CoreConnection {
     capabilities: Vec<String>,
@@ -187,7 +186,7 @@ impl CoreConnection {
     pub async fn list_managed_runtimes(
         &mut self,
     ) -> Result<Vec<ManagedRuntime>, CoreConnectionError> {
-        let result = self.request("environment.list", json!({})).await?;
+        let result = self.request("runtime.list", json!({})).await?;
         let items = response_field(&result, "items")?;
 
         from_value(items).map_err(|_| CoreConnectionError::InvalidResponse {
