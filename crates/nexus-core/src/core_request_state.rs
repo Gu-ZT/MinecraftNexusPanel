@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use nexus_domain::CoreId;
 use nexus_domain::RequestId;
 
+use crate::FileManager;
 use crate::InstanceProcessManager;
 use crate::InstanceRepository;
 use crate::ProvisionManager;
@@ -18,6 +19,7 @@ pub(crate) struct CoreRequestState {
     proxy_subservers: ProxySubserverRepository,
     provision: ProvisionManager,
     runtimes: RuntimeManager,
+    files: FileManager,
 }
 
 impl CoreRequestState {
@@ -28,6 +30,7 @@ impl CoreRequestState {
         proxy_subservers: ProxySubserverRepository,
         provision: ProvisionManager,
         runtimes: RuntimeManager,
+        files: FileManager,
     ) -> Self {
         Self {
             core_id,
@@ -38,6 +41,7 @@ impl CoreRequestState {
             proxy_subservers,
             provision,
             runtimes,
+            files,
         }
     }
 
@@ -75,6 +79,10 @@ impl CoreRequestState {
 
     pub(crate) const fn runtimes(&self) -> &RuntimeManager {
         &self.runtimes
+    }
+
+    pub(crate) const fn files(&self) -> &FileManager {
+        &self.files
     }
 
     pub(crate) fn subscribe_to_events(

@@ -4,6 +4,8 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use nexus_config::CoreConfig;
 use nexus_domain::CoreId;
 use nexus_domain::Instance;
@@ -40,6 +42,8 @@ use tokio_rustls::TlsAcceptor;
 use crate::CoreError;
 use crate::CoreRequestState;
 use crate::CoreTlsIdentity;
+use crate::FileManager;
+use crate::FileManagerError;
 use crate::InstanceProcessError;
 use crate::InstanceProcessManager;
 use crate::InstanceRepository;
@@ -50,9 +54,11 @@ use crate::ProxySubserverRepository;
 use crate::ProxySubserverRepositoryError;
 use crate::RuntimeManager;
 use crate::RuntimeManagerError;
+use crate::file_manager::MAXIMUM_FILE_READ_BYTES;
 
-const CORE_CAPABILITIES: [&str; 7] = [
+const CORE_CAPABILITIES: [&str; 8] = [
     "events",
+    "files",
     "instances",
     "metrics",
     "proxy-subservers",
@@ -79,6 +85,7 @@ pub struct CoreServer {
     proxy_subservers: ProxySubserverRepository,
     provision: ProvisionManager,
     runtimes: RuntimeManager,
+    files: FileManager,
     tls_acceptor: TlsAcceptor,
 }
 
@@ -89,6 +96,7 @@ struct CoreResources {
     proxy_subservers: ProxySubserverRepository,
     provision: ProvisionManager,
     runtimes: RuntimeManager,
+    files: FileManager,
 }
 
 impl CoreServer {
@@ -116,6 +124,7 @@ impl CoreServer {
         let runtimes =
             RuntimeManager::new(config.data_directory()).map_err(CoreError::RuntimeManager)?;
         let provision = ProvisionManager::new(config.data_directory(), runtimes.clone())?;
+        let files = FileManager::new(config.data_directory());
 
         Ok(Self {
             core_id,
@@ -128,6 +137,7 @@ impl CoreServer {
             proxy_subservers: ProxySubserverRepository::new(),
             provision,
             runtimes,
+            files,
             tls_acceptor: tls_identity.acceptor(),
         })
     }
@@ -170,6 +180,7 @@ impl CoreServer {
                 proxy_subservers: self.proxy_subservers.clone(),
                 provision: self.provision.clone(),
                 runtimes: self.runtimes.clone(),
+                files: self.files.clone(),
             };
             let tls_acceptor = self.tls_acceptor.clone();
 
@@ -232,6 +243,7 @@ where
         resources.proxy_subservers,
         resources.provision,
         resources.runtimes,
+        resources.files,
     );
     let mut event_receiver = request_state.processes().subscribe();
 
@@ -437,6 +449,9 @@ async fn request_response(
         "instance.list" => instance_list_response(request_id, params, state.instances()),
         "instance.logs" => instance_logs_response(request_id, params, state.processes()),
         "instance.metrics" => instance_metrics_response(request_id, params, state.processes()),
+        "file.list" => file_list_response(request_id, params, state),
+        "file.read" => file_read_response(request_id, params, state),
+        "file.write" => file_write_response(request_id, params, idempotency_key, state),
         "instance.start" => {
             instance_start_response(request_id, params, idempotency_key, state.processes()).await
         }
@@ -976,6 +991,214 @@ fn instance_metrics_response(
     match processes.metrics(&instance_id) {
         Ok(sample) => success_response(request_id, json!({ "series": [sample] })),
         Err(error) => process_error_response(request_id, &error),
+    }
+}
+
+fn file_list_response(
+    request_id: RequestId,
+    params: &Value,
+    state: &CoreRequestState,
+) -> WireMessage {
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.list requires a valid instanceId",
+        );
+    };
+    let path = match params.get("path") {
+        None => "",
+        Some(Value::String(path)) => path.as_str(),
+        Some(_) => {
+            return error_response(request_id, "BAD_REQUEST", "file.list path is invalid");
+        }
+    };
+    let cursor = match params.get("cursor") {
+        None => None,
+        Some(Value::String(cursor)) => Some(cursor.as_str()),
+        Some(_) => {
+            return error_response(request_id, "BAD_REQUEST", "file.list cursor is invalid");
+        }
+    };
+    let limit = match params.get("limit") {
+        None => None,
+        Some(value) => {
+            let Some(limit) = value.as_u64().and_then(|value| usize::try_from(value).ok()) else {
+                return error_response(request_id, "BAD_REQUEST", "file.list limit is invalid");
+            };
+            Some(limit)
+        }
+    };
+    let instance = match state.instances().get(&instance_id) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            return error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist");
+        }
+        Err(error) => return repository_failure_response(request_id, &error),
+    };
+
+    match state.files().list(&instance, path, cursor, limit) {
+        Ok(page) => success_response(request_id, json!(page)),
+        Err(error) => file_manager_error_response(request_id, error),
+    }
+}
+
+fn file_read_response(
+    request_id: RequestId,
+    params: &Value,
+    state: &CoreRequestState,
+) -> WireMessage {
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.read requires a valid instanceId",
+        );
+    };
+    let Some(path) = params
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+    else {
+        return error_response(request_id, "BAD_REQUEST", "file.read requires a path");
+    };
+    let Some(offset) = params.get("offset").and_then(Value::as_u64) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.read requires a valid offset",
+        );
+    };
+    let Some(length) = params
+        .get("length")
+        .and_then(Value::as_u64)
+        .and_then(|length| usize::try_from(length).ok())
+        .filter(|length| (1..=MAXIMUM_FILE_READ_BYTES).contains(length))
+    else {
+        return error_response(request_id, "BAD_REQUEST", "file.read length is invalid");
+    };
+    let instance = match state.instances().get(&instance_id) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            return error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist");
+        }
+        Err(error) => return repository_failure_response(request_id, &error),
+    };
+
+    match state.files().read(&instance, path, offset, length) {
+        Ok(content) => success_response(request_id, json!(content)),
+        Err(error) => file_manager_error_response(request_id, error),
+    }
+}
+
+fn file_write_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    state: &CoreRequestState,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.write requires a valid instanceId",
+        );
+    };
+    let Some(path) = params
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+    else {
+        return error_response(request_id, "BAD_REQUEST", "file.write requires a path");
+    };
+    let Some(data_base64) = params.get("dataBase64").and_then(Value::as_str) else {
+        return error_response(request_id, "BAD_REQUEST", "file.write requires dataBase64");
+    };
+    let Ok(content) = STANDARD.decode(data_base64) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "file.write dataBase64 is invalid",
+        );
+    };
+    let expected_sha256 = match params.get("expectedSha256") {
+        None => None,
+        Some(Value::String(value)) => Some(value.as_str()),
+        Some(_) => {
+            return error_response(
+                request_id,
+                "BAD_REQUEST",
+                "file.write expectedSha256 is invalid",
+            );
+        }
+    };
+    let instance = match state.instances().get(&instance_id) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            return error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist");
+        }
+        Err(error) => return repository_failure_response(request_id, &error),
+    };
+
+    match state
+        .files()
+        .write(&instance, path, &content, expected_sha256)
+    {
+        Ok(entry) => success_response(request_id, json!(entry)),
+        Err(error) => file_manager_error_response(request_id, error),
+    }
+}
+
+fn file_manager_error_response(request_id: RequestId, error: FileManagerError) -> WireMessage {
+    match error {
+        FileManagerError::InvalidPath { .. } | FileManagerError::InvalidHash { .. } => {
+            error_response(
+                request_id,
+                "BAD_REQUEST",
+                "File operation parameters are invalid",
+            )
+        }
+        FileManagerError::ContentTooLarge { .. } => error_response(
+            request_id,
+            "PAYLOAD_TOO_LARGE",
+            "File content exceeds the maximum size",
+        ),
+        FileManagerError::NotFound { .. } => {
+            error_response(request_id, "FILE_NOT_FOUND", "File does not exist")
+        }
+        FileManagerError::NotDirectory { .. } => {
+            error_response(request_id, "FILE_NOT_DIRECTORY", "Path is not a directory")
+        }
+        FileManagerError::NotFile { .. } => {
+            error_response(request_id, "FILE_NOT_REGULAR", "Path is not a regular file")
+        }
+        FileManagerError::SymlinkNotAllowed { .. } | FileManagerError::PathEscapes { .. } => {
+            error_response(
+                request_id,
+                "FILE_PATH_FORBIDDEN",
+                "File path is not allowed",
+            )
+        }
+        FileManagerError::HashMismatch { expected, actual } => error_response_with_details(
+            request_id,
+            "FILE_REVISION_MISMATCH",
+            "File hash does not match",
+            false,
+            Some(json!({ "expectedSha256": expected, "actualSha256": actual })),
+        ),
+        error => {
+            tracing::error!(%error, "Core file operation failed");
+            error_response_with_details(
+                request_id,
+                "FILE_OPERATION_FAILED",
+                "File operation failed",
+                true,
+                None,
+            )
+        }
     }
 }
 

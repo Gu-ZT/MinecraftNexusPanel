@@ -2125,6 +2125,7 @@ dependencies = [
 name = "nexus-core"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.0",
  "flate2",
  "nexus-config",
  "nexus-domain",

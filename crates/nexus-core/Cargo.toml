@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+base64.workspace = true
 nexus-domain.workspace = true
 nexus-config.workspace = true
 nexus-protocol.workspace = true
@@ -14,6 +15,7 @@ rustls.workspace = true
 rustls-pemfile.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+tempfile.workspace = true
 sysinfo.workspace = true
 flate2.workspace = true
 tar.workspace = true
@@ -24,9 +26,6 @@ tokio-rustls.workspace = true
 tracing.workspace = true
 url.workspace = true
 zip.workspace = true
-
-[dev-dependencies]
-tempfile.workspace = true
 
 [lints]
 workspace = true
