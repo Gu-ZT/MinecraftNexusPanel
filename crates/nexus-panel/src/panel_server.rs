@@ -33,6 +33,7 @@ use crate::bedrock_routes::bedrock_routes;
 use crate::config_routes::config_routes;
 use crate::core_routes::core_routes;
 use crate::environment_routes::environment_routes;
+use crate::extension_routes::extension_routes;
 use crate::file_routes::file_routes;
 use crate::install_template_routes::install_template_routes;
 use crate::instance_routes::instance_routes;
@@ -119,6 +120,7 @@ fn router(state: PanelState) -> Router {
         .merge(bedrock_routes())
         .merge(config_routes())
         .merge(environment_routes())
+        .merge(extension_routes())
         .merge(file_routes())
         .merge(instance_routes())
         .merge(proxy_routes())

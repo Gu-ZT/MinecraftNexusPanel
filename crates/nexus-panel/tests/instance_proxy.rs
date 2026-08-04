@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -100,6 +101,7 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
         ("geyser-proxy", "GEYSER"),
         ("java-backend", "PAPER"),
         ("java-backend-two", "PAPER"),
+        ("hybrid-backend", "MOHIST"),
     ] {
         let response = send_json_request(
             panel_address,
@@ -114,6 +116,64 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
         .await;
         assert_eq!(response.status, 201);
     }
+
+    let hybrid_root = core_data.path().join("instances").join("hybrid-backend");
+    fs::create_dir_all(hybrid_root.join("plugins")).expect("plugin directory is created");
+    fs::create_dir_all(hybrid_root.join("mods")).expect("mod directory is created");
+    fs::write(hybrid_root.join("plugins/example.jar"), b"plugin").expect("plugin file is created");
+    fs::write(hybrid_root.join("mods/example.jar"), b"mod").expect("mod file is created");
+
+    let plugin_scan = send_json_request(
+        panel_address,
+        "GET",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/hybrid-backend/extensions?templateId=mohist&kind=PLUGIN"
+        ),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(plugin_scan.status, 200);
+    assert_eq!(plugin_scan.body["kind"], "PLUGIN");
+    assert_eq!(plugin_scan.body["directories"][0]["path"], "plugins");
+    assert_eq!(
+        plugin_scan.body["directories"][0]["page"]["items"][0]["path"],
+        "plugins/example.jar"
+    );
+
+    let mod_scan = send_json_request(
+        panel_address,
+        "GET",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/hybrid-backend/extensions?templateId=mohist&kind=MOD"
+        ),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(mod_scan.status, 200);
+    assert_eq!(mod_scan.body["kind"], "MOD");
+    assert_eq!(mod_scan.body["directories"][0]["path"], "mods");
+    assert_eq!(
+        mod_scan.body["directories"][0]["page"]["items"][0]["path"],
+        "mods/example.jar"
+    );
+
+    let mismatched_template = send_json_request(
+        panel_address,
+        "GET",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/hybrid-backend/extensions?templateId=paper&kind=PLUGIN"
+        ),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(mismatched_template.status, 400);
+    assert_eq!(
+        mismatched_template.body["error"]["code"],
+        "TEMPLATE_INSTANCE_KIND_MISMATCH"
+    );
 
     let bedrock_profile = send_json_request(
         panel_address,

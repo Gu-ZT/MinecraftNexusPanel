@@ -15,6 +15,7 @@ mod core_routes;
 mod core_runtime;
 mod core_status;
 mod environment_routes;
+mod extension_routes;
 mod file_routes;
 mod install_template_catalog;
 mod install_template_routes;
