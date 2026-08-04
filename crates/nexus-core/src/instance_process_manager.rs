@@ -39,6 +39,10 @@ use crate::InstanceRepository;
 use crate::InstanceRepositoryError;
 use crate::spawn_output_reader;
 
+/// 实例子进程的启动、停止、命令、日志和指标管理器。
+///
+/// 每个实例最多由一个进程控制句柄管理；状态变化通过协议事件广播，日志和指标
+/// 是运行时观测结果，不会修改实例配置修订号。
 const EVENT_CHANNEL_CAPACITY: usize = 256;
 const MAXIMUM_COMMAND_BYTES: usize = 8 * 1024;
 const PROCESS_COMMAND_CAPACITY: usize = 4;
@@ -55,6 +59,7 @@ pub struct InstanceProcessManager {
 }
 
 impl InstanceProcessManager {
+    /// 创建实例进程管理器及其事件、日志和指标状态。
     #[must_use]
     pub fn new(data_directory: PathBuf, instances: InstanceRepository) -> Self {
         let (event_sender, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
@@ -71,11 +76,15 @@ impl InstanceProcessManager {
         }
     }
 
+    /// 订阅实例状态和控制台事件。
     #[must_use]
     pub fn subscribe(&self) -> broadcast::Receiver<WireMessage> {
         self.event_sender.subscribe()
     }
 
+    /// 启动处于 `Created`、`Stopped` 或 `Failed` 状态的实例。
+    ///
+    /// 返回异步进程任务标识；启动失败会把实例转为失败状态。
     pub async fn start(&self, instance_id: &InstanceId) -> Result<TaskId, InstanceProcessError> {
         let instance = self.instances.transition_runtime(
             instance_id,
@@ -97,6 +106,9 @@ impl InstanceProcessManager {
         }
     }
 
+    /// 向运行中的实例发送优雅停止命令，并等待其退出。
+    ///
+    /// 未指定超时时使用实例启动配置中的值，超时后由监督器负责强制终止。
     pub async fn stop(
         &self,
         instance_id: &InstanceId,
@@ -119,6 +131,7 @@ impl InstanceProcessManager {
         Ok(TaskId::new())
     }
 
+    /// 强制终止运行中或停止中的实例进程。
     pub async fn kill(&self, instance_id: &InstanceId) -> Result<TaskId, InstanceProcessError> {
         self.require_state(
             instance_id,
@@ -135,6 +148,9 @@ impl InstanceProcessManager {
         Ok(TaskId::new())
     }
 
+    /// 向运行中的实例标准输入发送一条命令。
+    ///
+    /// 命令会被限制长度并追加平台对应的行结束符；返回值是写入时间戳。
     pub async fn command(
         &self,
         instance_id: &InstanceId,
@@ -153,6 +169,9 @@ impl InstanceProcessManager {
         Ok(current_timestamp())
     }
 
+    /// 读取实例控制台日志分页。
+    ///
+    /// `after` 和 `before` 是日志游标边界；日志存储只保留最近的有限行数。
     pub fn logs(
         &self,
         instance_id: &InstanceId,
@@ -167,6 +186,7 @@ impl InstanceProcessManager {
             .map_err(Into::into)
     }
 
+    /// 读取运行中或停止中实例的 CPU、内存和运行时间采样。
     pub fn metrics(
         &self,
         instance_id: &InstanceId,

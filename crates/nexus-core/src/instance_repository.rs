@@ -13,17 +13,23 @@ use nexus_domain::InstanceUpdate;
 
 use crate::InstanceRepositoryError;
 
+/// 进程内保存实例配置和运行时快照的并发安全仓库。
+///
+/// 配置更新必须携带调用方看到的修订号；进程状态转换则通过允许状态列表
+/// 保证不会覆盖并发请求产生的非法生命周期跳转。
 #[derive(Clone, Default)]
 pub struct InstanceRepository {
     instances: Arc<Mutex<BTreeMap<InstanceId, Instance>>>,
 }
 
 impl InstanceRepository {
+    /// 创建空实例仓库。
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// 校验并创建实例配置；重复标识会被拒绝。
     pub fn create(&self, definition: InstanceCreate) -> Result<Instance, InstanceRepositoryError> {
         let instance = definition.into_instance()?;
         let instance_id = instance.id().clone();
@@ -38,6 +44,7 @@ impl InstanceRepository {
         Ok(instance)
     }
 
+    /// 查询实例的当前快照。
     pub fn get(
         &self,
         instance_id: &InstanceId,
@@ -47,12 +54,14 @@ impl InstanceRepository {
         Ok(instances.get(instance_id).cloned())
     }
 
+    /// 返回当前全部实例快照。
     pub fn list(&self) -> Result<Vec<Instance>, InstanceRepositoryError> {
         let instances = self.lock_instances()?;
 
         Ok(instances.values().cloned().collect())
     }
 
+    /// 删除实例配置并返回被删除的快照。
     pub fn remove(
         &self,
         instance_id: &InstanceId,
@@ -61,6 +70,7 @@ impl InstanceRepository {
         Ok(instances.remove(instance_id))
     }
 
+    /// 判断某个受管运行时可执行路径是否仍被实例引用。
     pub fn references_runtime(&self, runtime_path: &Path) -> Result<bool, InstanceRepositoryError> {
         let instances = self.lock_instances()?;
         Ok(instances.values().any(|instance| {
@@ -69,6 +79,7 @@ impl InstanceRepository {
         }))
     }
 
+    /// 替换实例运行时快照，不改变配置修订号。
     pub fn set_runtime(
         &self,
         instance_id: &InstanceId,
@@ -86,6 +97,9 @@ impl InstanceRepository {
         Ok(instance.clone())
     }
 
+    /// 按期望修订号应用实例配置更新。
+    ///
+    /// 运行中的实例不能修改配置，避免启动命令或工作目录在进程运行期间突变。
     pub fn update(
         &self,
         instance_id: &InstanceId,
@@ -120,6 +134,7 @@ impl InstanceRepository {
         Ok(instance.clone())
     }
 
+    /// 在允许的旧状态集合中原子替换运行时快照。
     pub fn transition_runtime(
         &self,
         instance_id: &InstanceId,

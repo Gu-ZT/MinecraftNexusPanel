@@ -4,16 +4,22 @@ use nexus_domain::InstanceState;
 use nexus_domain::InstanceUpdateError;
 use thiserror::Error;
 
+/// 实例仓库的唯一性、校验、并发版本和生命周期冲突错误。
 #[derive(Debug, Error)]
 pub enum InstanceRepositoryError {
+    /// 实例标识已经存在。
     #[error("instance {instance_id} already exists")]
     AlreadyExists { instance_id: InstanceId },
+    /// 创建配置校验失败。
     #[error(transparent)]
     InvalidInstance(#[from] InstanceCreateError),
+    /// 更新配置校验失败。
     #[error(transparent)]
     InvalidUpdate(#[from] InstanceUpdateError),
+    /// 实例不存在。
     #[error("instance {instance_id} does not exist")]
     NotFound { instance_id: InstanceId },
+    /// 调用方使用的修订号已过期。
     #[error(
         "instance revision does not match: expected {expected_revision}, actual {actual_revision}"
     )]
@@ -21,8 +27,10 @@ pub enum InstanceRepositoryError {
         expected_revision: u64,
         actual_revision: u64,
     },
+    /// 实例仓库锁不可用。
     #[error("instance repository lock is poisoned")]
     LockPoisoned,
+    /// 当前实例状态不允许执行请求动作。
     #[error("instance {instance_id} is in state {state:?}")]
     StateConflict {
         instance_id: InstanceId,

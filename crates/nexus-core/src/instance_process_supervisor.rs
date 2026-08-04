@@ -34,6 +34,9 @@ const LINE_ENDING: &[u8] = b"\n";
 #[cfg(windows)]
 const LINE_ENDING: &[u8] = b"\r\n";
 
+/// 监督单个实例子进程、命令通道和生命周期事件的内部任务。
+///
+/// 监督器在优雅停止超时后强制终止进程，并根据退出原因把实例更新为停止或失败状态。
 pub(crate) struct InstanceProcessSupervisor {
     pub(crate) child: Child,
     pub(crate) command_receiver: mpsc::Receiver<InstanceProcessCommand>,
@@ -48,6 +51,7 @@ pub(crate) struct InstanceProcessSupervisor {
 }
 
 impl InstanceProcessSupervisor {
+    /// 运行监督循环直到子进程退出或控制通道关闭。
     pub(crate) async fn run(mut self) {
         let mut kill_requested = false;
         let mut stop_deadline = None;

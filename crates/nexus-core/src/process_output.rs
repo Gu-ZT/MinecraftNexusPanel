@@ -10,6 +10,9 @@ const MAXIMUM_LOG_LINE_BYTES: usize = 64 * 1024;
 const OUTPUT_READ_BUFFER_BYTES: usize = 8 * 1024;
 const TRUNCATED_SUFFIX: &[u8] = b" [truncated]";
 
+/// 异步读取子进程输出并写入实例日志存储。
+///
+/// 单行超过上限时保留前缀并附加截断标记，避免异常输出占用不受控的内存。
 pub(crate) fn spawn_output_reader<R>(
     mut reader: R,
     instance_id: InstanceId,

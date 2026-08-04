@@ -19,6 +19,10 @@ use tokio::sync::broadcast;
 
 use crate::InstanceLogStoreError;
 
+/// Core 进程内的实例控制台日志环形存储和事件发布器。
+///
+/// 每个实例最多保留最近 10,000 行；游标单调递增但不代表文件行号，读取结果同时
+/// 提供事件游标以便客户端继续订阅。
 const MAXIMUM_LINES_PER_INSTANCE: usize = 10_000;
 type InstanceLogLines = BTreeMap<InstanceId, VecDeque<(u64, InstanceLogLine)>>;
 
@@ -31,6 +35,7 @@ pub(crate) struct InstanceLogStore {
 }
 
 impl InstanceLogStore {
+    /// 创建日志存储并绑定事件广播器。
     pub(crate) fn new(
         event_sender: broadcast::Sender<WireMessage>,
         event_sequence: Arc<AtomicU64>,
@@ -43,6 +48,7 @@ impl InstanceLogStore {
         }
     }
 
+    /// 追加一行日志、写入内存队列并广播控制台事件。
     pub(crate) fn append(
         &self,
         instance_id: &InstanceId,
@@ -76,6 +82,7 @@ impl InstanceLogStore {
         Ok(log_line)
     }
 
+    /// 按游标边界读取日志分页。
     pub(crate) fn read(
         &self,
         instance_id: &InstanceId,
