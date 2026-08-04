@@ -27,6 +27,8 @@ tags:
     description: Proxy backend and subserver relationships
   - name: Bedrock
     description: Bedrock server and bridge operations
+  - name: Extensions
+    description: Installed mod and plugin discovery and lifecycle operations
   - name: Files
     description: Sandboxed instance file operations
   - name: Configuration
@@ -640,6 +642,44 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/instances/{instanceId}/extensions:
+    parameters:
+      - $ref: '#/components/parameters/CoreId'
+      - $ref: '#/components/parameters/InstanceId'
+    get:
+      tags: [ Extensions ]
+      operationId: listInstanceExtensions
+      summary: Scan installed extensions using a template layout
+      description: |
+        Read-only scan of the directories declared by the selected install
+        template for one extension kind. Hybrid servers keep plugin and mod
+        directories separate, and a template may declare multiple directories
+        for the same kind. Missing directories are returned as empty pages.
+      parameters:
+        - name: templateId
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: kind
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/ExtensionKind'
+      responses:
+        '200':
+          description: Extension entries grouped by declared directory
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceExtensionScan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instances:
@@ -2709,6 +2749,28 @@ components:
           type: array
           items:
             type: string
+    ExtensionDirectoryPage:
+      type: object
+      required: [ path, page ]
+      properties:
+        path:
+          type: string
+          minLength: 1
+        page:
+          $ref: '#/components/schemas/FilePage'
+    InstanceExtensionScan:
+      type: object
+      required: [ templateId, kind, directories ]
+      properties:
+        templateId:
+          type: string
+          minLength: 1
+        kind:
+          $ref: '#/components/schemas/ExtensionKind'
+        directories:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtensionDirectoryPage'
     ProxySubserver:
       type: object
       required: [ id, name, targetInstanceId, host, port, enabled ]

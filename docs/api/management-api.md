@@ -209,7 +209,7 @@ API、授权和下载限制，禁止绕过需要授权的下载流程。
 |--------|------------------------------------------------------------|--------------------|------------------|
 | GET    | `/extension-catalog/search`                                | `extension.read`   | 聚合搜索         |
 | GET    | `/extension-catalog/projects/{source}/{projectId}`         | `extension.read`   | 项目详情         |
-| GET    | `.../{instanceId}/extensions`                              | `extension.read`   | 已安装清单       |
+| GET    | `/cores/{coreId}/instances/{instanceId}/extensions`        | `extension.read`   | 按模板声明目录扫描已安装清单 |
 | POST   | `.../{instanceId}/extension-plans:resolve`                 | `extension.manage` | 依赖与兼容性解析 |
 | POST   | `.../{instanceId}/extension-installations`                 | `extension.manage` | 安装解析后的计划 |
 | POST   | `.../{instanceId}/extensions/{extensionId}/actions/update` | `extension.manage` | 更新             |
@@ -217,6 +217,10 @@ API、授权和下载限制，禁止绕过需要授权的下载流程。
 
 搜索参数至少包括 `query`、`type`、`source`、`minecraftVersion`、`loader` 和分页。安装记录保存来源、项目 ID、文件
 ID、版本、SHA-256、依赖和本地相对路径。
+
+当前 Panel 已提供只读扫描接口。调用时必须传入 `templateId` 和 `kind=PLUGIN|MOD`；Panel 校验模板与实例类型一致后，按
+`InstallTemplateExtensionLayout` 声明的目录分别读取 Core 文件页。混合端的插件和模组不会合并，模板声明多个目录时也会分别返回；不存在的目录返回空页。
+该接口尚未提供扩展安装、更新、删除、兼容性解析或来源搜索能力。
 
 更新前生成 plan，标记 Minecraft/加载器不兼容、依赖缺失、冲突和需要停服的变更。批量更新是单个可回滚任务，替换前保留文件备份。
 
