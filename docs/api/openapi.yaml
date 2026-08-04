@@ -1317,6 +1317,87 @@ paths:
           $ref: '#/components/responses/Conflict'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/instances/{proxyInstanceId}/proxy-subservers/actions/start:
+    parameters:
+      - $ref: '#/components/parameters/CoreId'
+      - $ref: '#/components/parameters/ProxyInstanceId'
+    post:
+      tags: [ Proxy ]
+      operationId: startProxy
+      summary: Start a proxy and its enabled backends
+      description: |
+        Run the orchestration on the registered Core node. Enabled backend
+        targets are de-duplicated and started before the proxy. If a backend
+        fails, the proxy is not started and the response reports a partial
+        result. Set includeBackends to false to operate on the proxy only.
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProxyOrchestrationRequest'
+      responses:
+        '200':
+          description: Proxy orchestration result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyOrchestrationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/instances/{proxyInstanceId}/proxy-subservers/actions/stop:
+    parameters:
+      - $ref: '#/components/parameters/CoreId'
+      - $ref: '#/components/parameters/ProxyInstanceId'
+    post:
+      tags: [ Proxy ]
+      operationId: stopProxy
+      summary: Stop a proxy and its enabled backends
+      description: |
+        Stop the proxy before enabled backend targets on the registered Core
+        node. Targets are de-duplicated. includeBackends defaults to true and
+        timeoutSeconds accepts values from 1 through 300.
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProxyOrchestrationRequest'
+      responses:
+        '200':
+          description: Proxy orchestration result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyOrchestrationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instances/{instanceId}:
     parameters:
       - $ref: '#/components/parameters/CoreId'
@@ -3618,6 +3699,62 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ExtensionInstall'
+    ProxyOrchestrationRequest:
+      type: object
+      properties:
+        includeBackends:
+          type: boolean
+          default: true
+          description: Operate on enabled backend targets in addition to the proxy.
+        timeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 300
+          description: Stop timeout for each running instance.
+      additionalProperties: false
+    ProxyOrchestrationResult:
+      type: object
+      required: [ proxyInstanceId, operation, includeBackends, state, steps, completedAt ]
+      properties:
+        proxyInstanceId:
+          type: string
+        operation:
+          type: string
+          enum: [ START, STOP ]
+        includeBackends:
+          type: boolean
+        state:
+          type: string
+          enum: [ SUCCEEDED, PARTIAL ]
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProxyOrchestrationStep'
+        completedAt:
+          type: string
+          format: date-time
+    ProxyOrchestrationStep:
+      type: object
+      required: [ instanceId, role, action, state ]
+      properties:
+        instanceId:
+          type: string
+        role:
+          type: string
+          enum: [ PROXY, BACKEND ]
+        action:
+          type: string
+          enum: [ START, STOP ]
+        state:
+          type: string
+          enum: [ STARTED, STOPPED, ALREADY_RUNNING, ALREADY_STOPPED, FAILED, BLOCKED_BACKEND_FAILURE ]
+        taskId:
+          type: string
+        errorCode:
+          type: string
+        instanceState:
+          $ref: '#/components/schemas/InstanceState'
+      additionalProperties: false
     ProxySubserver:
       type: object
       required: [ id, name, targetInstanceId, host, port, enabled ]

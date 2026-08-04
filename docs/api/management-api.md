@@ -104,10 +104,14 @@ SHA-256、平台/架构、实例目录、归档条目和受管运行时；下载
 | POST   | `/cores/{coreId}/instances/{proxyInstanceId}/proxy-subservers`     | 创建或替换一个后端关系       |
 | DELETE | `/cores/{coreId}/instances/{proxyInstanceId}/proxy-subservers/{subserverId}` | 删除后端关系                 |
 | POST   | `/cores/{coreId}/instances/{proxyInstanceId}/proxy-subservers/{subserverId}/actions/check` | 从 Core 检查后端连通性 |
+| POST   | `/cores/{coreId}/instances/{proxyInstanceId}/proxy-subservers/actions/start` | 按后端再代理顺序启动         |
+| POST   | `/cores/{coreId}/instances/{proxyInstanceId}/proxy-subservers/actions/stop`  | 按代理再后端顺序停止         |
 
 后端记录包含 `targetInstanceId`、监听目标地址、端口和启用状态。目标实例必须已存在且不是代理实例；Geyser 的第二个目标返回
 `PROXY_SUBSERVER_LIMIT_REACHED`。
 连通性检查从登记 Core 节点执行最多 3 秒的 TCP 探测，返回 `DISABLED`、`REACHABLE` 或 `UNREACHABLE`、延迟和受限错误分类；后端不可达不会被转换为 Core 注册错误。
+
+启动和停止动作由 Core 节点执行并返回逐实例 `steps`。请求体可选，`includeBackends` 默认为 `true`；启动时先处理启用的后端，全部成功或已运行后才启动代理，任一后端失败会将代理标记为 `BLOCKED_BACKEND_FAILURE`。停止时先停止代理，再处理启用的后端；后端已停止会被视为成功。停止可设置 `timeoutSeconds`，范围为 `1..=300`，超出范围被拒绝。重复目标只执行一次，未启用关系不参与动作。结果的 `state` 为 `SUCCEEDED` 或 `PARTIAL`，不会伪造未执行步骤的成功；写操作需要 `Idempotency-Key`。
 
 ### 3.3 基岩端运维画像
 

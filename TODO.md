@@ -133,7 +133,9 @@
   - [x] 从实际 Core 节点对已登记代理后端执行受限 TCP 连通性和 Minecraft Java Status 协议检查，分别返回网络状态、协议状态、延迟和错误分类。
   - [x] 从 Core 节点优先读取 BDS/PocketMine/Nukkit 的 `server.properties:server-port` 或 Geyser 的 `config.yml:bedrock.port`，探测配置端口并在失败时回退 `19132`，区分端口可用、已占用和绑定失败。
   - [x] 从 Core 节点读取 BDS/PocketMine/Nukkit 的 `server.properties:server-ip` 或 Geyser 的 `config.yml:bedrock.address`，仅接受 IP 字面量，缺失/非法时回退 `0.0.0.0` 并报告绑定地址来源。
-  - [ ] 代理启停编排，以及基岩端监听绑定地址、升级和备份恢复。
+  - [x] 通过 Core 编排代理启停：启动按“后端 -> 代理”、停止按“代理 -> 后端”执行，按目标实例去重并返回逐步状态。
+  - [x] 代理动作支持 `includeBackends`、停止超时、后端失败阻断代理启动和部分失败结果；Panel 已暴露对应动作接口。
+  - [ ] 基岩端监听绑定地址、专用健康检查、升级和备份恢复。
 - [ ] Cron/事件计划任务、去重、执行记录和任务中心。
 - [ ] RBAC、用户组、实例 scope 与审计日志。
 

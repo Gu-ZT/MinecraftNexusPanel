@@ -340,6 +340,8 @@ provider-specific Schema 和跨文件校验尚未实现。
     "events",
     "files",
     "metrics",
+    "proxy-orchestration",
+    "proxy-subservers",
     "transfer-v1"
   ],
   "secretConfigured": true,

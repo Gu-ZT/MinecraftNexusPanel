@@ -108,6 +108,8 @@ sequenceDiagram
     "capabilities": [
       "events",
       "files",
+      "proxy-orchestration",
+      "proxy-subservers",
       "transfer-v1"
     ]
   }
@@ -131,6 +133,8 @@ sequenceDiagram
       "events",
       "files",
       "metrics",
+      "proxy-orchestration",
+      "proxy-subservers",
       "transfer-v1"
     ],
     "sessionId": "0198...",
