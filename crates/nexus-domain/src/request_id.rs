@@ -1,3 +1,5 @@
+//! 请求、幂等键和会话关联使用的 UUIDv7 标识符。
+
 use std::fmt;
 use std::str::FromStr;
 
@@ -5,11 +7,13 @@ use serde::Deserialize;
 use serde::Serialize;
 use uuid::Uuid;
 
+/// 用于追踪一次请求并传播到 Core、Panel 日志和错误响应的标识符。
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct RequestId(Uuid);
 
 impl RequestId {
+    /// 生成一个新的 UUIDv7 请求 ID。
     #[must_use]
     pub fn new() -> Self {
         Self(Uuid::now_v7())

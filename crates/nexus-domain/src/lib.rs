@@ -1,3 +1,10 @@
+//! MCNP 领域模型。
+//!
+//! 本 crate 只保存跨 Core、Panel 和客户端共享的值对象、状态机和能力画像。
+//! 网络传输、文件系统和数据库实现不得反向改变这些领域约束；尤其是
+//! `InstanceKind`、`ProxyTopology` 和 `BedrockManagementProfile` 共同决定
+//! 服务端类型应使用哪套运维逻辑。
+
 mod bedrock_bind_address_source;
 mod bedrock_health;
 mod bedrock_health_status;
@@ -144,6 +151,9 @@ pub use sha256_digest_error::Sha256DigestError;
 pub use task_id::TaskId;
 pub use version_metadata_provider::VersionMetadataProvider;
 
+/// Web API 的主版本号。
 pub const API_VERSION: &str = "v1";
+/// 产品展示名。
 pub const PRODUCT_NAME: &str = "MCNP";
+/// 从 Cargo 包元数据读取的产品版本。
 pub const PRODUCT_VERSION: &str = env!("CARGO_PKG_VERSION");

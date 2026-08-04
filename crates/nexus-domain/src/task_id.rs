@@ -1,3 +1,5 @@
+//! 异步任务标识符。
+
 use std::fmt;
 use std::str::FromStr;
 
@@ -6,11 +8,13 @@ use serde::Serialize;
 use uuid::Error as UuidError;
 use uuid::Uuid;
 
+/// 标识 Core 或 Panel 中一次可查询的异步操作。
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct TaskId(Uuid);
 
 impl TaskId {
+    /// 生成新的 UUIDv7 任务 ID。
     #[must_use]
     pub fn new() -> Self {
         Self(Uuid::now_v7())

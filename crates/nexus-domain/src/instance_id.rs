@@ -1,3 +1,5 @@
+//! 实例标识符及其安全格式约束。
+
 use std::fmt;
 use std::str::FromStr;
 
@@ -9,14 +11,20 @@ use serde::de::Error;
 
 use crate::InstanceIdError;
 
+/// 实例在 Core 内和 API 路径中的稳定标识符。
+///
+/// 标识符限制为 ASCII 字母、数字、点、下划线和连字符，并且不能以
+/// 点、下划线或连字符开头，从而避免路径和资源名称歧义。
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct InstanceId(String);
 
 impl InstanceId {
+    /// 从字符串创建并校验实例标识符。
     pub fn new(value: String) -> Result<Self, InstanceIdError> {
         value.parse()
     }
 
+    /// 返回不含分配的新字符串切片。
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0

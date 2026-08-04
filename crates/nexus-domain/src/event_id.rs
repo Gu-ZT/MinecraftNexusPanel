@@ -1,3 +1,5 @@
+//! 实时事件标识符。
+
 use std::fmt;
 use std::str::FromStr;
 
@@ -5,11 +7,13 @@ use serde::Deserialize;
 use serde::Serialize;
 use uuid::Uuid;
 
+/// 标识一次广播到订阅者的领域事件。
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct EventId(Uuid);
 
 impl EventId {
+    /// 生成新的 UUIDv7 事件 ID。
     #[must_use]
     pub fn new() -> Self {
         Self(Uuid::now_v7())

@@ -1,9 +1,16 @@
+//! 代理实例到后端实例的独立关系模型。
+
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::InstanceId;
 use crate::ProxySubserverError;
 
+/// 一个代理后端关系的可持久化描述。
+///
+/// `target_instance_id` 用于管理本机同一 Core 上的实例，`host` 和 `port`
+/// 用于代理实际连接后端以及执行从 Core 发起的健康检查。关系的启用状态
+/// 不会改变拓扑数量限制，只决定该后端是否参与运维动作。
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxySubserver {
@@ -16,6 +23,7 @@ pub struct ProxySubserver {
 }
 
 impl ProxySubserver {
+    /// 创建并校验一个代理后端关系。
     pub fn new(
         id: String,
         name: String,
@@ -37,6 +45,7 @@ impl ProxySubserver {
         Ok(subserver)
     }
 
+    /// 校验标识符、名称、主机和端口，拒绝路径型或含空白的地址。
     pub fn validate(&self) -> Result<(), ProxySubserverError> {
         if !is_valid_identifier(&self.id) {
             return Err(ProxySubserverError::InvalidId);
@@ -54,31 +63,37 @@ impl ProxySubserver {
         Ok(())
     }
 
+    /// 返回关系标识符。
     #[must_use]
     pub fn id(&self) -> &str {
         &self.id
     }
 
+    /// 返回面向用户显示的名称。
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// 返回被代理的实例 ID。
     #[must_use]
     pub fn target_instance_id(&self) -> &InstanceId {
         &self.target_instance_id
     }
 
+    /// 返回代理连接后端使用的主机名或 IP 字面量。
     #[must_use]
     pub fn host(&self) -> &str {
         &self.host
     }
 
+    /// 返回代理连接后端使用的 TCP 端口。
     #[must_use]
     pub const fn port(&self) -> u16 {
         self.port
     }
 
+    /// 返回该关系是否参与代理运维动作。
     #[must_use]
     pub const fn enabled(&self) -> bool {
         self.enabled

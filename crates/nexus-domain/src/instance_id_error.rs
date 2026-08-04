@@ -1,5 +1,8 @@
+//! 实例标识符校验错误。
+
 use thiserror::Error;
 
+/// 实例 ID 不符合资源路径安全约束。
 #[derive(Debug, Error, Eq, PartialEq)]
 pub enum InstanceIdError {
     #[error(

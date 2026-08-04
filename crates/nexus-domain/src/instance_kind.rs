@@ -1,3 +1,5 @@
+//! Minecraft 实例类型及其专用能力画像。
+
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -7,6 +9,10 @@ use crate::BedrockTransport;
 use crate::ExtensionKind;
 use crate::ProxyTopology;
 
+/// Minecraft 服务端、代理端和基岩端的稳定类型词汇。
+///
+/// 该枚举是 API 和模板目录之间的权威分类；某个类型进入目录不代表
+/// 每个版本都已经具备可验证的归档结构和启动配方。
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum InstanceKind {
@@ -44,6 +50,10 @@ pub enum InstanceKind {
 }
 
 impl InstanceKind {
+    /// 返回该类型允许的代理后端拓扑。
+    ///
+    /// Java 一对多代理和 Geyser 一对一代理在这里与普通服务端区分，
+    /// Core 会据此拒绝不合法的子服务器关系。
     #[must_use]
     pub const fn proxy_topology(self) -> ProxyTopology {
         match self {
@@ -80,6 +90,10 @@ impl InstanceKind {
         }
     }
 
+    /// 返回基岩端或 Geyser 的专用运维画像。
+    ///
+    /// Java 服务端返回 `None`，避免调用方把 `server.properties`、插件目录
+    /// 或 Java TCP 探针错误地套用到基岩服务端。
     #[must_use]
     pub fn bedrock_management_profile(self) -> Option<BedrockManagementProfile> {
         let (management_kind, configuration_files, extension_kind, extension_directories) =
