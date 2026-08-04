@@ -78,16 +78,19 @@ impl ExtensionInstall {
         &self.source
     }
 
+    /// 返回来源项目标识；本地安装或来源未知时为 `None`。
     #[must_use]
     pub fn project_id(&self) -> Option<&str> {
         self.project_id.as_deref()
     }
 
+    /// 返回来源版本标识；本地安装或来源未知时为 `None`。
     #[must_use]
     pub fn version(&self) -> Option<&str> {
         self.version.as_deref()
     }
 
+    /// 返回写入实例目录的时间文本。
     #[must_use]
     pub fn installed_at(&self) -> &str {
         &self.installed_at

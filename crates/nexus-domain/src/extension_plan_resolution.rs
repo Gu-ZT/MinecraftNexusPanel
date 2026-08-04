@@ -39,26 +39,31 @@ impl ExtensionPlanResolution {
         }
     }
 
+    /// 返回目标安装模板标识。
     #[must_use]
     pub fn template_id(&self) -> &str {
         &self.template_id
     }
 
+    /// 返回插件或模组种类。
     #[must_use]
     pub const fn kind(&self) -> ExtensionKind {
         self.kind
     }
 
+    /// 返回目标 Minecraft 版本。
     #[must_use]
     pub fn minecraft_version(&self) -> &str {
         &self.minecraft_version
     }
 
+    /// 返回可选的加载器标识。
     #[must_use]
     pub fn loader(&self) -> Option<&str> {
         self.loader.as_deref()
     }
 
+    /// 返回根项目和 required 依赖的计划条目。
     #[must_use]
     pub fn items(&self) -> &[ExtensionPlanItem] {
         &self.items

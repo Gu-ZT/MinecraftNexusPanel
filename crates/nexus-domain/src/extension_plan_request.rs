@@ -25,26 +25,31 @@ impl ExtensionPlanRequest {
         &self.template_id
     }
 
+    /// 返回插件或模组种类。
     #[must_use]
     pub const fn kind(&self) -> ExtensionKind {
         self.kind
     }
 
+    /// 返回来源项目标识。
     #[must_use]
     pub fn project_id(&self) -> &str {
         &self.project_id
     }
 
+    /// 返回来源版本标识。
     #[must_use]
     pub fn version_id(&self) -> &str {
         &self.version_id
     }
 
+    /// 返回目标 Minecraft 版本。
     #[must_use]
     pub fn minecraft_version(&self) -> &str {
         &self.minecraft_version
     }
 
+    /// 返回可选的加载器筛选条件。
     #[must_use]
     pub fn loader(&self) -> Option<&str> {
         self.loader.as_deref()

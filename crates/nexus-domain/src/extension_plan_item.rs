@@ -42,31 +42,37 @@ impl ExtensionPlanItem {
         }
     }
 
+    /// 返回扩展来源标识。
     #[must_use]
     pub fn source(&self) -> &str {
         &self.source
     }
 
+    /// 返回来源项目标识。
     #[must_use]
     pub fn project_id(&self) -> &str {
         &self.project_id
     }
 
+    /// 返回来源版本标识。
     #[must_use]
     pub fn version_id(&self) -> &str {
         &self.version_id
     }
 
+    /// 返回来源版本号。
     #[must_use]
     pub fn version_number(&self) -> &str {
         &self.version_number
     }
 
+    /// 返回计划选定的下载工件。
     #[must_use]
     pub const fn artifact(&self) -> &ExtensionArtifact {
         &self.artifact
     }
 
+    /// 返回该版本声明的依赖摘要。
     #[must_use]
     pub fn dependencies(&self) -> &[ExtensionDependency] {
         &self.dependencies

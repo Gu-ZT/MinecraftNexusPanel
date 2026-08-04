@@ -25,16 +25,19 @@ impl ExtensionVersionResult {
         }
     }
 
+    /// 返回产生结果的来源标识。
     #[must_use]
     pub fn source(&self) -> &str {
         &self.source
     }
 
+    /// 返回项目标识。
     #[must_use]
     pub fn project_id(&self) -> &str {
         &self.project_id
     }
 
+    /// 返回项目的版本条目。
     #[must_use]
     pub fn items(&self) -> &[ExtensionVersion] {
         &self.items

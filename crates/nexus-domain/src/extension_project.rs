@@ -58,56 +58,67 @@ impl ExtensionProject {
         }
     }
 
+    /// 返回来源项目标识。
     #[must_use]
     pub fn project_id(&self) -> &str {
         &self.project_id
     }
 
+    /// 返回来源标识。
     #[must_use]
     pub fn source(&self) -> &str {
         &self.source
     }
 
+    /// 返回插件或模组种类。
     #[must_use]
     pub const fn kind(&self) -> ExtensionKind {
         self.kind
     }
 
+    /// 返回项目显示名称。
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// 返回项目摘要。
     #[must_use]
     pub fn summary(&self) -> &str {
         &self.summary
     }
 
+    /// 返回项目详情 URL。
     #[must_use]
     pub fn project_url(&self) -> &str {
         &self.project_url
     }
 
+    /// 返回项目图标 URL。
     #[must_use]
     pub fn icon_url(&self) -> Option<&str> {
         self.icon_url.as_deref()
     }
 
+    /// 返回来源报告的下载量。
     #[must_use]
     pub const fn downloads(&self) -> u64 {
         self.downloads
     }
 
+    /// 返回来源声明支持的 Minecraft 版本。
     #[must_use]
     pub fn supported_minecraft_versions(&self) -> &[String] {
         &self.supported_minecraft_versions
     }
 
+    /// 返回来源声明支持的加载器。
     #[must_use]
     pub fn supported_loaders(&self) -> &[String] {
         &self.supported_loaders
     }
 
+    /// 返回当前筛选条件下的兼容性结论。
     #[must_use]
     pub const fn compatibility(&self) -> ExtensionCompatibility {
         self.compatibility

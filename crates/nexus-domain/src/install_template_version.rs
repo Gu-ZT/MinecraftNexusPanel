@@ -35,26 +35,31 @@ impl InstallTemplateVersion {
         }
     }
 
+    /// 返回版本目录项标识。
     #[must_use]
     pub fn id(&self) -> &str {
         &self.id
     }
 
+    /// 返回提供该版本元数据的 provider 标识。
     #[must_use]
     pub fn provider_id(&self) -> &str {
         &self.provider_id
     }
 
+    /// 返回版本项的语义层级。
     #[must_use]
     pub const fn kind(&self) -> InstallTemplateVersionKind {
         self.kind
     }
 
+    /// 判断该版本是否由 provider 标记为稳定版本。
     #[must_use]
     pub const fn stable(&self) -> bool {
         self.stable
     }
 
+    /// 返回可选的 provider 详情 URL。
     #[must_use]
     pub fn metadata_url(&self) -> Option<&str> {
         self.metadata_url.as_deref()
