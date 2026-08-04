@@ -12,9 +12,11 @@ use rusqlite::Row;
 use rusqlite::TransactionBehavior;
 
 use crate::NewCore;
+use crate::NewExtensionInstall;
 use crate::NewSession;
 use crate::StorageError;
 use crate::StoredCore;
+use crate::StoredExtensionInstall;
 use crate::StoredSession;
 use crate::StoredUser;
 
@@ -144,6 +146,93 @@ impl SqliteStore {
 
         rows.collect::<SqliteResult<Vec<_>>>()
             .map_err(StorageError::Query)
+    }
+
+    pub fn upsert_extension_install(
+        &self,
+        install: &NewExtensionInstall,
+    ) -> Result<StoredExtensionInstall, StorageError> {
+        let connection = self.lock_connection()?;
+        connection
+            .execute(
+                "INSERT INTO extension_installs (
+                    id, core_id, instance_id, kind, path, sha256, source,
+                    project_id, version, installed_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                 ON CONFLICT(core_id, instance_id, path) DO UPDATE SET
+                    kind = excluded.kind,
+                    sha256 = excluded.sha256,
+                    source = excluded.source,
+                    project_id = excluded.project_id,
+                    version = excluded.version,
+                    installed_at = excluded.installed_at",
+                (
+                    install.id.as_str(),
+                    install.core_id.as_str(),
+                    install.instance_id.as_str(),
+                    install.kind.as_str(),
+                    install.path.as_str(),
+                    install.sha256.as_str(),
+                    install.source.as_str(),
+                    install.project_id.as_deref(),
+                    install.version.as_deref(),
+                    install.installed_at.as_str(),
+                ),
+            )
+            .map_err(StorageError::Query)?;
+
+        connection
+            .query_row(
+                "SELECT id, core_id, instance_id, kind, path, sha256, source,
+                        project_id, version, installed_at
+                 FROM extension_installs
+                 WHERE core_id = ?1 AND instance_id = ?2 AND path = ?3",
+                (&install.core_id, &install.instance_id, &install.path),
+                map_extension_install,
+            )
+            .map_err(StorageError::Query)
+    }
+
+    pub fn list_extension_installs(
+        &self,
+        core_id: &str,
+        instance_id: &str,
+        kind: &str,
+    ) -> Result<Vec<StoredExtensionInstall>, StorageError> {
+        let connection = self.lock_connection()?;
+        let mut statement = connection
+            .prepare(
+                "SELECT id, core_id, instance_id, kind, path, sha256, source,
+                        project_id, version, installed_at
+                 FROM extension_installs
+                 WHERE core_id = ?1 AND instance_id = ?2 AND kind = ?3
+                 ORDER BY path",
+            )
+            .map_err(StorageError::Query)?;
+        let rows = statement
+            .query_map((core_id, instance_id, kind), map_extension_install)
+            .map_err(StorageError::Query)?;
+
+        rows.collect::<SqliteResult<Vec<_>>>()
+            .map_err(StorageError::Query)
+    }
+
+    pub fn delete_extension_install(
+        &self,
+        core_id: &str,
+        instance_id: &str,
+        path: &str,
+    ) -> Result<bool, StorageError> {
+        let connection = self.lock_connection()?;
+        let deleted = connection
+            .execute(
+                "DELETE FROM extension_installs
+                 WHERE core_id = ?1 AND instance_id = ?2 AND path = ?3",
+                (core_id, instance_id, path),
+            )
+            .map_err(StorageError::Query)?;
+
+        Ok(deleted == 1)
     }
 
     pub fn create_session(&self, session: &NewSession) -> Result<(), StorageError> {
@@ -415,7 +504,24 @@ fn migrate(connection: &mut Connection) -> Result<(), StorageError> {
                 updated_at TEXT NOT NULL
             );
 
-            PRAGMA user_version = 2;
+            CREATE TABLE IF NOT EXISTS extension_installs (
+                id TEXT PRIMARY KEY NOT NULL,
+                core_id TEXT NOT NULL,
+                instance_id TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK (kind IN ('PLUGIN', 'MOD')),
+                path TEXT NOT NULL,
+                sha256 TEXT NOT NULL,
+                source TEXT NOT NULL,
+                project_id TEXT,
+                version TEXT,
+                installed_at TEXT NOT NULL,
+                UNIQUE (core_id, instance_id, path)
+            );
+
+            CREATE INDEX IF NOT EXISTS extension_installs_instance_kind_idx
+                ON extension_installs(core_id, instance_id, kind);
+
+            PRAGMA user_version = 3;
             ",
         )
         .map_err(StorageError::Migrate)
@@ -457,6 +563,21 @@ fn map_core(row: &Row<'_>) -> SqliteResult<StoredCore> {
         skip_certificate_verification: row.get(6)?,
         tags_json: row.get(7)?,
         revision: row.get(8)?,
+    })
+}
+
+fn map_extension_install(row: &Row<'_>) -> SqliteResult<StoredExtensionInstall> {
+    Ok(StoredExtensionInstall {
+        id: row.get(0)?,
+        core_id: row.get(1)?,
+        instance_id: row.get(2)?,
+        kind: row.get(3)?,
+        path: row.get(4)?,
+        sha256: row.get(5)?,
+        source: row.get(6)?,
+        project_id: row.get(7)?,
+        version: row.get(8)?,
+        installed_at: row.get(9)?,
     })
 }
 
@@ -580,6 +701,47 @@ mod tests {
                 .get_or_create_panel_id("panel-2")
                 .expect("Panel ID is reused"),
             "panel-1"
+        );
+    }
+
+    #[test]
+    fn upserts_lists_and_deletes_extension_install_records() {
+        let data_directory = tempdir().expect("temporary Panel data directory is created");
+        let store = SqliteStore::open(data_directory.path()).expect("Panel database opens");
+        let install = crate::NewExtensionInstall {
+            id: "install-1".to_owned(),
+            core_id: "core-1".to_owned(),
+            instance_id: "survival".to_owned(),
+            kind: "PLUGIN".to_owned(),
+            path: "plugins/example.jar".to_owned(),
+            sha256: "a".repeat(64),
+            source: "LOCAL".to_owned(),
+            project_id: None,
+            version: None,
+            installed_at: "2026-08-04T00:00:00Z".to_owned(),
+        };
+
+        let stored = store
+            .upsert_extension_install(&install)
+            .expect("extension install is persisted");
+        assert_eq!(stored.id(), "install-1");
+        assert_eq!(
+            store
+                .list_extension_installs("core-1", "survival", "PLUGIN")
+                .expect("extension installs are listed")
+                .len(),
+            1
+        );
+        assert!(
+            store
+                .delete_extension_install("core-1", "survival", "plugins/example.jar")
+                .expect("extension install is deleted")
+        );
+        assert!(
+            store
+                .list_extension_installs("core-1", "survival", "PLUGIN")
+                .expect("extension installs are listed after deletion")
+                .is_empty()
         );
     }
 }
