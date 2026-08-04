@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use nexus_domain::BedrockManagementProfile;
+use nexus_domain::BedrockPortCheck;
 use nexus_domain::CoreId;
 use nexus_domain::FileContent;
 use nexus_domain::FileEntry;
@@ -321,6 +322,19 @@ impl CoreConnection {
 
         from_value(result).map_err(|_| CoreConnectionError::InvalidResponse {
             field: "bedrockProfile",
+        })
+    }
+
+    pub async fn check_bedrock_port(
+        &mut self,
+        instance_id: &InstanceId,
+    ) -> Result<BedrockPortCheck, CoreConnectionError> {
+        let result = self
+            .request("bedrock.port.check", json!({ "instanceId": instance_id }))
+            .await?;
+
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse {
+            field: "bedrockPortCheck",
         })
     }
 

@@ -10,6 +10,8 @@ use std::time::Instant;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use nexus_config::CoreConfig;
+use nexus_domain::BedrockPortCheck;
+use nexus_domain::BedrockPortCheckState;
 use nexus_domain::CoreId;
 use nexus_domain::Instance;
 use nexus_domain::InstanceCreate;
@@ -40,6 +42,7 @@ use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
+use tokio::net::UdpSocket;
 use tokio::select;
 use tokio::spawn;
 use tokio::sync::broadcast::error::RecvError;
@@ -432,6 +435,9 @@ async fn request_response(
         }
         "provision.task.get" => provision_task_response(request_id, params, state.provision()),
         "bedrock.profile" => bedrock_profile_response(request_id, params, state.instances()),
+        "bedrock.port.check" => {
+            bedrock_port_check_response(request_id, params, state.instances()).await
+        }
         "proxy.subserver.list" => proxy_subserver_list_response(
             request_id,
             params,
@@ -811,6 +817,61 @@ fn bedrock_profile_response(
     };
 
     success_response(request_id, json!(profile))
+}
+
+async fn bedrock_port_check_response(
+    request_id: RequestId,
+    params: &Value,
+    instances: &InstanceRepository,
+) -> WireMessage {
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "bedrock.port.check requires a valid instanceId",
+        );
+    };
+    let instance = match instances.get(&instance_id) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            return error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist");
+        }
+        Err(error) => return repository_failure_response(request_id, &error),
+    };
+    let Some(profile) = instance.kind().bedrock_management_profile() else {
+        return error_response(
+            request_id,
+            "BEDROCK_PROFILE_UNSUPPORTED",
+            "The instance does not expose a Bedrock operations profile",
+        );
+    };
+
+    let (state, available, error) = match UdpSocket::bind(("0.0.0.0", profile.default_port())).await
+    {
+        Ok(_socket) => (BedrockPortCheckState::Available, true, None),
+        Err(error) if error.kind() == ErrorKind::AddrInUse => {
+            (BedrockPortCheckState::InUse, false, None)
+        }
+        Err(_) => (
+            BedrockPortCheckState::Unavailable,
+            false,
+            Some("BIND_FAILED".to_owned()),
+        ),
+    };
+
+    success_response(
+        request_id,
+        json!(BedrockPortCheck::new(
+            instance_id,
+            profile.management_kind(),
+            profile.transport(),
+            profile.default_port(),
+            state,
+            available,
+            current_timestamp(),
+            error,
+        )),
+    )
 }
 
 fn proxy_subserver_list_response(

@@ -817,6 +817,36 @@ paths:
           $ref: '#/components/responses/Conflict'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/instances/{instanceId}/bedrock-profile/actions/check-port:
+    parameters:
+      - $ref: '#/components/parameters/CoreId'
+      - $ref: '#/components/parameters/InstanceId'
+    post:
+      tags: [ Bedrock ]
+      operationId: checkBedrockPort
+      summary: Check the default Bedrock UDP port from Core
+      description: |
+        Ask the registered Core node to probe the Bedrock profile's default
+        RakNet UDP port, currently 19132. The result distinguishes an
+        available port, a port already in use, and a bind failure; it does not
+        assume Java TCP health semantics.
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      responses:
+        '200':
+          description: Bedrock UDP port probe result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BedrockPortCheck'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instances/{instanceId}/extensions:
     parameters:
       - $ref: '#/components/parameters/CoreId'
@@ -3490,6 +3520,30 @@ components:
           type: array
           items:
             type: string
+    BedrockPortCheck:
+      type: object
+      required: [ instanceId, managementKind, transport, port, state, available, checkedAt, error ]
+      properties:
+        instanceId:
+          type: string
+        managementKind:
+          $ref: '#/components/schemas/BedrockManagementKind'
+        transport:
+          $ref: '#/components/schemas/BedrockTransport'
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        state:
+          type: string
+          enum: [ AVAILABLE, IN_USE, UNAVAILABLE ]
+        available:
+          type: boolean
+        checkedAt:
+          type: string
+          format: date-time
+        error:
+          type: [ string, 'null' ]
     ExtensionDirectoryPage:
       type: object
       required: [ path, page ]

@@ -391,6 +391,23 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     assert_eq!(bedrock_profile.body["configurationFiles"][0], "config.yml");
     assert!(bedrock_profile.body["extensionKind"].is_null());
 
+    let bedrock_port_check = send_json_request(
+        panel_address,
+        "POST",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/geyser-proxy/bedrock-profile/actions/check-port"
+        ),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(bedrock_port_check.status, 200);
+    assert_eq!(bedrock_port_check.body["managementKind"], "GEYSER");
+    assert_eq!(bedrock_port_check.body["transport"], "RAKNET_UDP");
+    assert_eq!(bedrock_port_check.body["port"], 19132);
+    assert!(bedrock_port_check.body["state"].is_string());
+    assert!(bedrock_port_check.body["available"].is_boolean());
+
     let proxy_path = format!("/api/v1/cores/{core_id}/instances/geyser-proxy/proxy-subservers");
     let proxy_backend_listener = TcpListener::bind("127.0.0.1:0")
         .await

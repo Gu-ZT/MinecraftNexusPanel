@@ -3,6 +3,8 @@ export { createApiUrl } from './create-api-url';
 export type {
   BedrockManagementKind,
   BedrockManagementProfile,
+  BedrockPortCheck,
+  BedrockPortCheckState,
   BedrockTransport,
   ClientType,
   CommandAccepted,

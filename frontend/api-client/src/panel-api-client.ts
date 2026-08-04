@@ -64,6 +64,7 @@ export type DownloadPlatform = 'LINUX' | 'MACOS' | 'WINDOWS';
 export type DownloadArchitecture = 'AARCH64' | 'X86_64';
 export type BedrockManagementKind = 'DEDICATED_SERVER' | 'POCKET_MINE' | 'NUKKIT' | 'GEYSER';
 export type BedrockTransport = 'RAKNET_UDP';
+export type BedrockPortCheckState = 'AVAILABLE' | 'IN_USE' | 'UNAVAILABLE';
 export type InstallRuntimeRequirement = 'JAVA' | 'NODE_JS' | 'PYTHON' | 'PHP' | 'NATIVE';
 export type InstallTemplateFamily = 'JAVA_SERVER' | 'JAVA_PROXY' | 'BEDROCK_SERVER' | 'BEDROCK_PROXY';
 export type ProxyTopology = 'NONE' | 'ONE_TO_MANY' | 'ONE_TO_ONE';
@@ -207,6 +208,17 @@ export interface BedrockManagementProfile {
   configurationFiles: string[];
   extensionKind: ExtensionKind | null;
   extensionDirectories: string[];
+}
+
+export interface BedrockPortCheck {
+  instanceId: string;
+  managementKind: BedrockManagementKind;
+  transport: BedrockTransport;
+  port: number;
+  state: BedrockPortCheckState;
+  available: boolean;
+  checkedAt: string;
+  error: string | null;
 }
 
 export type ConfigFormat = 'PROPERTIES' | 'YAML' | 'JSON' | 'TOML' | 'PROVIDER_SPECIFIC';
@@ -655,6 +667,7 @@ export interface PanelApiClient {
   verifyRuntime(coreId: string, runtimeId: string): Promise<RuntimeOperation>;
   deleteRuntime(coreId: string, runtimeId: string): Promise<TaskAccepted>;
   getBedrockProfile(coreId: string, instanceId: string): Promise<BedrockManagementProfile>;
+  checkBedrockPort(coreId: string, instanceId: string): Promise<BedrockPortCheck>;
   listInstanceExtensions(
     coreId: string,
     instanceId: string,
@@ -1036,6 +1049,12 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     getBedrockProfile(coreId, instanceId) {
       return request<BedrockManagementProfile>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/bedrock-profile`,
+      );
+    },
+    checkBedrockPort(coreId, instanceId) {
+      return request<BedrockPortCheck>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/bedrock-profile/actions/check-port`,
+        { method: 'POST', csrf: true },
       );
     },
     listInstanceExtensions(coreId, instanceId, templateId, kind) {
