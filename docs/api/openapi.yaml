@@ -682,6 +682,63 @@ paths:
           $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+    put:
+      tags: [ Extensions ]
+      operationId: writeInstanceExtension
+      summary: Place a prepared extension file within a template layout
+      description: |
+        Write a prepared local extension artifact through the Core atomic file
+        API. The path must be below a directory declared for the selected
+        template and extension kind. This operation does not resolve a source,
+        dependencies, compatibility, or an extension installation record.
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - name: templateId
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: kind
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/ExtensionKind'
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              maxLength: 1048576
+      responses:
+        '200':
+          description: Written extension file entry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/PreconditionRequired'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
     delete:
       tags: [ Extensions ]
       operationId: deleteInstanceExtension
