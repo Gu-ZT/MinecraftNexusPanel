@@ -67,6 +67,7 @@ impl ExtensionTaskStore {
                 "kind": task_kind,
                 "extensionKind": kind,
                 "state": "RUNNING",
+                "rollbackState": "NOT_STARTED",
                 "progress": { "completed": 0, "total": total },
                 "installations": [],
                 "acceptedAt": current_timestamp(),
@@ -111,6 +112,7 @@ impl ExtensionTaskStore {
         };
         let total = task["progress"]["total"].as_u64().unwrap_or_default();
         task["state"] = json!("SUCCEEDED");
+        task["rollbackState"] = json!("NOT_NEEDED");
         task["progress"] = json!({ "completed": total, "total": total });
         task["installations"] = json!(installations);
         Ok(())
@@ -122,6 +124,7 @@ impl ExtensionTaskStore {
         completed: usize,
         installations: &[ExtensionInstall],
         error: &str,
+        rollback_state: &str,
     ) -> Result<(), ()> {
         let mut tasks = self.tasks.lock().map_err(|_| ())?;
         let Some(task) = tasks.get_mut(&task_id) else {
@@ -129,6 +132,7 @@ impl ExtensionTaskStore {
         };
         let total = task["progress"]["total"].as_u64().unwrap_or_default();
         task["state"] = json!("FAILED");
+        task["rollbackState"] = json!(rollback_state);
         task["progress"] = json!({ "completed": completed, "total": total });
         task["installations"] = json!(installations);
         task["error"] = json!(error);
@@ -175,6 +179,7 @@ mod tests {
             .expect("task lookup succeeds")
             .expect("task exists");
         assert_eq!(task["state"], "RUNNING");
+        assert_eq!(task["rollbackState"], "NOT_STARTED");
         assert_eq!(task["progress"], json!({ "completed": 0, "total": 2 }));
 
         store
@@ -188,6 +193,7 @@ mod tests {
             .expect("task lookup succeeds")
             .expect("task exists");
         assert_eq!(task["state"], "SUCCEEDED");
+        assert_eq!(task["rollbackState"], "NOT_NEEDED");
         assert_eq!(task["progress"], json!({ "completed": 2, "total": 2 }));
     }
 
@@ -211,13 +217,14 @@ mod tests {
         assert!(created);
 
         store
-            .fail(task_id, 1, &[], "artifact failed")
+            .fail(task_id, 1, &[], "artifact failed", "NOT_NEEDED")
             .expect("task failure is recorded");
         let task = store
             .get(task_id)
             .expect("task lookup succeeds")
             .expect("task exists");
         assert_eq!(task["state"], "FAILED");
+        assert_eq!(task["rollbackState"], "NOT_NEEDED");
         assert_eq!(task["progress"], json!({ "completed": 1, "total": 3 }));
         assert_eq!(task["error"], "artifact failed");
     }

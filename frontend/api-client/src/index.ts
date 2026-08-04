@@ -28,6 +28,7 @@ export type {
   ExtensionInstallRequest,
   ExtensionInstallTask,
   ExtensionInstallTaskState,
+  ExtensionRollbackState,
   ExtensionKind,
   ExtensionPlanItem,
   ExtensionPlanRequest,

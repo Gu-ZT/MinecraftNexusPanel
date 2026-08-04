@@ -550,8 +550,71 @@ async fn run_extension_install_task(
         )
         .await
     {
-        fail_extension_task(&state, task_id, 0, &[], error.to_string());
+        fail_extension_task(
+            &state,
+            task_id,
+            core_id,
+            &instance_id,
+            0,
+            &[],
+            None,
+            error.to_string(),
+        )
+        .await;
         return;
+    }
+
+    let rollback_directory = target_path.is_none().then_some(directory.as_str());
+    if rollback_directory.is_some() {
+        let existing_entries =
+            match list_extension_directory_entries(&state, core_id, &instance_id, &directory).await
+            {
+                Ok(entries) => entries,
+                Err(error) => {
+                    fail_extension_task(
+                        &state,
+                        task_id,
+                        core_id,
+                        &instance_id,
+                        0,
+                        &[],
+                        None,
+                        error,
+                    )
+                    .await;
+                    return;
+                }
+            };
+        for item in plan.items() {
+            let Some(path) = extension_install_path(&directory, item) else {
+                fail_extension_task(
+                    &state,
+                    task_id,
+                    core_id,
+                    &instance_id,
+                    0,
+                    &[],
+                    None,
+                    "The resolved extension artifact has an invalid file name".to_owned(),
+                )
+                .await;
+                return;
+            };
+            if existing_entries.iter().any(|entry| entry.path() == path) {
+                fail_extension_task(
+                    &state,
+                    task_id,
+                    core_id,
+                    &instance_id,
+                    0,
+                    &[],
+                    None,
+                    format!("Extension target already exists: {path}"),
+                )
+                .await;
+                return;
+            }
+        }
     }
 
     let total = plan.items().len();
@@ -568,10 +631,14 @@ async fn run_extension_install_task(
             fail_extension_task(
                 &state,
                 task_id,
+                core_id,
+                &instance_id,
                 index,
                 &installations,
+                rollback_directory,
                 "The resolved extension artifact has an invalid file name".to_owned(),
-            );
+            )
+            .await;
             return;
         };
         let transfer_idempotency_key = if index == 0 {
@@ -597,7 +664,17 @@ async fn run_extension_install_task(
         {
             Ok(installation) => installations.push(installation),
             Err(error) => {
-                fail_extension_task(&state, task_id, index, &installations, error);
+                fail_extension_task(
+                    &state,
+                    task_id,
+                    core_id,
+                    &instance_id,
+                    index,
+                    &installations,
+                    rollback_directory,
+                    error,
+                )
+                .await;
                 return;
             }
         }
@@ -614,21 +691,202 @@ async fn run_extension_install_task(
     }
 }
 
-fn fail_extension_task(
+#[allow(clippy::too_many_arguments)]
+async fn fail_extension_task(
     state: &PanelState,
     task_id: TaskId,
+    core_id: CoreId,
+    instance_id: &InstanceId,
     completed: usize,
     installations: &[ExtensionInstall],
+    rollback_directory: Option<&str>,
     error: String,
 ) {
-    tracing::warn!(%task_id, %error, "Extension installation task failed");
-    if let Err(store_error) =
-        state
-            .extension_tasks()
-            .fail(task_id, completed, installations, &error)
-    {
+    let (retained_installations, rollback_state) = match rollback_directory {
+        Some(directory) if !installations.is_empty() => {
+            rollback_extension_installations(state, core_id, instance_id, directory, installations)
+                .await
+        }
+        _ => (installations.to_vec(), "NOT_NEEDED"),
+    };
+    tracing::warn!(
+        %task_id,
+        %error,
+        rollback_state,
+        "Extension installation task failed"
+    );
+    if let Err(store_error) = state.extension_tasks().fail(
+        task_id,
+        completed,
+        &retained_installations,
+        &error,
+        rollback_state,
+    ) {
         tracing::error!(?store_error, %task_id, "Failed to record extension task failure");
     }
+}
+
+async fn list_extension_directory_entries(
+    state: &PanelState,
+    core_id: CoreId,
+    instance_id: &InstanceId,
+    directory: &str,
+) -> Result<Vec<FileEntry>, String> {
+    let mut entries = Vec::new();
+    let mut cursor = None;
+    loop {
+        let page = state
+            .cores()
+            .list_instance_files(
+                core_id,
+                instance_id,
+                directory,
+                cursor.as_deref(),
+                Some(200),
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        entries.extend(page.items().iter().cloned());
+        let Some(next_cursor) = page.next_cursor() else {
+            return Ok(entries);
+        };
+        cursor = Some(next_cursor.to_owned());
+    }
+}
+
+async fn rollback_extension_installations(
+    state: &PanelState,
+    core_id: CoreId,
+    instance_id: &InstanceId,
+    directory: &str,
+    installations: &[ExtensionInstall],
+) -> (Vec<ExtensionInstall>, &'static str) {
+    let mut retained = Vec::new();
+    for installation in installations {
+        let current_installations = match state
+            .cores()
+            .list_extension_installs(core_id, instance_id, installation.kind())
+            .await
+        {
+            Ok(installations) => installations,
+            Err(error) => {
+                tracing::warn!(%error, path = %installation.path(), "Unable to inspect an extension before rollback");
+                retained.push(installation.clone());
+                continue;
+            }
+        };
+        let current_installation = current_installations
+            .iter()
+            .find(|current| current.path() == installation.path());
+        if current_installation.is_none_or(|current| current.id() != installation.id()) {
+            retained.push(installation.clone());
+            continue;
+        }
+
+        let entries = match list_extension_directory_entries(state, core_id, instance_id, directory)
+            .await
+        {
+            Ok(entries) => entries,
+            Err(error) => {
+                tracing::warn!(%error, path = %installation.path(), "Unable to inspect an extension file before rollback");
+                retained.push(installation.clone());
+                continue;
+            }
+        };
+        let Some(entry) = entries
+            .iter()
+            .find(|entry| entry.path() == installation.path())
+        else {
+            retained.push(installation.clone());
+            continue;
+        };
+        if entry.sha256() != Some(installation.sha256()) {
+            retained.push(installation.clone());
+            continue;
+        }
+
+        let delete_task = match state
+            .cores()
+            .delete_instance_file(
+                core_id,
+                instance_id,
+                installation.path(),
+                false,
+                &RequestId::new().to_string(),
+            )
+            .await
+        {
+            Ok(task) => task,
+            Err(error) => {
+                tracing::warn!(%error, path = %installation.path(), "Unable to start extension rollback deletion");
+                retained.push(installation.clone());
+                continue;
+            }
+        };
+        let Some(delete_task_id) = delete_task
+            .get("taskId")
+            .and_then(Value::as_str)
+            .and_then(|value| value.parse::<TaskId>().ok())
+        else {
+            retained.push(installation.clone());
+            continue;
+        };
+        if !wait_for_file_task_success(state, core_id, &delete_task_id).await {
+            retained.push(installation.clone());
+            continue;
+        }
+
+        let current_installations = match state
+            .cores()
+            .list_extension_installs(core_id, instance_id, installation.kind())
+            .await
+        {
+            Ok(installations) => installations,
+            Err(error) => {
+                tracing::warn!(%error, path = %installation.path(), "Unable to remove the rolled back extension record");
+                retained.push(installation.clone());
+                continue;
+            }
+        };
+        if current_installations.iter().any(|current| {
+            current.path() == installation.path() && current.id() == installation.id()
+        }) {
+            if let Err(error) = state
+                .cores()
+                .delete_extension_install(core_id, instance_id, installation.path())
+                .await
+            {
+                tracing::warn!(%error, path = %installation.path(), "Unable to remove the rolled back extension record");
+                retained.push(installation.clone());
+            }
+        }
+    }
+
+    let state = if installations.is_empty() {
+        "NOT_NEEDED"
+    } else if retained.is_empty() {
+        "SUCCEEDED"
+    } else {
+        "PARTIAL"
+    };
+    (retained, state)
+}
+
+async fn wait_for_file_task_success(state: &PanelState, core_id: CoreId, task_id: &TaskId) -> bool {
+    for _ in 0..60 {
+        match state.cores().get_file_task(core_id, task_id).await {
+            Ok(task) => match task.get("state").and_then(Value::as_str) {
+                Some("SUCCEEDED") => return true,
+                Some("FAILED") => return false,
+                _ => {}
+            },
+            Err(error) => {
+                tracing::debug!(%error, %task_id, "Rollback deletion task is not yet readable");
+            }
+        }
+        sleep(Duration::from_secs(1)).await;
+    }
+    false
 }
 
 #[allow(clippy::too_many_arguments)]

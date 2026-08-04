@@ -382,6 +382,7 @@ export interface ExtensionInstallRequest extends ExtensionPlanRequest {
 }
 
 export type ExtensionInstallTaskState = 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+export type ExtensionRollbackState = 'NOT_STARTED' | 'NOT_NEEDED' | 'SUCCEEDED' | 'PARTIAL';
 
 export interface ExtensionInstallTask {
   taskId: string;
@@ -390,6 +391,7 @@ export interface ExtensionInstallTask {
   kind: 'EXTENSION_INSTALL' | 'EXTENSION_UPDATE';
   extensionKind: ExtensionKind;
   state: ExtensionInstallTaskState;
+  rollbackState: ExtensionRollbackState;
   progress: {
     completed: number;
     total: number;
