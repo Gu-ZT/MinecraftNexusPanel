@@ -157,7 +157,7 @@ MinecraftNexusPanel/
 
 实现规则：
 
-- 混合端的插件和模组必须使用独立的 `ExtensionKind`、安装记录和兼容性结果。目录不能由 Panel 全局硬编码；同一端可以有多个目录，同一目录也可能承载不同扩展种类（例如当前 Sponge 画像），因此扫描和安装必须以模板声明为准。
+- 混合端的插件和模组必须使用独立的 `ExtensionKind`、安装记录和兼容性结果。`InstallTemplate` 已能按类型展开一个或多个声明目录；目录不能由 Panel 全局硬编码，同一端可以有多个目录，同一目录也可能承载不同扩展种类（例如当前 Sponge 画像），因此后续扫描和安装必须以模板声明为准。
 - Velocity、Waterfall、BungeeCord、Lightfall 是一对多代理，Geyser 是一对一代理。子服务器关系独立于实例基本设置，目标必须是同一 Core 上已存在的非代理实例；Core 强制拓扑数量上限。
 - Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit 和 Geyser 使用 `BedrockManagementProfile` 描述 RakNet UDP、默认端口、配置文件和插件能力。基岩端的配置、扩展、健康检查、升级、备份恢复和端口冲突处理不能假设为 Java 服务端逻辑。
 - 当前已完成类型枚举、内置目录、扩展布局、代理子服务器关系和基岩画像；Vanilla、Paper、Velocity、Fabric、NeoForge、Forge、Bukkit、Spigot、Purpur、Pufferfish、Folia、Leaf、Mohist、Youer、Silkard、Magma、Sponge、Arclight、CatServer、Waterfall、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit 已接入官方版本元数据目录。NeoForge 使用官方 Maven XML，Pufferfish 聚合五个官方 Jenkins job，Bukkit/Spigot 使用官方 Jenkins RSS Atom feed，Mohist/Youer 使用 MohistMC 官方 project API，Silkard 使用官方 GitHub branches API，Leaf/Magma/Sponge/Arclight/CatServer/Lightfall/PocketMine 使用官方 GitHub Releases 资产，BDS 使用 Mojang 官方下载链接 API 解析 Windows/Linux 稳定版和 Preview ZIP，Nukkit/Cloudburst Nukkit 使用 OpenCollab Maven 版本 API；Sponge 当前来源是官方历史 SpongeVanilla Releases，Magma 当前主要是开发构建。RSS/Release/Maven/project/branch provider 仍只证明版本目录可读取，归档结构、启动命令和版本化运维配方仍需逐项验证，AsyncYouer、Lingshu 仍需补充 provider。
