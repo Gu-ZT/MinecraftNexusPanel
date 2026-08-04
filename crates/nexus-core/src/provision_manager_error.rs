@@ -14,13 +14,24 @@ use nexus_domain::InstanceCreateError;
 pub enum ProvisionManagerError {
     /// 搭建归档解压失败。
     #[error("failed to extract provision archive {path}: {message}")]
-    Archive { path: PathBuf, message: String },
+    Archive {
+        /// 解压失败的搭建归档路径。
+        path: PathBuf,
+        /// 归档处理器返回的诊断文本。
+        message: String,
+    },
     /// 目标实例已经存在。
     #[error("instance {instance_id} already exists")]
-    AlreadyExists { instance_id: InstanceId },
+    AlreadyExists {
+        /// 已存在的目标实例标识。
+        instance_id: InstanceId,
+    },
     /// 计划字段不符合领域或路径约束。
     #[error("provision plan field is invalid: {field}")]
-    InvalidPlan { field: &'static str },
+    InvalidPlan {
+        /// 不符合约束的计划字段名称。
+        field: &'static str,
+    },
     /// 执行哈希与已解析计划不一致。
     #[error("provision plan hash does not match the resolved plan")]
     PlanHashMismatch,
@@ -39,9 +50,12 @@ pub enum ProvisionManagerError {
     /// 搭建目录读写失败。
     #[error("failed to {operation} provision path {path}")]
     Storage {
+        /// 失败的文件系统操作名称。
         operation: &'static str,
+        /// 发生错误的搭建路径。
         path: PathBuf,
         #[source]
+        /// 操作系统返回的文件错误。
         source: io::Error,
     },
     /// 搭建任务状态锁不可用。
