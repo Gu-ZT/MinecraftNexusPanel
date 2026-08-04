@@ -12,10 +12,18 @@ pub enum ConfigError {
     HelpRequested,
     /// 运行模式名称不受支持。
     #[error("invalid mode: {value}")]
-    InvalidMode { value: String },
+    InvalidMode {
+        /// 用户传入的原始运行模式名称。
+        value: String,
+    },
     /// 监听地址不是合法 Socket 地址。
     #[error("invalid socket address for {option}: {value}")]
-    InvalidSocketAddress { option: &'static str, value: String },
+    InvalidSocketAddress {
+        /// 产生错误的配置选项名称。
+        option: &'static str,
+        /// 用户传入的原始地址文本。
+        value: String,
+    },
     /// Core 预共享密钥无法按协议格式解析。
     #[error("invalid Core pre-shared key")]
     InvalidCorePreSharedKey(#[source] PresharedKeyError),
@@ -36,10 +44,16 @@ pub enum ConfigError {
     EmptyLogFilter,
     /// 需要值的命令行选项没有后续参数。
     #[error("missing value for {option}")]
-    MissingValue { option: &'static str },
+    MissingValue {
+        /// 缺少值的命令行选项名称。
+        option: &'static str,
+    },
     /// 命令行选项名称不受支持。
     #[error("unsupported option: {option}")]
-    UnsupportedOption { option: String },
+    UnsupportedOption {
+        /// 用户传入的未知选项名称。
+        option: String,
+    },
     /// 用户请求显示版本并正常结束解析。
     #[error("version requested")]
     VersionRequested,
