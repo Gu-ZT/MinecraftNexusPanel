@@ -11,6 +11,10 @@ use rustls::pki_types::CertificateDer;
 use rustls::pki_types::ServerName;
 use rustls::pki_types::UnixTime;
 
+/// 仅跳过证书信任链检查、仍验证握手签名的内部验证器。
+///
+/// 该类型只在调用方明确关闭系统证书校验时使用；证书指纹固定等额外策略
+/// 必须由上层在连接建立后完成。
 #[derive(Debug)]
 pub(crate) struct InsecureServerCertificateVerifier {
     supported_algorithms: WebPkiSupportedAlgorithms,

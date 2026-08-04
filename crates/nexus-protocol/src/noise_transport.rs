@@ -18,6 +18,10 @@ use crate::serialize_message;
 
 const NOISE_PATTERN: &str = "Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s";
 
+/// 在已建立的异步字节流上提供 Noise PSK 加密消息传输。
+///
+/// `accept` 和 `connect` 会先完成固定模式的双向握手，之后每条 [`WireMessage`]
+/// 都经过 JSON 编码、加密和长度前缀封装。底层流的所有权由传输对象持有。
 pub struct NoiseTransport<S> {
     stream: S,
     transport: TransportState,
@@ -27,6 +31,9 @@ impl<S> NoiseTransport<S>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
+    /// 作为服务端接受 Noise 握手并进入传输模式。
+    ///
+    /// 握手消息必须不携带应用层负载；预共享密钥错误或底层 I/O 错误会终止会话。
     pub async fn accept(stream: S, pre_shared_key: &PresharedKey) -> Result<Self, SessionError> {
         let mut handshake = build_responder(pre_shared_key)?;
         let mut buffer = vec![0_u8; MAX_CIPHERTEXT_FRAME_BYTES];
@@ -47,6 +54,7 @@ where
         })
     }
 
+    /// 作为客户端发起 Noise 握手并进入传输模式。
     pub async fn connect(stream: S, pre_shared_key: &PresharedKey) -> Result<Self, SessionError> {
         let mut handshake = build_initiator(pre_shared_key)?;
         let mut buffer = vec![0_u8; MAX_CIPHERTEXT_FRAME_BYTES];
@@ -67,6 +75,7 @@ where
         })
     }
 
+    /// 读取并解密下一条应用层消息。
     pub async fn read_message(&mut self) -> Result<WireMessage, SessionError> {
         let ciphertext = read_raw_frame(&mut self.stream).await?;
         let mut plaintext = vec![0_u8; ciphertext.len()];
@@ -75,6 +84,7 @@ where
         deserialize_message(&plaintext[..plaintext_length]).map_err(SessionError::from)
     }
 
+    /// 序列化、加密并写出一条应用层消息。
     pub async fn write_message(&mut self, message: &WireMessage) -> Result<(), SessionError> {
         let plaintext = serialize_message(message)?;
         let mut ciphertext = vec![0_u8; MAX_CIPHERTEXT_FRAME_BYTES];

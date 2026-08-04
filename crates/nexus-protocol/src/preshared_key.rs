@@ -11,10 +11,16 @@ const DERIVED_KEY_BYTES: usize = 32;
 const MINIMUM_SECRET_BYTES: usize = 32;
 const PSK_SALT: &[u8] = b"mcnp-core-psk-v1";
 
+/// 由 Core 预共享秘密派生出的固定长度 Noise PSK。
+///
+/// 原始秘密不会保存在值对象中；`Debug` 实现也会隐藏派生后的密钥内容。
 #[derive(Clone, Eq, PartialEq)]
 pub struct PresharedKey([u8; DERIVED_KEY_BYTES]);
 
 impl PresharedKey {
+    /// 从无填充 Base64URL 编码的秘密派生 PSK。
+    ///
+    /// 输入至少需要 32 字节解码结果，编码中不接受 `=` 填充。
     pub fn from_base64url(value: &str) -> Result<Self, PresharedKeyError> {
         let secret = URL_SAFE_NO_PAD
             .decode(value)
@@ -23,6 +29,7 @@ impl PresharedKey {
         Self::from_secret(&secret)
     }
 
+    /// 从原始秘密使用固定盐和 HKDF-SHA-256 派生 PSK。
     pub fn from_secret(secret: &[u8]) -> Result<Self, PresharedKeyError> {
         if secret.len() < MINIMUM_SECRET_BYTES {
             return Err(PresharedKeyError::SecretTooShort {
@@ -39,6 +46,7 @@ impl PresharedKey {
         Ok(Self(derived_key))
     }
 
+    /// 返回供 Noise 使用的 32 字节派生密钥。
     #[must_use]
     pub const fn as_bytes(&self) -> &[u8; DERIVED_KEY_BYTES] {
         &self.0
