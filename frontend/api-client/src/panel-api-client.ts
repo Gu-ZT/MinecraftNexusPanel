@@ -363,12 +363,22 @@ export interface ExtensionInstallRequest extends ExtensionPlanRequest {
   directory?: string;
 }
 
-export interface ExtensionInstallResult {
-  templateId: string;
-  kind: ExtensionKind;
-  directory: string;
+export type ExtensionInstallTaskState = 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+
+export interface ExtensionInstallTask {
+  taskId: string;
+  coreId: string;
+  instanceId: string;
+  kind: 'EXTENSION_INSTALL';
+  extensionKind: ExtensionKind;
+  state: ExtensionInstallTaskState;
+  progress: {
+    completed: number;
+    total: number;
+  };
   installations: ExtensionInstall[];
   acceptedAt: string;
+  error?: string;
 }
 
 export interface InstanceExtensionScan {
@@ -608,7 +618,8 @@ export interface PanelApiClient {
     coreId: string,
     instanceId: string,
     request: ExtensionInstallRequest,
-  ): Promise<ExtensionInstallResult>;
+  ): Promise<TaskAccepted>;
+  getExtensionInstallTask(coreId: string, taskId: string): Promise<ExtensionInstallTask>;
   listManagedRuntimes(coreId: string): Promise<ManagedRuntimePage>;
   resolveProvisionPlan(coreId: string, plan: ProvisionPlan): Promise<ProvisionResolution>;
   executeProvision(coreId: string, plan: ProvisionPlan, planHash: string): Promise<ProvisionOperation>;
@@ -914,9 +925,14 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
       );
     },
     installExtensions(coreId, instanceId, installRequest) {
-      return request<ExtensionInstallResult>(
+      return request<TaskAccepted>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/extensions`,
         { method: 'POST', body: installRequest, csrf: true, idempotent: true },
+      );
+    },
+    getExtensionInstallTask(coreId, taskId) {
+      return request<ExtensionInstallTask>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/extension-tasks/${encodeURIComponent(taskId)}`,
       );
     },
     listManagedRuntimes(coreId) {

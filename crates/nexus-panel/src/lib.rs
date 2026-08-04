@@ -18,6 +18,7 @@ mod environment_routes;
 mod extension_routes;
 mod extension_source_client;
 mod extension_source_error;
+mod extension_task_store;
 mod file_routes;
 mod install_template_catalog;
 mod install_template_routes;

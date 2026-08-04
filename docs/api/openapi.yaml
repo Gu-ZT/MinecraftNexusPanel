@@ -824,15 +824,15 @@ paths:
     post:
       tags: [ Extensions ]
       operationId: installExtensions
-      summary: Download and install a resolved extension plan
+      summary: Start an asynchronous resolved extension plan installation
       description: |
         Re-resolve the requested Modrinth project and required dependencies,
         download only the resulting HTTPS artifacts, verify their declared
         size and SHA-512, and upload each file to Core through transfer-v1.
         The selected directory must be declared by the template; when a kind
-        has multiple directories, directory is required. The operation writes
-        one installation record per committed file and does not provide
-        aggregate asynchronous task status or rollback yet.
+        has multiple directories, directory is required. The response only
+        accepts the task; query the task endpoint for progress and committed
+        installation records. Aggregate rollback is not provided yet.
       security:
         - cookieAuth: [ ]
           csrfToken: [ ]
@@ -846,12 +846,12 @@ paths:
             schema:
               $ref: '#/components/schemas/ExtensionInstallRequest'
       responses:
-        '201':
-          description: Extension artifacts installed and recorded
+        '202':
+          description: Extension installation task accepted
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExtensionInstallResult'
+                $ref: '#/components/schemas/TaskAccepted'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -869,7 +869,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '502':
-          description: The source artifact or Core installation failed
+          description: The extension source plan could not be resolved
           content:
             application/json:
               schema:
@@ -1020,6 +1020,38 @@ paths:
           $ref: '#/components/responses/NotFound'
         '412':
           $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/extension-tasks/{taskId}:
+    get:
+      tags: [ Extensions, Tasks ]
+      operationId: getExtensionInstallTask
+      summary: Read extension installation task progress
+      description: |
+        Read an in-memory Panel task for a previously accepted extension
+        installation. The task reports committed files and may be FAILED after
+        a partial installation; it is not resumed across a Panel restart.
+      security:
+        - cookieAuth: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Extension installation task status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionInstallTask'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instances:
@@ -2956,18 +2988,37 @@ components:
             directory:
               type: [ string, 'null' ]
               minLength: 1
-    ExtensionInstallResult:
+    ExtensionInstallTask:
       type: object
-      required: [ templateId, kind, directory, installations, acceptedAt ]
+      required: [ taskId, coreId, instanceId, kind, extensionKind, state, progress, installations, acceptedAt ]
       properties:
-        templateId:
+        taskId:
+          type: string
+          minLength: 1
+        coreId:
+          type: string
+          format: uuid
+        instanceId:
           type: string
           minLength: 1
         kind:
-          $ref: '#/components/schemas/ExtensionKind'
-        directory:
           type: string
-          minLength: 1
+          enum: [ EXTENSION_INSTALL ]
+        extensionKind:
+          $ref: '#/components/schemas/ExtensionKind'
+        state:
+          type: string
+          enum: [ RUNNING, SUCCEEDED, FAILED ]
+        progress:
+          type: object
+          required: [ completed, total ]
+          properties:
+            completed:
+              type: integer
+              minimum: 0
+            total:
+              type: integer
+              minimum: 0
         installations:
           type: array
           items:
@@ -2975,6 +3026,9 @@ components:
         acceptedAt:
           type: string
           format: date-time
+        error:
+          type: string
+          minLength: 1
     ExtensionPlanItem:
       type: object
       required: [ source, projectId, versionId, versionNumber, artifact, dependencies ]

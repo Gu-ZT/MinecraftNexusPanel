@@ -122,7 +122,8 @@
   - [x] 读取 Modrinth 项目版本、依赖记录、HTTPS 归档 URL 和 SHA-512 元数据，并按请求版本/加载器返回版本兼容性提示。
   - [x] 解析根项目及 required 依赖的 Modrinth 版本，检测循环/冲突/缺失归档，并通过 `extension-plans:resolve` 返回受限安装前计划。
   - [x] 安装请求重新解析 Modrinth 计划，仅接受 HTTPS 归档，校验声明大小与 SHA-512，通过 Core `transfer-v1` 分片上传到模板声明目录，并持久化每个已提交文件的来源安装记录。
-  - [ ] 补齐聚合 Core 安装任务查询、失败回滚、批量更新和更多来源适配器；当前计划安装为同步顺序流程，后续文件失败时不伪造整体回滚。
+  - [x] 将计划安装改为 Panel 内存异步任务，返回 `202`/`taskId`，提供进度、已提交记录和失败状态查询；任务不跨 Panel 重启恢复。
+  - [ ] 补齐 Core 侧统一安装任务、失败回滚、批量更新和更多来源适配器；后台顺序安装失败时不伪造整体回滚。
   - [x] `BedrockManagementProfile` 为 PocketMine-MP、Nukkit 和 Cloudburst Nukkit 暴露 `plugins/`，BDS/Geyser 保持无插件目录。
   - [ ] 为不同基岩端提供插件/扩展目录、配置和版本兼容性策略。
 - [ ] 代理端与基岩端专门运维：子服务器连通性、Bedrock/RakNet 监听、端口冲突、健康检查、升级和备份恢复。

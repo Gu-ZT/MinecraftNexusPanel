@@ -24,6 +24,7 @@ use nexus_domain::ExtensionInstallRequest;
 use nexus_domain::ExtensionKind;
 use nexus_domain::ExtensionPlanItem;
 use nexus_domain::ExtensionPlanRequest;
+use nexus_domain::ExtensionPlanResolution;
 use nexus_domain::FileEntry;
 use nexus_domain::FilePage;
 use nexus_domain::Instance;
@@ -42,6 +43,7 @@ use tokio::fs::File;
 use tokio::fs::remove_file;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
+use tokio::spawn;
 
 use crate::CoreConnectionError;
 use crate::CoreRegistryError;
@@ -87,6 +89,10 @@ pub(crate) fn extension_routes() -> Router<PanelState> {
                 .post(install_instance_extensions)
                 .put(write_instance_extension)
                 .delete(delete_instance_extension),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/extension-tasks/{task_id}",
+            get(get_extension_install_task),
         )
 }
 
@@ -189,33 +195,135 @@ async fn install_instance_extensions(
         }
     }
 
+    let task_id =
+        match state
+            .extension_tasks()
+            .start(core_id, &instance_id, plan.kind(), plan.items().len())
+        {
+            Ok(task_id) => task_id,
+            Err(()) => {
+                return error_response(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "TASK_STORE_UNAVAILABLE",
+                    "The extension task store cannot accept more tasks",
+                    request_id,
+                );
+            }
+        };
+    let task_state = state.clone();
+    let task_directory = directory.to_owned();
+    let task_instance_id = instance_id.clone();
+    let task_idempotency_key = idempotency_key.to_owned();
+    spawn(async move {
+        run_extension_install_task(
+            task_state,
+            task_id,
+            core_id,
+            task_instance_id,
+            task_directory,
+            plan,
+            task_idempotency_key,
+        )
+        .await;
+    });
+
+    (
+        StatusCode::ACCEPTED,
+        Json(json!({
+            "taskId": task_id,
+            "acceptedAt": current_timestamp(),
+        })),
+    )
+        .into_response()
+}
+
+async fn get_extension_install_task(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, task_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, false, request_id).await {
+        return response;
+    }
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return invalid_core_id_response(request_id);
+    };
+    let Ok(task_id) = task_id.parse::<TaskId>() else {
+        return validation_error(request_id);
+    };
+    let task = match state.extension_tasks().get(task_id) {
+        Ok(Some(task)) => task,
+        Ok(None) => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                "EXTENSION_TASK_NOT_FOUND",
+                "Extension installation task does not exist",
+                request_id,
+            );
+        }
+        Err(()) => {
+            return error_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "TASK_STORE_UNAVAILABLE",
+                "The extension task store is unavailable",
+                request_id,
+            );
+        }
+    };
+    let core_id_text = core_id.to_string();
+    if task.get("coreId").and_then(Value::as_str) != Some(core_id_text.as_str()) {
+        return error_response(
+            StatusCode::NOT_FOUND,
+            "EXTENSION_TASK_NOT_FOUND",
+            "Extension installation task does not exist",
+            request_id,
+        );
+    }
+
+    Json(task).into_response()
+}
+
+async fn run_extension_install_task(
+    state: PanelState,
+    task_id: TaskId,
+    core_id: CoreId,
+    instance_id: InstanceId,
+    directory: String,
+    plan: ExtensionPlanResolution,
+    idempotency_key: String,
+) {
     let directory_idempotency_key = RequestId::new().to_string();
     if let Err(error) = state
         .cores()
         .create_instance_directory(
             core_id,
             &instance_id,
-            directory,
+            &directory,
             true,
             &directory_idempotency_key,
         )
         .await
     {
-        return registry_error_response(error, request_id);
+        fail_extension_task(&state, task_id, 0, &[], error.to_string());
+        return;
     }
 
-    let mut installations = Vec::with_capacity(plan.items().len());
-    for item in plan.items() {
-        let Some(path) = extension_install_path(directory, item) else {
-            return error_response(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "EXTENSION_ARTIFACT_INVALID",
-                "The resolved extension artifact has an invalid file name",
-                request_id,
+    let total = plan.items().len();
+    let mut installations = Vec::with_capacity(total);
+    for (index, item) in plan.items().iter().enumerate() {
+        let Some(path) = extension_install_path(&directory, item) else {
+            fail_extension_task(
+                &state,
+                task_id,
+                index,
+                &installations,
+                "The resolved extension artifact has an invalid file name".to_owned(),
             );
+            return;
         };
-        let transfer_idempotency_key = if installations.is_empty() {
-            idempotency_key.to_owned()
+        let transfer_idempotency_key = if index == 0 {
+            idempotency_key.clone()
         } else {
             RequestId::new().to_string()
         };
@@ -231,21 +339,39 @@ async fn install_instance_extensions(
         .await
         {
             Ok(installation) => installations.push(installation),
-            Err(error) => return extension_install_error_response(error, request_id),
+            Err(error) => {
+                fail_extension_task(&state, task_id, index, &installations, error);
+                return;
+            }
+        }
+        if let Err(error) = state
+            .extension_tasks()
+            .update_progress(task_id, index + 1, total)
+        {
+            tracing::error!(?error, %task_id, "Failed to update extension task progress");
         }
     }
 
-    (
-        StatusCode::CREATED,
-        Json(json!({
-        "templateId": plan.template_id(),
-        "kind": plan.kind(),
-        "directory": directory,
-        "installations": installations,
-        "acceptedAt": current_timestamp(),
-        })),
-    )
-        .into_response()
+    if let Err(error) = state.extension_tasks().complete(task_id, &installations) {
+        tracing::error!(?error, %task_id, "Failed to complete extension task");
+    }
+}
+
+fn fail_extension_task(
+    state: &PanelState,
+    task_id: TaskId,
+    completed: usize,
+    installations: &[ExtensionInstall],
+    error: String,
+) {
+    tracing::warn!(%task_id, %error, "Extension installation task failed");
+    if let Err(store_error) =
+        state
+            .extension_tasks()
+            .fail(task_id, completed, installations, &error)
+    {
+        tracing::error!(?store_error, %task_id, "Failed to record extension task failure");
+    }
 }
 
 async fn install_extension_artifact(
@@ -465,16 +591,6 @@ fn is_valid_plan_request(request: &ExtensionPlanRequest) -> bool {
         && request.loader().is_none_or(|loader| {
             !loader.is_empty() && loader.chars().count() <= 64 && !loader.contains('\0')
         })
-}
-
-fn extension_install_error_response(error: String, request_id: RequestId) -> Response {
-    tracing::warn!(%request_id, %error, "Extension installation failed");
-    error_response(
-        StatusCode::BAD_GATEWAY,
-        "EXTENSION_INSTALL_FAILED",
-        "The extension artifact could not be installed",
-        request_id,
-    )
 }
 
 fn selected_extension_directory<'a>(
