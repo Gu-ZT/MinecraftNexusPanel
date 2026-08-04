@@ -81,6 +81,77 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /extension-catalog/search:
+    get:
+      tags: [ Extensions ]
+      operationId: searchExtensionCatalog
+      summary: Search extension projects from a trusted public source
+      description: |
+        Search Modrinth projects as MOD or PLUGIN records. The returned
+        compatibility value is a source metadata hint based on the requested
+        Minecraft version and loader; it is not an installation verification.
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+        - name: type
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/ExtensionKind'
+        - name: source
+          in: query
+          schema:
+            type: string
+            default: modrinth
+            enum: [ modrinth ]
+        - name: minecraftVersion
+          in: query
+          schema:
+            type: string
+            maxLength: 64
+        - name: loader
+          in: query
+          schema:
+            type: string
+            maxLength: 64
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 10000
+            default: 0
+      responses:
+        '200':
+          description: Extension projects and source compatibility hints
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionSearchResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          description: The extension source could not be queried or parsed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /health/live:
     get:
       tags: [ System ]
@@ -2532,6 +2603,77 @@ components:
     ExtensionKind:
       type: string
       enum: [ PLUGIN, MOD ]
+    ExtensionCompatibility:
+      type: string
+      enum: [ COMPATIBLE, INCOMPATIBLE, UNKNOWN ]
+    ExtensionProject:
+      type: object
+      required:
+        - projectId
+        - source
+        - kind
+        - name
+        - summary
+        - projectUrl
+        - iconUrl
+        - downloads
+        - supportedMinecraftVersions
+        - supportedLoaders
+        - compatibility
+      properties:
+        projectId:
+          type: string
+          minLength: 1
+        source:
+          type: string
+          minLength: 1
+        kind:
+          $ref: '#/components/schemas/ExtensionKind'
+        name:
+          type: string
+          minLength: 1
+        summary:
+          type: string
+        projectUrl:
+          type: string
+          format: uri
+        iconUrl:
+          type: [ string, 'null' ]
+          format: uri
+        downloads:
+          type: integer
+          minimum: 0
+        supportedMinecraftVersions:
+          type: array
+          items:
+            type: string
+        supportedLoaders:
+          type: array
+          items:
+            type: string
+        compatibility:
+          $ref: '#/components/schemas/ExtensionCompatibility'
+    ExtensionSearchResult:
+      type: object
+      required: [ source, items, total, limit, offset ]
+      properties:
+        source:
+          type: string
+          minLength: 1
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtensionProject'
+        total:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+        offset:
+          type: integer
+          minimum: 0
     InstallTemplateExtensionLayout:
       type: object
       required: [ kind, directories ]

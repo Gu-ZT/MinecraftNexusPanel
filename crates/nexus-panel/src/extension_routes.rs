@@ -32,17 +32,125 @@ use crate::core_routes::authorize;
 use crate::core_routes::invalid_core_id_response;
 use crate::core_routes::parse_core_id;
 use crate::core_routes::registry_error_response;
+use crate::extension_source_error::ExtensionSourceError;
 use crate::install_template_catalog::install_template;
 
 const EXTENSION_DIRECTORY_LIST_LIMIT: usize = 200;
 const MAXIMUM_EXTENSION_WRITE_BYTES: usize = 1024 * 1024;
 
 pub(crate) fn extension_routes() -> Router<PanelState> {
-    Router::new().route(
-        "/api/v1/cores/{core_id}/instances/{instance_id}/extensions",
-        get(list_instance_extensions)
-            .put(write_instance_extension)
-            .delete(delete_instance_extension),
+    Router::new()
+        .route(
+            "/api/v1/extension-catalog/search",
+            get(search_extension_catalog),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/instances/{instance_id}/extensions",
+            get(list_instance_extensions)
+                .put(write_instance_extension)
+                .delete(delete_instance_extension),
+        )
+}
+
+async fn search_extension_catalog(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, false, request_id).await {
+        return response;
+    }
+    let Some(search_text) = query
+        .get("query")
+        .map(String::as_str)
+        .filter(|value| !value.is_empty() && value.chars().count() <= 128)
+    else {
+        return validation_error(request_id);
+    };
+    let Some(kind) = query
+        .get("type")
+        .and_then(|value| from_value::<ExtensionKind>(json!(value)).ok())
+    else {
+        return validation_error(request_id);
+    };
+    let source = query
+        .get("source")
+        .map(String::as_str)
+        .unwrap_or("modrinth");
+    if source != "modrinth" {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "EXTENSION_SOURCE_UNSUPPORTED",
+            "The requested extension source is not supported",
+            request_id,
+        );
+    }
+    let minecraft_version = match optional_search_parameter(&query, "minecraftVersion", 64) {
+        Ok(value) => value,
+        Err(()) => return validation_error(request_id),
+    };
+    let loader = match optional_search_parameter(&query, "loader", 64) {
+        Ok(value) => value,
+        Err(()) => return validation_error(request_id),
+    };
+    let limit = match query.get("limit") {
+        None => 20,
+        Some(value) => match value.parse::<usize>() {
+            Ok(value @ 1..=50) => value,
+            _ => return validation_error(request_id),
+        },
+    };
+    let offset = match query.get("offset") {
+        None => 0,
+        Some(value) => match value.parse::<usize>() {
+            Ok(value) if value <= 10_000 => value,
+            _ => return validation_error(request_id),
+        },
+    };
+
+    match state
+        .extension_sources()
+        .search(
+            search_text,
+            kind,
+            minecraft_version.as_deref(),
+            loader.as_deref(),
+            limit,
+            offset,
+        )
+        .await
+    {
+        Ok(result) => Json(result).into_response(),
+        Err(error) => extension_source_error_response(error, request_id),
+    }
+}
+
+fn optional_search_parameter(
+    query: &HashMap<String, String>,
+    key: &str,
+    maximum_length: usize,
+) -> Result<Option<String>, ()> {
+    query
+        .get(key)
+        .map(|value| {
+            if value.is_empty() || value.chars().count() > maximum_length || value.contains('\0') {
+                Err(())
+            } else {
+                Ok(value.clone())
+            }
+        })
+        .transpose()
+}
+
+fn extension_source_error_response(error: ExtensionSourceError, request_id: RequestId) -> Response {
+    tracing::warn!(%error, %request_id, "Extension source lookup failed");
+
+    error_response(
+        StatusCode::BAD_GATEWAY,
+        "EXTENSION_SOURCE_UNAVAILABLE",
+        "Extension source metadata is unavailable",
+        request_id,
     )
 }
 

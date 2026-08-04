@@ -68,6 +68,7 @@ export type InstallRuntimeRequirement = 'JAVA' | 'NODE_JS' | 'PYTHON' | 'PHP' | 
 export type InstallTemplateFamily = 'JAVA_SERVER' | 'JAVA_PROXY' | 'BEDROCK_SERVER' | 'BEDROCK_PROXY';
 export type ProxyTopology = 'NONE' | 'ONE_TO_MANY' | 'ONE_TO_ONE';
 export type ExtensionKind = 'PLUGIN' | 'MOD';
+export type ExtensionCompatibility = 'COMPATIBLE' | 'INCOMPATIBLE' | 'UNKNOWN';
 export interface InstallTemplateExtensionLayout {
   kind: ExtensionKind;
   directories: string[];
@@ -273,6 +274,28 @@ export interface ExtensionInstall {
   projectId: string | null;
   version: string | null;
   installedAt: string;
+}
+
+export interface ExtensionProject {
+  projectId: string;
+  source: string;
+  kind: ExtensionKind;
+  name: string;
+  summary: string;
+  projectUrl: string;
+  iconUrl: string | null;
+  downloads: number;
+  supportedMinecraftVersions: string[];
+  supportedLoaders: string[];
+  compatibility: ExtensionCompatibility;
+}
+
+export interface ExtensionSearchResult {
+  source: string;
+  items: ExtensionProject[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface InstanceExtensionScan {
@@ -488,6 +511,15 @@ export interface PanelApiClient {
   listCores(): Promise<CorePage>;
   listInstallTemplates(): Promise<InstallTemplatePage>;
   listInstallTemplateVersions(templateId: string): Promise<InstallTemplateVersionPage>;
+  searchExtensionCatalog(
+    query: string,
+    type: ExtensionKind,
+    source?: string,
+    minecraftVersion?: string,
+    loader?: string,
+    limit?: number,
+    offset?: number,
+  ): Promise<ExtensionSearchResult>;
   listManagedRuntimes(coreId: string): Promise<ManagedRuntimePage>;
   resolveProvisionPlan(coreId: string, plan: ProvisionPlan): Promise<ProvisionResolution>;
   executeProvision(coreId: string, plan: ProvisionPlan, planHash: string): Promise<ProvisionOperation>;
@@ -745,6 +777,32 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     listInstallTemplateVersions(templateId) {
       return request<InstallTemplateVersionPage>(
         `/api/v1/install-templates/${encodeURIComponent(templateId)}/versions`,
+      );
+    },
+    searchExtensionCatalog(
+      query,
+      type,
+      source = 'modrinth',
+      minecraftVersion,
+      loader,
+      limit = 20,
+      offset = 0,
+    ) {
+      const params = new URLSearchParams({
+        query,
+        type,
+        source,
+        limit: String(limit),
+        offset: String(offset),
+      });
+      if (minecraftVersion !== undefined) {
+        params.set('minecraftVersion', minecraftVersion);
+      }
+      if (loader !== undefined) {
+        params.set('loader', loader);
+      }
+      return request<ExtensionSearchResult>(
+        `/api/v1/extension-catalog/search?${params.toString()}`,
       );
     },
     listManagedRuntimes(coreId) {

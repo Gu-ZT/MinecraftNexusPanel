@@ -118,7 +118,8 @@
   - [x] Panel 在模板声明目录边界内委托 Core 异步删除单个扩展文件，并要求类型、路径、DELETE 确认和幂等键校验。
   - [x] 共享 TypeScript Client 已暴露扩展扫描、写入、删除和 Bedrock 扩展目录字段；全量 OpenAPI 生成仍属于 M5。
   - [x] 为本地产物持久化扩展安装记录，记录类型、路径、SHA-256、来源和安装时间；更新支持 If-Match 并发保护，删除接受后清理记录。
-  - [ ] 接入来源项目、依赖解析、版本兼容性提示和完整扩展安装/更新流程。
+  - [x] 通过 Modrinth 公共 API 搜索 MOD/PLUGIN 项目，支持 Minecraft 版本、加载器和分页过滤，并返回来源元数据兼容性提示。
+  - [ ] 接入依赖解析和完整扩展安装/更新流程；更多来源适配器仍需按授权和下载限制逐项接入。
   - [x] `BedrockManagementProfile` 为 PocketMine-MP、Nukkit 和 Cloudburst Nukkit 暴露 `plugins/`，BDS/Geyser 保持无插件目录。
   - [ ] 为不同基岩端提供插件/扩展目录、配置和版本兼容性策略。
 - [ ] 代理端与基岩端专门运维：子服务器连通性、Bedrock/RakNet 监听、端口冲突、健康检查、升级和备份恢复。

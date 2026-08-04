@@ -7,6 +7,7 @@ use thiserror::Error;
 use crate::AuthError;
 use crate::CoreRegistryError;
 use crate::VersionMetadataError;
+use crate::extension_source_error::ExtensionSourceError;
 
 #[derive(Debug, Error)]
 pub enum PanelError {
@@ -24,6 +25,8 @@ pub enum PanelError {
     Serve(#[source] io::Error),
     #[error("MCNP_PANEL_MASTER_KEY is required to encrypt registered Core secrets")]
     MissingPanelMasterKey,
+    #[error(transparent)]
+    ExtensionSource(#[from] ExtensionSourceError),
     #[error(transparent)]
     Storage(#[from] StorageError),
     #[error(transparent)]

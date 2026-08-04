@@ -34,6 +34,7 @@ use crate::config_routes::config_routes;
 use crate::core_routes::core_routes;
 use crate::environment_routes::environment_routes;
 use crate::extension_routes::extension_routes;
+use crate::extension_source_client::ExtensionSourceClient;
 use crate::file_routes::file_routes;
 use crate::install_template_routes::install_template_routes;
 use crate::instance_routes::instance_routes;
@@ -69,6 +70,7 @@ impl PanelServer {
             );
         }
         let cores = CoreRegistry::new(store, SecretCipher::new(master_key), panel_id)?;
+        let extension_sources = ExtensionSourceClient::new()?;
         let version_metadata = VersionMetadataClient::new()?;
         if let Some(local_core) = config.local_core() {
             cores.ensure_local_core(local_core).await?;
@@ -87,7 +89,7 @@ impl PanelServer {
         Ok(Self {
             listen_address,
             listener,
-            state: PanelState::new(auth, cores, version_metadata),
+            state: PanelState::new(auth, cores, extension_sources, version_metadata),
         })
     }
 
