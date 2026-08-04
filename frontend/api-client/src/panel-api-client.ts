@@ -205,6 +205,7 @@ export interface BedrockManagementProfile {
   defaultPort: number;
   configurationFiles: string[];
   extensionKind: ExtensionKind | null;
+  extensionDirectories: string[];
 }
 
 export type ConfigFormat = 'PROPERTIES' | 'YAML' | 'JSON' | 'TOML' | 'PROVIDER_SPECIFIC';
@@ -256,6 +257,17 @@ export interface FileEntry {
 export interface FilePage {
   items: FileEntry[];
   nextCursor: string | null;
+}
+
+export interface ExtensionDirectoryPage {
+  path: string;
+  page: FilePage;
+}
+
+export interface InstanceExtensionScan {
+  templateId: string;
+  kind: ExtensionKind;
+  directories: ExtensionDirectoryPage[];
 }
 
 export interface FileReadResult {
@@ -477,6 +489,27 @@ export interface PanelApiClient {
   verifyRuntime(coreId: string, runtimeId: string): Promise<RuntimeOperation>;
   deleteRuntime(coreId: string, runtimeId: string): Promise<TaskAccepted>;
   getBedrockProfile(coreId: string, instanceId: string): Promise<BedrockManagementProfile>;
+  listInstanceExtensions(
+    coreId: string,
+    instanceId: string,
+    templateId: string,
+    kind: ExtensionKind,
+  ): Promise<InstanceExtensionScan>;
+  writeInstanceExtension(
+    coreId: string,
+    instanceId: string,
+    templateId: string,
+    kind: ExtensionKind,
+    path: string,
+    content: FileBytes,
+  ): Promise<FileEntry>;
+  deleteInstanceExtension(
+    coreId: string,
+    instanceId: string,
+    templateId: string,
+    kind: ExtensionKind,
+    path: string,
+  ): Promise<TaskAccepted>;
   listConfigDocuments(coreId: string, instanceId: string): Promise<ConfigDocumentPage>;
   scanConfigDocuments(coreId: string, instanceId: string): Promise<ConfigDocumentPage>;
   getConfigDocument(coreId: string, instanceId: string, documentId: string): Promise<ConfigDocument>;
@@ -759,6 +792,31 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     getBedrockProfile(coreId, instanceId) {
       return request<BedrockManagementProfile>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/bedrock-profile`,
+      );
+    },
+    listInstanceExtensions(coreId, instanceId, templateId, kind) {
+      const query = new URLSearchParams({ templateId, kind });
+      return request<InstanceExtensionScan>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/extensions?${query.toString()}`,
+      );
+    },
+    writeInstanceExtension(coreId, instanceId, templateId, kind, path, content) {
+      const query = new URLSearchParams({ templateId, kind, path });
+      return request<FileEntry>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/extensions?${query.toString()}`,
+        { method: 'PUT', body: content, csrf: true, idempotent: true },
+      );
+    },
+    deleteInstanceExtension(coreId, instanceId, templateId, kind, path) {
+      const query = new URLSearchParams({
+        templateId,
+        kind,
+        path,
+        confirmation: 'DELETE',
+      });
+      return request<TaskAccepted>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/extensions?${query.toString()}`,
+        { method: 'DELETE', csrf: true, idempotent: true },
       );
     },
     listConfigDocuments(coreId, instanceId) {
