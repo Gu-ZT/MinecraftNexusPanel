@@ -9,6 +9,10 @@ use crate::PanelConfig;
 use crate::PanelMasterKey;
 use crate::RunMode;
 
+/// 解析后的完整进程启动配置。
+///
+/// 命令行选项覆盖同名环境变量，未指定运行模式时默认为 [`RunMode::All`]。
+/// 该类型只保存校验后的值，具体服务启动仍由应用入口负责。
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AppConfig {
     mode: RunMode,
@@ -18,6 +22,10 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
+    /// 从命令行参数和环境变量构造启动配置。
+    ///
+    /// 参数迭代器不应包含程序名；模式可以使用位置参数或 `--mode` 指定，
+    /// 但只能出现一次。`--help` 和 `--version` 会通过专用错误返回控制流结果。
     pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Self, ConfigError> {
         let mut mode = None;
         let mut core_listen =
@@ -109,26 +117,31 @@ impl AppConfig {
         })
     }
 
+    /// 返回进程运行模式。
     #[must_use]
     pub const fn mode(&self) -> RunMode {
         self.mode
     }
 
+    /// 返回 Core 配置。
     #[must_use]
     pub const fn core(&self) -> &CoreConfig {
         &self.core
     }
 
+    /// 返回 Panel 配置。
     #[must_use]
     pub const fn panel(&self) -> &PanelConfig {
         &self.panel
     }
 
+    /// 返回日志配置。
     #[must_use]
     pub const fn logging(&self) -> &LoggingConfig {
         &self.logging
     }
 
+    /// 返回命令行帮助文本。
     #[must_use]
     pub const fn usage() -> &'static str {
         "Usage: mcnp [core|panel|all] [OPTIONS]\n\nOptions:\n  --mode MODE              Run core, panel, or all\n  --core-listen ADDRESS    Core TCP listen address\n  --core-tls-cert PATH     Core TLS certificate chain in PEM format\n  --core-tls-key PATH      Core TLS private key in PEM format\n  --panel-listen ADDRESS   Panel HTTP listen address\n  --data-dir PATH          Runtime data directory\n  --log-filter FILTER      tracing filter directive\n  -h, --help               Print help\n  -V, --version            Print version\n\nEnvironment:\n  MCNP_CORE_PSK            Required by core and all; unpadded Base64URL PSK\n  MCNP_CORE_LISTEN          Default Core TCP listen address\n  MCNP_CORE_TLS_CERT        Optional Core TLS certificate chain path\n  MCNP_CORE_TLS_KEY         Optional Core TLS private key path\n  MCNP_PANEL_LISTEN         Default Panel HTTP listen address\n  MCNP_PANEL_MASTER_KEY     Required by panel and all; 32-byte unpadded Base64URL key\n  MCNP_INITIAL_ADMIN_USERNAME  Initial administrator username for an empty database\n  MCNP_INITIAL_ADMIN_PASSWORD  Initial administrator password for an empty database\n  MCNP_DATA_DIR             Default runtime data directory\n  MCNP_LOG_FILTER           Default tracing filter directive"

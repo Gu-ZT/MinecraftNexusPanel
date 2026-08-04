@@ -1,3 +1,8 @@
+//! MCNP Core、Panel 及本地运行模式的启动配置。
+//!
+//! 配置 crate 只负责解析和校验启动输入，不读取或创建运行时数据文件；通过
+//! `Debug` 输出配置时，预共享密钥、主密钥和初始密码必须保持脱敏。
+
 mod app_config;
 mod config_error;
 mod core_config;

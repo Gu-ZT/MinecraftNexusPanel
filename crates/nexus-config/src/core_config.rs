@@ -7,6 +7,10 @@ use nexus_protocol::PresharedKey;
 
 use crate::ConfigError;
 
+/// Core 网络、安全和数据目录配置。
+///
+/// 预共享密钥同时保留编码文本和派生值以支持配置回显与连接建立；两者都在
+/// `Debug` 输出中脱敏。TLS 证书和私钥必须同时配置，避免服务以不完整身份启动。
 #[derive(Clone, Eq, PartialEq)]
 pub struct CoreConfig {
     listen_address: SocketAddr,
@@ -35,8 +39,10 @@ impl fmt::Debug for CoreConfig {
 }
 
 impl CoreConfig {
+    /// Core 默认监听地址。
     pub const DEFAULT_LISTEN_ADDRESS: &'static str = "0.0.0.0:25580";
 
+    /// 解析监听地址、数据目录和可选的 Base64URL 预共享密钥。
     pub fn new(
         listen_address: String,
         data_directory: PathBuf,
@@ -65,6 +71,7 @@ impl CoreConfig {
         })
     }
 
+    /// 设置 TLS 证书链和私钥路径，并要求二者成对出现。
     pub fn with_tls_identity_paths(
         mut self,
         certificate_path: Option<PathBuf>,
@@ -80,31 +87,37 @@ impl CoreConfig {
         }
     }
 
+    /// 返回 Core 监听地址。
     #[must_use]
     pub const fn listen_address(&self) -> SocketAddr {
         self.listen_address
     }
 
+    /// 返回 Core 运行时数据目录。
     #[must_use]
     pub fn data_directory(&self) -> &Path {
         &self.data_directory
     }
 
+    /// 返回派生后的预共享密钥；未配置时为 `None`。
     #[must_use]
     pub const fn pre_shared_key(&self) -> Option<&PresharedKey> {
         self.pre_shared_key.as_ref()
     }
 
+    /// 返回原始 Base64URL 配置文本；未配置时为 `None`。
     #[must_use]
     pub fn encoded_pre_shared_key(&self) -> Option<&str> {
         self.encoded_pre_shared_key.as_deref()
     }
 
+    /// 返回 TLS 证书链路径；未配置时为 `None`。
     #[must_use]
     pub fn tls_certificate_path(&self) -> Option<&Path> {
         self.tls_certificate_path.as_deref()
     }
 
+    /// 返回 TLS 私钥路径；未配置时为 `None`。
     #[must_use]
     pub fn tls_private_key_path(&self) -> Option<&Path> {
         self.tls_private_key_path.as_deref()

@@ -7,10 +7,14 @@ use crate::ConfigError;
 
 const PANEL_MASTER_KEY_BYTES: usize = 32;
 
+/// Panel 用于加密持久化秘密的 32 字节主密钥。
+///
+/// 该类型只暴露给加密实现使用；`Debug` 输出会隐藏所有密钥字节。
 #[derive(Clone, Eq, PartialEq)]
 pub struct PanelMasterKey([u8; PANEL_MASTER_KEY_BYTES]);
 
 impl PanelMasterKey {
+    /// 从无填充 Base64URL 文本解析主密钥。
     pub fn from_base64url(value: &str) -> Result<Self, ConfigError> {
         let decoded = URL_SAFE_NO_PAD
             .decode(value)
@@ -22,11 +26,13 @@ impl PanelMasterKey {
         Ok(Self(bytes))
     }
 
+    /// 从恰好 32 字节的数组创建主密钥。
     #[must_use]
     pub const fn from_bytes(bytes: [u8; PANEL_MASTER_KEY_BYTES]) -> Self {
         Self(bytes)
     }
 
+    /// 返回原始主密钥字节供加密实现使用。
     #[must_use]
     pub const fn as_bytes(&self) -> &[u8; PANEL_MASTER_KEY_BYTES] {
         &self.0
