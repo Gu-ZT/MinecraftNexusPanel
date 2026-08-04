@@ -30,6 +30,7 @@
 - Velocity、Waterfall、BungeeCord、Lightfall 使用一对多后端拓扑；Geyser 使用一对一拓扑，并提供专门的基岩版管理能力。Panel 可要求登记的 Core 节点对每个后端关系执行有界 TCP 连通性和 Minecraft Java Status 协议检查，并分别返回网络状态与协议状态。
 - 代理动作可由登记的 Core 编排启用后端实例：启动先处理后端、停止先处理代理，重复目标只执行一次，并支持 `includeBackends`、停止超时和部分失败结果；被后端失败阻断的步骤不会被标记为成功。
 - Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit 与 Geyser 使用专门画像管理 RakNet UDP、默认绑定地址、配置文件、扩展能力和声明的扩展目录。Core 会在支持时读取 BDS/PocketMine/Nukkit 的 `server-ip`/`server-port` 或 Geyser 的 `bedrock.address`/`bedrock.port`，只接受 IP 字面量，地址和端口配置分别在不可用或非法时回退到 `0.0.0.0` 与 `19132`，并报告地址/端口来源以及 UDP 绑定可用、已占用或不可用。
+- Core 还提供专用基岩健康检查，使用 RakNet Unconnected Ping/Pong 区分已响应、超时、无效响应和探测不可用，并在响应有效时返回服务端身份；绑定地址为未指定地址时使用本机回环探测。该检查独立于 UDP 端口可绑定检查和 Java Status 健康检查。
 
 ### 当前文件管理能力
 

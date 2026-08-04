@@ -88,7 +88,7 @@
 - 混合端的插件和模组必须在扫描、安装、更新、删除、兼容性提示和审计记录中保持独立的 `ExtensionKind`；目录解析必须消费模板声明，不能在 Panel 中写死全局路径。
 - Velocity、Waterfall、BungeeCord、Lightfall 使用一对多子服务器拓扑，Geyser 使用一对一拓扑；子服务器关系需要独立的列表、创建/替换和删除操作，不能伪装成普通实例字段。
 - 基岩版端需要独立处理 RakNet UDP 监听、端口占用、`server.properties`/`config.yml` 等配置、插件能力、扩展目录、启动健康检查、备份恢复和版本升级；不能复用只适用于 Java 服务端的探针和配置假设。
-- 当前 `BedrockManagementProfile` 已提供传输、默认端口、配置文件和扩展能力画像；完整的基岩端配置编辑、扩展生命周期和专门运维流程仍属于后续 TODO。
+- 当前 `BedrockManagementProfile` 已提供传输、默认端口、配置文件和扩展能力画像，Core 已补充专用 Unconnected Ping/Pong 健康检查；完整的基岩端配置编辑、扩展生命周期、监听绑定运维、备份恢复和版本升级仍属于后续 TODO。
 - [ ] Direct 与 MCDR 进程包装配置及审计任务。
 - [x] 实例名称、类型、到期、工作目录、启动命令和更新命令设置。
 
@@ -135,7 +135,8 @@
   - [x] 从 Core 节点读取 BDS/PocketMine/Nukkit 的 `server.properties:server-ip` 或 Geyser 的 `config.yml:bedrock.address`，仅接受 IP 字面量，缺失/非法时回退 `0.0.0.0` 并报告绑定地址来源。
   - [x] 通过 Core 编排代理启停：启动按“后端 -> 代理”、停止按“代理 -> 后端”执行，按目标实例去重并返回逐步状态。
   - [x] 代理动作支持 `includeBackends`、停止超时、后端失败阻断代理启动和部分失败结果；Panel 已暴露对应动作接口。
-  - [ ] 基岩端监听绑定地址、专用健康检查、升级和备份恢复。
+  - [x] 基岩端专用 RakNet Unconnected Ping/Pong 健康检查：读取配置端点，处理 `0.0.0.0`/`::` 回环探测、超时、无效响应和服务端身份。
+  - [ ] 基岩端监听绑定地址、配置/扩展兼容性、升级和备份恢复。
 - [ ] Cron/事件计划任务、去重、执行记录和任务中心。
 - [ ] RBAC、用户组、实例 scope 与审计日志。
 

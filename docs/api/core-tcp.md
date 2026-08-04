@@ -106,6 +106,7 @@ sequenceDiagram
     "panelName": "Shanghai Panel",
     "clientVersion": "0.1.0",
     "capabilities": [
+      "bedrock-health",
       "events",
       "files",
       "proxy-orchestration",
@@ -130,6 +131,7 @@ sequenceDiagram
     "coreName": "Game Node 01",
     "serverVersion": "0.1.0",
     "capabilities": [
+      "bedrock-health",
       "events",
       "files",
       "metrics",

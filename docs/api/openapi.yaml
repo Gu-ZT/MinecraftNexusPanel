@@ -849,6 +849,36 @@ paths:
           $ref: '#/components/responses/Conflict'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/instances/{instanceId}/bedrock-profile/actions/check-health:
+    parameters:
+      - $ref: '#/components/parameters/CoreId'
+      - $ref: '#/components/parameters/InstanceId'
+    post:
+      tags: [ Bedrock ]
+      operationId: checkBedrockHealth
+      summary: Check Bedrock RakNet health from Core
+      description: |
+        Ask the registered Core node to send a RakNet Unconnected Ping to the
+        configured endpoint and validate the Unconnected Pong response. An
+        unspecified bind address is probed through 127.0.0.1 or ::1. This is
+        separate from the UDP bind-port check and Java Status health check.
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      responses:
+        '200':
+          description: Bedrock RakNet health result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BedrockHealth'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instances/{instanceId}/extensions:
     parameters:
       - $ref: '#/components/parameters/CoreId'
@@ -3648,6 +3678,45 @@ components:
     BedrockBindAddressSource:
       type: string
       enum: [ CONFIGURED, DEFAULT ]
+    BedrockHealth:
+      type: object
+      required: [ instanceId, managementKind, transport, bindAddress, bindAddressSource, port, portSource, probeAddress, status, reachable, latencyMs, serverIdentity, checkedAt, error ]
+      properties:
+        instanceId:
+          type: string
+        managementKind:
+          $ref: '#/components/schemas/BedrockManagementKind'
+        transport:
+          $ref: '#/components/schemas/BedrockTransport'
+        bindAddress:
+          type: string
+          description: Configured or default local bind address.
+        bindAddressSource:
+          $ref: '#/components/schemas/BedrockBindAddressSource'
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        portSource:
+          $ref: '#/components/schemas/BedrockPortSource'
+        probeAddress:
+          type: string
+          description: Actual IP literal used as the UDP health-check destination.
+        status:
+          type: string
+          enum: [ RESPONDED, UNREACHABLE, INVALID_RESPONSE, UNAVAILABLE ]
+        reachable:
+          type: boolean
+        latencyMs:
+          type: [ integer, 'null' ]
+          minimum: 0
+        serverIdentity:
+          type: [ string, 'null' ]
+        checkedAt:
+          type: string
+          format: date-time
+        error:
+          type: [ string, 'null' ]
     ExtensionDirectoryPage:
       type: object
       required: [ path, page ]

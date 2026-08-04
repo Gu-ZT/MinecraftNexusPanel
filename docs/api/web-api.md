@@ -337,6 +337,7 @@ provider-specific Schema 和跨文件校验尚未实现。
   "version": "0.1.0",
   "protocolVersion": "1.0",
   "capabilities": [
+    "bedrock-health",
     "events",
     "files",
     "metrics",

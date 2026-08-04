@@ -119,10 +119,13 @@ SHA-256、平台/架构、实例目录、归档条目和受管运行时；下载
 |------|----------------------------------------------------------------|------------------------------|
 | GET  | `/cores/{coreId}/instances/{instanceId}/bedrock-profile`       | 查询基岩传输和配置管理能力   |
 | POST | `/cores/{coreId}/instances/{instanceId}/bedrock-profile/actions/check-port` | 从 Core 检查配置/默认 RakNet UDP 端口 |
+| POST | `/cores/{coreId}/instances/{instanceId}/bedrock-profile/actions/check-health` | 从 Core 执行 RakNet 健康检查 |
 
 画像返回 RakNet UDP、默认端口 `19132`、配置文件列表、插件管理类型和扩展目录。BDS 不声明插件目录，PocketMine-MP、Nukkit 与
 Cloudburst Nukkit 声明 `PLUGIN` 和 `plugins/`，Geyser 使用 `config.yml`、不声明插件目录，并通过代理子服务器关系管理唯一 Java 后端。
 端口检查从登记 Core 节点优先探测配置端口：BDS、PocketMine-MP、Nukkit/Cloudburst Nukkit 读取 `server.properties` 的 `server-port`，Geyser 读取 `config.yml` 的 `bedrock.port`；配置不可读或无效时回退到画像默认端口 `19132`，并通过 `portSource=CONFIGURED|DEFAULT` 说明来源。结果返回 `AVAILABLE`、`IN_USE` 或 `UNAVAILABLE`，不复用 Java TCP 健康检查语义。
+
+健康检查从登记 Core 节点读取同一配置端点并发送 RakNet Unconnected Ping，等待最多 3 秒的 Pong。未指定绑定地址会使用 `127.0.0.1` 或 `::1` 作为探测地址；响应必须通过 RakNet 魔数和长度校验。结果返回 `RESPONDED`、`UNREACHABLE`、`INVALID_RESPONSE` 或 `UNAVAILABLE`、延迟和服务端身份，并通过 `probeAddress` 区分绑定地址与实际探测目标。它不表示实例进程一定已由 MCNP 启动，也不替代端口绑定检查。
 
 ### 3.4 模板安全
 
