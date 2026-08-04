@@ -1,3 +1,8 @@
+//! MCNP 命令行服务入口。
+//!
+//! 入口负责解析启动配置、初始化日志，并按 Core、Panel 或 All 模式启动对应服务。
+//! All 模式会在同一进程中绑定 Core，再把本地 Core 连接信息注入 Panel。
+
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
 use std::net::SocketAddr;
@@ -13,6 +18,7 @@ use nexus_domain::PRODUCT_VERSION;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
+/// 解析配置并启动 MCNP 服务。
 async fn main() {
     let config = match AppConfig::from_args(std::env::args().skip(1)) {
         Ok(config) => config,
@@ -54,6 +60,7 @@ async fn main() {
     }
 }
 
+/// 在同一进程内协调 Core 和 Panel 的生命周期。
 async fn run_all(core_config: CoreConfig, panel_config: PanelConfig) -> Result<(), String> {
     let core_server = nexus_core::CoreServer::bind(&core_config)
         .await
@@ -94,6 +101,7 @@ async fn run_all(core_config: CoreConfig, panel_config: PanelConfig) -> Result<(
     }
 }
 
+/// 将未指定监听地址转换为 Panel 可连接的本机回环地址。
 fn loopback_address(address: SocketAddr) -> SocketAddr {
     if address.ip().is_unspecified() {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), address.port())
@@ -102,6 +110,7 @@ fn loopback_address(address: SocketAddr) -> SocketAddr {
     }
 }
 
+/// 初始化结构化日志过滤器；非法过滤器回退到 `info`。
 fn initialize_logging(filter: &str) {
     let filter = EnvFilter::try_new(filter).unwrap_or_else(|error| {
         eprintln!("Invalid log filter; falling back to info: {error}");
