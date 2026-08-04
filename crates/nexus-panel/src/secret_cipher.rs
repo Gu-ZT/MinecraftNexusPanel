@@ -13,12 +13,17 @@ const ENVELOPE_VERSION: u8 = 1;
 const NONCE_BYTES: usize = 12;
 const TAG_BYTES: usize = 16;
 
+/// 使用 Panel 主密钥加密 Core 预共享秘密的 AES-256-GCM 服务。
+///
+/// 信封包含版本、随机 nonce 和认证密文；Core ID 作为关联数据绑定密文归属，
+/// 因此不能把一个 Core 的秘密复制到另一个 Core 记录上解密。
 #[derive(Clone)]
 pub struct SecretCipher {
     cipher: Aes256Gcm,
 }
 
 impl SecretCipher {
+    /// 根据 Panel 主密钥创建加密服务。
     #[must_use]
     pub fn new(master_key: &PanelMasterKey) -> Self {
         Self {
@@ -26,6 +31,7 @@ impl SecretCipher {
         }
     }
 
+    /// 加密 Core 秘密并生成带版本的信封。
     pub fn encrypt(&self, core_id: CoreId, plaintext: &[u8]) -> Result<Vec<u8>, SecretCipherError> {
         let mut nonce_bytes = [0_u8; NONCE_BYTES];
         fill(&mut nonce_bytes)?;
@@ -47,6 +53,7 @@ impl SecretCipher {
         Ok(envelope)
     }
 
+    /// 验证并解密绑定到指定 Core ID 的秘密信封。
     pub fn decrypt(&self, core_id: CoreId, envelope: &[u8]) -> Result<Vec<u8>, SecretCipherError> {
         if envelope.len() < 1 + NONCE_BYTES + TAG_BYTES || envelope[0] != ENVELOPE_VERSION {
             return Err(SecretCipherError::InvalidEnvelope);

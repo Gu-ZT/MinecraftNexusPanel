@@ -1,3 +1,8 @@
+//! MCNP Panel HTTP API、Core 注册和身份认证服务。
+//!
+//! Panel 负责面向用户的鉴权、持久化和 HTTP 路由，并通过 `CoreConnection` 调用
+//! Core；宿主机文件、进程和服务端实际操作仍由 Core 执行。
+
 mod auth_error;
 mod auth_routes;
 mod auth_service;
@@ -85,6 +90,7 @@ pub(crate) use websocket_ticket_store::WebSocketTicketStore;
 
 use nexus_config::PanelConfig;
 
+/// 按配置绑定并运行 Panel HTTP 服务。
 pub async fn run(config: &PanelConfig) -> Result<(), PanelError> {
     PanelServer::bind(config).await?.serve().await
 }

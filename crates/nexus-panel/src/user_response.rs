@@ -10,6 +10,7 @@ const ADMIN_PERMISSIONS: [&str; 6] = [
     "instance.console",
 ];
 
+/// 对外返回的用户身份、权限和资源范围。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserResponse {

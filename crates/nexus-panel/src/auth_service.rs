@@ -36,6 +36,10 @@ const SESSION_LIFETIME_SECONDS: i64 = 30 * 24 * 60 * 60;
 const RANDOM_CREDENTIAL_BYTES: usize = 32;
 const PASSWORD_SALT_BYTES: usize = 16;
 
+/// Panel 身份认证、会话轮换和登录限流服务。
+///
+/// 密码使用 Argon2 哈希，令牌只以 SHA-256 哈希进入存储；浏览器会话额外要求
+/// CSRF 校验，重复使用已轮换刷新令牌会撤销关联会话。
 #[derive(Clone)]
 pub struct AuthService {
     store: SqliteStore,
@@ -43,6 +47,7 @@ pub struct AuthService {
 }
 
 impl AuthService {
+    /// 创建认证服务。
     #[must_use]
     pub fn new(store: SqliteStore) -> Self {
         Self {
@@ -51,6 +56,7 @@ impl AuthService {
         }
     }
 
+    /// 在数据库为空时初始化首个管理员账户。
     pub fn initialize_admin(&self, config: &InitialAdminConfig) -> Result<bool, AuthError> {
         if self.store.has_users()? {
             return Ok(false);
@@ -72,10 +78,12 @@ impl AuthService {
             .map_err(AuthError::from)
     }
 
+    /// 判断数据库是否已经存在用户。
     pub fn has_users(&self) -> Result<bool, AuthError> {
         self.store.has_users().map_err(AuthError::from)
     }
 
+    /// 校验登录请求并创建浏览器或原生客户端会话。
     pub fn login(
         &self,
         request: &LoginRequest,
@@ -100,6 +108,7 @@ impl AuthService {
         Ok(issued)
     }
 
+    /// 轮换原生客户端刷新令牌。
     pub fn refresh_native(&self, refresh_token: &str) -> Result<IssuedSession, AuthError> {
         let token_hash = hash_token(refresh_token);
         let now = current_unix_timestamp();
@@ -113,6 +122,7 @@ impl AuthService {
         self.rotate_session(&session, ClientType::Native, &token_hash)
     }
 
+    /// 校验浏览器 Cookie 和 CSRF 令牌并轮换会话。
     pub fn refresh_browser(
         &self,
         session_cookie: &str,
@@ -131,6 +141,7 @@ impl AuthService {
         self.rotate_session(&session, ClientType::Browser, &token_hash)
     }
 
+    /// 验证原生客户端访问令牌并返回会话用户。
     pub fn authenticate_access_token(
         &self,
         access_token: &str,
@@ -146,6 +157,7 @@ impl AuthService {
         Ok(session)
     }
 
+    /// 验证浏览器会话 Cookie 并返回会话用户。
     pub fn authenticate_browser_session(
         &self,
         session_cookie: &str,
@@ -161,10 +173,12 @@ impl AuthService {
         Ok(session)
     }
 
+    /// 验证会话对应的 CSRF 令牌。
     pub fn verify_csrf(&self, session: &StoredSession, csrf_token: &str) -> Result<(), AuthError> {
         verify_csrf_token(session, csrf_token)
     }
 
+    /// 撤销指定会话。
     pub fn logout(&self, session_id: &str) -> Result<(), AuthError> {
         if self
             .store

@@ -4,6 +4,7 @@ use crate::IssuedSession;
 use crate::SessionResponse;
 use crate::UserResponse;
 
+/// 登录成功响应，包含用户信息和已签发会话。
 #[derive(Serialize)]
 pub struct LoginResponse {
     user: UserResponse,

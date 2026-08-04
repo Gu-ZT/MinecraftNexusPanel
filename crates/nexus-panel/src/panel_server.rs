@@ -42,6 +42,10 @@ use crate::provision_routes::provision_routes;
 use crate::proxy_routes::proxy_routes;
 use crate::websocket_routes::websocket_routes;
 
+/// Panel HTTP/TCP 服务入口。
+///
+/// 绑定时初始化 SQLite、管理员、Core 注册、扩展来源和版本元数据服务；路由共享
+/// 同一个 Panel 状态集合，请求 ID 中间件会为每个请求建立可追踪关联。
 pub struct PanelServer {
     listen_address: SocketAddr,
     listener: TcpListener,
@@ -49,6 +53,7 @@ pub struct PanelServer {
 }
 
 impl PanelServer {
+    /// 根据 Panel 配置初始化依赖并绑定 HTTP 监听器。
     pub async fn bind(config: &PanelConfig) -> Result<Self, PanelError> {
         let master_key = config
             .master_key()
@@ -93,11 +98,13 @@ impl PanelServer {
         })
     }
 
+    /// 返回实际绑定的 HTTP 地址。
     #[must_use]
     pub const fn listen_address(&self) -> SocketAddr {
         self.listen_address
     }
 
+    /// 启动 HTTP 服务并持续处理请求。
     pub async fn serve(self) -> Result<(), PanelError> {
         tracing::info!(
             listen_address = %self.listen_address,
