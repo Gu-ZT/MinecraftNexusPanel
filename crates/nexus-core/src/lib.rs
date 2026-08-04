@@ -1,3 +1,8 @@
+//! MCNP Core 的本机管理、文件、运行时和进程编排实现。
+//!
+//! Core 是实际接触宿主机文件系统、进程和网络端口的信任边界；协议请求先经过
+//! 长度/身份校验，再进入各领域管理器。Panel 不应绕过协议直接假设 Core 内部状态。
+
 mod archive_extractor;
 mod config_document;
 mod core_error;

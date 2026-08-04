@@ -21,6 +21,10 @@ use crate::DownloadTask;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// 负责 HTTPS 下载、大小/摘要校验和本地产物缓存的管理器。
+///
+/// 下载地址拒绝凭据和非 HTTPS 方案；缓存只有在同时匹配清单大小和 SHA-256
+/// 时才会复用，失败或取消会清理临时文件。
 #[derive(Clone)]
 pub struct DownloadManager {
     cache_directory: PathBuf,
@@ -28,6 +32,7 @@ pub struct DownloadManager {
 }
 
 impl DownloadManager {
+    /// 创建下载管理器并初始化下载缓存目录配置。
     pub fn new(data_directory: &Path) -> Result<Self, DownloadError> {
         let _ = ring::default_provider().install_default();
         let client = Client::builder()
@@ -43,6 +48,10 @@ impl DownloadManager {
         })
     }
 
+    /// 下载并校验清单指定的产物，或返回已验证的缓存路径。
+    ///
+    /// 返回路径位于 Core 数据目录的下载缓存中；任务取消、平台不匹配、大小或
+    /// 摘要校验失败时不会留下可被复用的部分文件。
     pub async fn download(
         &self,
         task: &DownloadTask,

@@ -1,3 +1,8 @@
+//! 受管运行时归档的安全解压工具。
+//!
+//! 归档条目必须是规范化相对路径，拒绝绝对路径、父目录跳转、符号链接和特殊
+//! 文件类型，避免解压过程写出目标目录。
+
 use std::fs::File;
 use std::io;
 use std::path::Component;
@@ -10,6 +15,7 @@ use zip::ZipArchive;
 
 use crate::RuntimeManagerError;
 
+/// 按声明格式将运行时归档解压到目标目录。
 pub(crate) fn extract(
     archive_path: &Path,
     format: RuntimeArchiveFormat,

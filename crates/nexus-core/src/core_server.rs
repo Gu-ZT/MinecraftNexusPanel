@@ -1,3 +1,8 @@
+//! Core TCP/TLS 服务和协议请求分发入口。
+//!
+//! 连接依次经过 TLS、Noise PSK 和会话问候校验；通过后才可访问实例、文件、运行时、
+//! 代理后端和基岩健康检查等管理器。
+
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::ErrorKind;
@@ -116,6 +121,10 @@ const RAKNET_MAGIC: [u8; 16] = [
     0x00, 0xff, 0xff, 0x00, 0xfe, 0xfe, 0xfe, 0xfe, 0xfd, 0xfd, 0xfd, 0xfd, 0x12, 0x34, 0x56, 0x78,
 ];
 
+/// 绑定到一个 TCP 地址并提供 Core 管理协议的服务器。
+///
+/// 服务器持有本地各领域管理器，`serve` 会为每个已接受连接创建独立请求状态，
+/// 但管理器数据仍由内部共享句柄统一协调。
 pub struct CoreServer {
     core_id: CoreId,
     certificate_sha256: Arc<str>,
@@ -142,6 +151,9 @@ struct CoreResources {
 }
 
 impl CoreServer {
+    /// 根据 Core 配置创建监听器、TLS 身份和领域管理器。
+    ///
+    /// 该操作会创建数据目录并加载或生成稳定 Core 标识；缺少预共享密钥时拒绝启动。
     pub async fn bind(config: &CoreConfig) -> Result<Self, CoreError> {
         let pre_shared_key = config
             .pre_shared_key()
@@ -184,26 +196,31 @@ impl CoreServer {
         })
     }
 
+    /// 返回稳定 Core 标识。
     #[must_use]
     pub const fn core_id(&self) -> CoreId {
         self.core_id
     }
 
+    /// 返回当前 TLS 证书的 SHA-256 指纹。
     #[must_use]
     pub fn certificate_sha256(&self) -> &str {
         &self.certificate_sha256
     }
 
+    /// 返回实际绑定的 TCP 地址。
     #[must_use]
     pub const fn listen_address(&self) -> SocketAddr {
         self.listen_address
     }
 
+    /// 返回实例仓库的共享句柄，供本地嵌入式调用使用。
     #[must_use]
     pub fn instance_repository(&self) -> InstanceRepository {
         self.instances.clone()
     }
 
+    /// 接受连接并持续服务，直到监听器或协议处理返回错误。
     pub async fn serve(self) -> Result<(), CoreError> {
         tracing::info!(
             core_id = %self.core_id,
@@ -251,6 +268,7 @@ impl CoreServer {
     }
 }
 
+/// 按配置绑定并运行 Core 服务。
 pub async fn run(config: &CoreConfig) -> Result<(), CoreError> {
     CoreServer::bind(config).await?.serve().await
 }
