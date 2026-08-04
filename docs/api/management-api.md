@@ -114,9 +114,11 @@ SHA-256、平台/架构、实例目录、归档条目和受管运行时；下载
 | 方法 | 路径                                                           | 说明                         |
 |------|----------------------------------------------------------------|------------------------------|
 | GET  | `/cores/{coreId}/instances/{instanceId}/bedrock-profile`       | 查询基岩传输和配置管理能力   |
+| POST | `/cores/{coreId}/instances/{instanceId}/bedrock-profile/actions/check-port` | 从 Core 检查默认 RakNet UDP 端口 |
 
 画像返回 RakNet UDP、默认端口 `19132`、配置文件列表、插件管理类型和扩展目录。BDS 不声明插件目录，PocketMine-MP、Nukkit 与
 Cloudburst Nukkit 声明 `PLUGIN` 和 `plugins/`，Geyser 使用 `config.yml`、不声明插件目录，并通过代理子服务器关系管理唯一 Java 后端。
+端口检查从登记 Core 节点探测画像声明的默认 UDP 端口，返回 `AVAILABLE`、`IN_USE` 或 `UNAVAILABLE`；它不复用 Java TCP 健康检查语义。
 
 ### 3.4 模板安全
 
