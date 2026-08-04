@@ -27,7 +27,7 @@ The catalog distinguishes a server profile from a verified installer. Version me
 
 - Hybrid servers manage plugins and mods separately, with extension directories declared by the template and version rather than assumed globally; the domain catalog resolves those directories per extension kind.
 - Velocity, Waterfall, BungeeCord, and Lightfall use one-to-many backend topology; Geyser uses one-to-one topology and has dedicated Bedrock-facing management.
-- Bedrock Dedicated Server, PocketMine-MP, Nukkit, Cloudburst Nukkit, and Geyser expose dedicated management profiles for RakNet UDP, default port `19132`, configuration files, and extension capabilities.
+- Bedrock Dedicated Server, PocketMine-MP, Nukkit, Cloudburst Nukkit, and Geyser expose dedicated management profiles for RakNet UDP, default port `19132`, configuration files, extension capabilities, and declared extension directories.
 
 ### File Management Slice
 

@@ -57,7 +57,7 @@
   - [x] 提供 Java 服务端、插件端、混合端、代理端和基岩端的内置模板目录。
   - [x] 记录混合端的插件/模组目录，以及一对多和一对一代理拓扑。
   - [x] 提供代理子服务器关系管理，并约束一对多与一对一拓扑。
-  - [x] 提供基岩端 RakNet UDP、默认端口、配置文件和插件能力画像。
+  - [x] 提供基岩端 RakNet UDP、默认端口、配置文件、插件能力和扩展目录画像。
   - [x] 解析 Vanilla、Paper、Velocity、Fabric、NeoForge、Forge、Bukkit、Spigot、Purpur、Pufferfish、Folia、Leaf、Mohist、Youer、Silkard、Magma、Sponge、Arclight、CatServer、Waterfall、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit 和 Cloudburst Nukkit 二十七种模板的官方版本元数据并通过 Panel API 提供统一版本目录。
     - [x] NeoForge 使用官方 Maven XML 版本目录；Pufferfish 使用五个官方 Jenkins job；Leaf 使用官方 GitHub Releases，并过滤无 JAR、草稿、预发布或失败构建。
     - [x] Magma、SpongeVanilla、Arclight、CatServer 和 Lightfall 使用官方 GitHub Releases；BDS 使用 Mojang 官方下载链接 API 解析 Windows/Linux 稳定版和 Preview ZIP；PocketMine-MP 使用 PHAR 资产；Nukkit 和 Cloudburst Nukkit 使用官方 OpenCollab Maven 版本 API。
@@ -114,6 +114,7 @@
 - [ ] 模组/插件搜索、解析、安装、更新、删除与兼容性提示。
   - [x] `InstallTemplate` 可按独立的 `ExtensionKind` 展开一个或多个声明目录，并保留插件/模组共用目录的类型边界。
   - [ ] 按模板声明的扩展目录分别扫描和管理混合端插件与模组。
+  - [x] `BedrockManagementProfile` 为 PocketMine-MP、Nukkit 和 Cloudburst Nukkit 暴露 `plugins/`，BDS/Geyser 保持无插件目录。
   - [ ] 为不同基岩端提供插件/扩展目录、配置和版本兼容性策略。
 - [ ] 代理端与基岩端专门运维：子服务器连通性、Bedrock/RakNet 监听、端口冲突、健康检查、升级和备份恢复。
 - [ ] Cron/事件计划任务、去重、执行记录和任务中心。
