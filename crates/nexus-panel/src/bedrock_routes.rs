@@ -29,6 +29,10 @@ pub(crate) fn bedrock_routes() -> Router<PanelState> {
             "/api/v1/cores/{core_id}/instances/{instance_id}/bedrock-profile/actions/check-port",
             post(check_bedrock_port),
         )
+        .route(
+            "/api/v1/cores/{core_id}/instances/{instance_id}/bedrock-profile/actions/check-health",
+            post(check_bedrock_health),
+        )
 }
 
 async fn get_bedrock_profile(
@@ -89,6 +93,37 @@ async fn check_bedrock_port(
         .await
     {
         Ok(check) => Json(check).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn check_bedrock_health(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, instance_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return invalid_core_id_response(request_id);
+    };
+    let Some(instance_id) = instance_id.parse::<InstanceId>().ok() else {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "VALIDATION_FAILED",
+            "Instance ID is invalid",
+            request_id,
+        );
+    };
+
+    match state
+        .cores()
+        .check_bedrock_health(core_id, &instance_id)
+        .await
+    {
+        Ok(health) => Json(health).into_response(),
         Err(error) => registry_error_response(error, request_id),
     }
 }

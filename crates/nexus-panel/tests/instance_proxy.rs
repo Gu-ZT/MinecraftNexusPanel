@@ -23,6 +23,7 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
+use tokio::net::UdpSocket;
 use tokio::spawn;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
@@ -30,6 +31,9 @@ use tokio::time::timeout;
 
 const ADMIN_PASSWORD: &str = "correct horse battery staple";
 const CORE_PSK: &str = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY";
+const RAKNET_MAGIC: [u8; 16] = [
+    0x00, 0xff, 0xff, 0x00, 0xfe, 0xfe, 0xfe, 0xfe, 0xfd, 0xfd, 0xfd, 0xfd, 0x12, 0x34, 0x56, 0x78,
+];
 
 #[tokio::test]
 async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
@@ -394,9 +398,16 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
 
     let geyser_root = core_data.path().join("instances").join("geyser-proxy");
     fs::create_dir_all(&geyser_root).expect("Geyser instance directory is created");
+    let bedrock_listener = UdpSocket::bind("127.0.0.1:0")
+        .await
+        .expect("Bedrock health listener binds");
+    let bedrock_port = bedrock_listener
+        .local_addr()
+        .expect("Bedrock health listener address is available")
+        .port();
     fs::write(
         geyser_root.join("config.yml"),
-        b"bedrock:\n  address: 0.0.0.0\n  port: 19133\n",
+        format!("bedrock:\n  address: 0.0.0.0\n  port: {bedrock_port}\n"),
     )
     .expect("Geyser configuration is written");
 
@@ -415,10 +426,57 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     assert_eq!(bedrock_port_check.body["transport"], "RAKNET_UDP");
     assert_eq!(bedrock_port_check.body["bindAddress"], "0.0.0.0");
     assert_eq!(bedrock_port_check.body["bindAddressSource"], "CONFIGURED");
-    assert_eq!(bedrock_port_check.body["port"], 19133);
+    assert_eq!(bedrock_port_check.body["port"], bedrock_port);
     assert_eq!(bedrock_port_check.body["portSource"], "CONFIGURED");
     assert!(bedrock_port_check.body["state"].is_string());
     assert!(bedrock_port_check.body["available"].is_boolean());
+
+    let bedrock_health_task = spawn(async move {
+        let mut ping = [0_u8; 128];
+        let (length, peer) = bedrock_listener
+            .recv_from(&mut ping)
+            .await
+            .expect("Bedrock health ping arrives");
+        assert_eq!(ping[0], 0x01);
+        assert_eq!(&ping[9..25], &RAKNET_MAGIC);
+        let identity = b"MCPE;MCNP;1;0;0;0;0;Bedrock;1";
+        let mut pong = Vec::with_capacity(35 + identity.len());
+        pong.push(0x1c);
+        pong.extend_from_slice(&0_u64.to_be_bytes());
+        pong.extend_from_slice(&0_u64.to_be_bytes());
+        pong.extend_from_slice(&RAKNET_MAGIC);
+        pong.extend_from_slice(&(identity.len() as u16).to_be_bytes());
+        pong.extend_from_slice(identity);
+        bedrock_listener
+            .send_to(&pong, peer)
+            .await
+            .expect("Bedrock health pong is sent");
+        length
+    });
+    let bedrock_health = send_json_request(
+        panel_address,
+        "POST",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/geyser-proxy/bedrock-profile/actions/check-health"
+        ),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(bedrock_health.status, 200);
+    assert_eq!(bedrock_health.body["status"], "RESPONDED");
+    assert_eq!(bedrock_health.body["reachable"], true);
+    assert_eq!(bedrock_health.body["probeAddress"], "127.0.0.1");
+    assert_eq!(
+        bedrock_health.body["serverIdentity"],
+        "MCPE;MCNP;1;0;0;0;0;Bedrock;1"
+    );
+    assert_eq!(
+        bedrock_health_task
+            .await
+            .expect("Bedrock health task completes"),
+        33
+    );
 
     let proxy_path = format!("/api/v1/cores/{core_id}/instances/geyser-proxy/proxy-subservers");
     let proxy_backend_listener = TcpListener::bind("127.0.0.1:0")

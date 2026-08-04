@@ -448,6 +448,21 @@ impl CoreRegistry {
         Ok(json!(check))
     }
 
+    pub async fn check_bedrock_health(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let health = connection.check_bedrock_health(instance_id).await?;
+
+        Ok(json!(health))
+    }
+
     pub async fn check_proxy_subserver(
         &self,
         core_id: CoreId,

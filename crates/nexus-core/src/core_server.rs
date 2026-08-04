@@ -3,6 +3,7 @@ use std::fs;
 use std::io::ErrorKind;
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
@@ -13,6 +14,8 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use nexus_config::CoreConfig;
 use nexus_domain::BedrockBindAddressSource;
+use nexus_domain::BedrockHealth;
+use nexus_domain::BedrockHealthStatus;
 use nexus_domain::BedrockManagementKind;
 use nexus_domain::BedrockManagementProfile;
 use nexus_domain::BedrockPortCheck;
@@ -81,7 +84,8 @@ use crate::file_manager::MAXIMUM_FILE_ARCHIVE_PATHS;
 use crate::file_manager::MAXIMUM_FILE_BATCH_OPERATIONS;
 use crate::file_manager::MAXIMUM_FILE_READ_BYTES;
 
-const CORE_CAPABILITIES: [&str; 11] = [
+const CORE_CAPABILITIES: [&str; 12] = [
+    "bedrock-health",
     "config",
     "events",
     "files",
@@ -102,8 +106,15 @@ const INSTANCE_LIST_MAXIMUM_LIMIT: usize = 200;
 const INSTANCE_LOG_DEFAULT_LIMIT: usize = 50;
 const INSTANCE_LOG_MAXIMUM_LIMIT: usize = 200;
 const PROXY_SUBSERVER_HEALTH_TIMEOUT: Duration = Duration::from_secs(3);
+const BEDROCK_HEALTH_TIMEOUT: Duration = Duration::from_secs(3);
 const MINECRAFT_STATUS_PROTOCOL_VERSION: i32 = 767;
 const MAXIMUM_MINECRAFT_STATUS_PACKET_BYTES: usize = 2 * 1024 * 1024;
+const MAXIMUM_BEDROCK_STATUS_PACKET_BYTES: usize = 4096;
+const RAKNET_UNCONNECTED_PING_ID: u8 = 0x01;
+const RAKNET_UNCONNECTED_PONG_ID: u8 = 0x1c;
+const RAKNET_MAGIC: [u8; 16] = [
+    0x00, 0xff, 0xff, 0x00, 0xfe, 0xfe, 0xfe, 0xfe, 0xfd, 0xfd, 0xfd, 0xfd, 0x12, 0x34, 0x56, 0x78,
+];
 
 pub struct CoreServer {
     core_id: CoreId,
@@ -451,6 +462,9 @@ async fn request_response(
         "bedrock.profile" => bedrock_profile_response(request_id, params, state.instances()),
         "bedrock.port.check" => {
             bedrock_port_check_response(request_id, params, state.instances(), state.files()).await
+        }
+        "bedrock.health.check" => {
+            bedrock_health_response(request_id, params, state.instances(), state.files()).await
         }
         "proxy.subserver.list" => proxy_subserver_list_response(
             request_id,
@@ -899,6 +913,144 @@ async fn bedrock_port_check_response(
             error,
         )),
     )
+}
+
+async fn bedrock_health_response(
+    request_id: RequestId,
+    params: &Value,
+    instances: &InstanceRepository,
+    files: &FileManager,
+) -> WireMessage {
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "bedrock.health.check requires a valid instanceId",
+        );
+    };
+    let instance = match instances.get(&instance_id) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            return error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist");
+        }
+        Err(error) => return repository_failure_response(request_id, &error),
+    };
+    let Some(profile) = instance.kind().bedrock_management_profile() else {
+        return error_response(
+            request_id,
+            "BEDROCK_PROFILE_UNSUPPORTED",
+            "The instance does not expose a Bedrock operations profile",
+        );
+    };
+
+    let (bind_address, bind_address_source, port, port_source, configuration_error) =
+        configured_bedrock_endpoint(&instance, &profile, files);
+    let probe_address = bedrock_probe_address(bind_address);
+    let started_at = Instant::now();
+    let result = timeout(
+        BEDROCK_HEALTH_TIMEOUT,
+        bedrock_raknet_probe(probe_address, port),
+    )
+    .await;
+    let latency_ms = Some(started_at.elapsed().as_millis() as u64);
+    let (status, reachable, server_identity, probe_error) = match result {
+        Ok(Ok(server_identity)) => (
+            BedrockHealthStatus::Responded,
+            true,
+            Some(server_identity),
+            None,
+        ),
+        Ok(Err("INVALID_RESPONSE")) => (
+            BedrockHealthStatus::InvalidResponse,
+            true,
+            None,
+            Some("INVALID_RESPONSE".to_owned()),
+        ),
+        Ok(Err(_)) => (
+            BedrockHealthStatus::Unavailable,
+            false,
+            None,
+            Some("PROBE_FAILED".to_owned()),
+        ),
+        Err(_) => (
+            BedrockHealthStatus::Unreachable,
+            false,
+            None,
+            Some("TIMEOUT".to_owned()),
+        ),
+    };
+    let error = probe_error.or(configuration_error.map(str::to_owned));
+
+    success_response(
+        request_id,
+        json!(BedrockHealth::new(
+            instance_id,
+            profile.management_kind(),
+            profile.transport(),
+            bind_address.to_string(),
+            bind_address_source,
+            port,
+            port_source,
+            probe_address.to_string(),
+            status,
+            reachable,
+            latency_ms,
+            server_identity,
+            current_timestamp(),
+            error,
+        )),
+    )
+}
+
+async fn bedrock_raknet_probe(probe_address: IpAddr, port: u16) -> Result<String, &'static str> {
+    let local_address = match probe_address {
+        IpAddr::V4(_) => SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)),
+        IpAddr::V6(_) => SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)),
+    };
+    let socket = UdpSocket::bind(local_address)
+        .await
+        .map_err(|_| "PROBE_SOCKET_FAILED")?;
+    socket
+        .connect(SocketAddr::new(probe_address, port))
+        .await
+        .map_err(|_| "PROBE_CONNECT_FAILED")?;
+
+    let mut ping = Vec::with_capacity(33);
+    ping.push(RAKNET_UNCONNECTED_PING_ID);
+    ping.extend_from_slice(&0_u64.to_be_bytes());
+    ping.extend_from_slice(&RAKNET_MAGIC);
+    ping.extend_from_slice(&0_u64.to_be_bytes());
+    socket.send(&ping).await.map_err(|_| "PROBE_SEND_FAILED")?;
+
+    let mut response = [0_u8; MAXIMUM_BEDROCK_STATUS_PACKET_BYTES];
+    let length = socket
+        .recv(&mut response)
+        .await
+        .map_err(|_| "PROBE_RECEIVE_FAILED")?;
+    parse_raknet_unconnected_pong(&response[..length])
+}
+
+fn parse_raknet_unconnected_pong(packet: &[u8]) -> Result<String, &'static str> {
+    if packet.len() < 35
+        || packet[0] != RAKNET_UNCONNECTED_PONG_ID
+        || packet[17..33] != RAKNET_MAGIC
+    {
+        return Err("INVALID_RESPONSE");
+    }
+    let identity_length = usize::from(u16::from_be_bytes([packet[33], packet[34]]));
+    let identity_end = 35_usize
+        .checked_add(identity_length)
+        .ok_or("INVALID_RESPONSE")?;
+    let identity = packet.get(35..identity_end).ok_or("INVALID_RESPONSE")?;
+    String::from_utf8(identity.to_owned()).map_err(|_| "INVALID_RESPONSE")
+}
+
+fn bedrock_probe_address(bind_address: IpAddr) -> IpAddr {
+    match bind_address {
+        IpAddr::V4(address) if address.is_unspecified() => Ipv4Addr::LOCALHOST.into(),
+        IpAddr::V6(address) if address.is_unspecified() => Ipv6Addr::LOCALHOST.into(),
+        address => address,
+    }
 }
 
 fn configured_bedrock_endpoint(
@@ -3316,6 +3468,16 @@ fn error_response_with_details(
 
 #[cfg(test)]
 mod tests {
+    use std::net::IpAddr;
+    use std::net::Ipv4Addr;
+    use std::net::Ipv6Addr;
+    use std::time::Duration;
+
+    use super::RAKNET_MAGIC;
+    use super::RAKNET_UNCONNECTED_PING_ID;
+    use super::RAKNET_UNCONNECTED_PONG_ID;
+    use super::bedrock_probe_address;
+    use super::bedrock_raknet_probe;
     use super::minecraft_status_probe;
     use super::parse_geyser_address;
     use super::parse_geyser_port;
@@ -3326,7 +3488,9 @@ mod tests {
     use tokio::io::AsyncReadExt;
     use tokio::io::AsyncWriteExt;
     use tokio::net::TcpListener;
+    use tokio::net::UdpSocket;
     use tokio::spawn;
+    use tokio::time::timeout;
 
     #[tokio::test]
     async fn rejects_a_non_minecraft_status_response() {
@@ -3383,6 +3547,61 @@ mod tests {
             Err("PROTOCOL_INVALID_RESPONSE")
         );
         server_task.await.expect("invalid status server completes");
+    }
+
+    #[tokio::test]
+    async fn probes_a_raknet_unconnected_pong() {
+        let socket = UdpSocket::bind("127.0.0.1:0")
+            .await
+            .expect("RakNet test listener binds");
+        let address = socket
+            .local_addr()
+            .expect("RakNet test listener address is available");
+        let server_task = spawn(async move {
+            let mut ping = [0_u8; 128];
+            let (length, peer) = socket
+                .recv_from(&mut ping)
+                .await
+                .expect("RakNet ping arrives");
+            assert_eq!(ping[0], RAKNET_UNCONNECTED_PING_ID);
+            assert_eq!(&ping[9..25], &RAKNET_MAGIC);
+
+            let identity = b"MCPE;MCNP;1;0;0;0;0;Bedrock;1";
+            let mut pong = Vec::with_capacity(35 + identity.len());
+            pong.push(RAKNET_UNCONNECTED_PONG_ID);
+            pong.extend_from_slice(&0_u64.to_be_bytes());
+            pong.extend_from_slice(&0_u64.to_be_bytes());
+            pong.extend_from_slice(&RAKNET_MAGIC);
+            pong.extend_from_slice(&(identity.len() as u16).to_be_bytes());
+            pong.extend_from_slice(identity);
+            socket
+                .send_to(&pong, peer)
+                .await
+                .expect("RakNet pong is sent");
+            length
+        });
+
+        let identity = timeout(
+            Duration::from_secs(1),
+            bedrock_raknet_probe(address.ip(), address.port()),
+        )
+        .await
+        .expect("RakNet probe completes")
+        .expect("RakNet probe receives a valid pong");
+        assert_eq!(identity, "MCPE;MCNP;1;0;0;0;0;Bedrock;1");
+        assert_eq!(server_task.await.expect("RakNet server completes"), 33);
+    }
+
+    #[test]
+    fn maps_unspecified_bedrock_bind_addresses_to_loopback_probes() {
+        assert_eq!(
+            bedrock_probe_address(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
+            IpAddr::V4(Ipv4Addr::LOCALHOST)
+        );
+        assert_eq!(
+            bedrock_probe_address(IpAddr::V6(Ipv6Addr::UNSPECIFIED)),
+            IpAddr::V6(Ipv6Addr::LOCALHOST)
+        );
     }
 
     #[test]

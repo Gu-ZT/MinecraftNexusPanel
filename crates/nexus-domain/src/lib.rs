@@ -1,4 +1,6 @@
 mod bedrock_bind_address_source;
+mod bedrock_health;
+mod bedrock_health_status;
 mod bedrock_management_kind;
 mod bedrock_management_profile;
 mod bedrock_port_check;
@@ -70,6 +72,8 @@ mod task_id;
 mod version_metadata_provider;
 
 pub use bedrock_bind_address_source::BedrockBindAddressSource;
+pub use bedrock_health::BedrockHealth;
+pub use bedrock_health_status::BedrockHealthStatus;
 pub use bedrock_management_kind::BedrockManagementKind;
 pub use bedrock_management_profile::BedrockManagementProfile;
 pub use bedrock_port_check::BedrockPortCheck;

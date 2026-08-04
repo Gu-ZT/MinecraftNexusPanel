@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use nexus_domain::BedrockHealth;
 use nexus_domain::BedrockManagementProfile;
 use nexus_domain::BedrockPortCheck;
 use nexus_domain::CoreId;
@@ -40,7 +41,8 @@ use tokio::net::TcpStream;
 use crate::CoreConnectionError;
 use crate::CoreEndpoint;
 
-const PANEL_CAPABILITIES: [&str; 11] = [
+const PANEL_CAPABILITIES: [&str; 12] = [
+    "bedrock-health",
     "config",
     "events",
     "files",
@@ -336,6 +338,19 @@ impl CoreConnection {
 
         from_value(result).map_err(|_| CoreConnectionError::InvalidResponse {
             field: "bedrockPortCheck",
+        })
+    }
+
+    pub async fn check_bedrock_health(
+        &mut self,
+        instance_id: &InstanceId,
+    ) -> Result<BedrockHealth, CoreConnectionError> {
+        let result = self
+            .request("bedrock.health.check", json!({ "instanceId": instance_id }))
+            .await?;
+
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse {
+            field: "bedrockHealth",
         })
     }
 
