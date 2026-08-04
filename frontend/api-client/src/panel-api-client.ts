@@ -718,6 +718,7 @@ export interface PanelApiClient {
     path: string,
     sizeBytes: number,
     sha256: string,
+    expectedSha256?: string,
   ): Promise<FileUploadStart>;
   beginFileDownload(
     coreId: string,
@@ -1148,7 +1149,7 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
         },
       );
     },
-    beginFileUpload(coreId, instanceId, path, sizeBytes, sha256) {
+    beginFileUpload(coreId, instanceId, path, sizeBytes, sha256, expectedSha256) {
       return request<FileUploadStart>(
         '/api/v1/cores/' +
           encodeURIComponent(coreId) +
@@ -1157,7 +1158,7 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
           '/uploads',
         {
           method: 'POST',
-          body: { path, sizeBytes, sha256 },
+          body: { path, sizeBytes, sha256, expectedSha256 },
           csrf: true,
           idempotent: true,
         },

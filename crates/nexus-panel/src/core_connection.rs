@@ -830,18 +830,38 @@ impl CoreConnection {
         sha256: &str,
         idempotency_key: &str,
     ) -> Result<Value, CoreConnectionError> {
-        self.request_with_idempotency(
-            "transfer.begin",
-            json!({
-                "instanceId": instance_id,
-                "path": path,
-                "size": size_bytes,
-                "sha256": sha256,
-                "mode": "UPLOAD",
-            }),
-            Some(idempotency_key),
+        self.begin_file_upload_with_expected(
+            instance_id,
+            path,
+            size_bytes,
+            sha256,
+            None,
+            idempotency_key,
         )
         .await
+    }
+
+    pub async fn begin_file_upload_with_expected(
+        &mut self,
+        instance_id: &InstanceId,
+        path: &str,
+        size_bytes: u64,
+        sha256: &str,
+        expected_sha256: Option<&str>,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreConnectionError> {
+        let mut params = json!({
+            "instanceId": instance_id,
+            "path": path,
+            "size": size_bytes,
+            "sha256": sha256,
+            "mode": "UPLOAD",
+        });
+        if let Some(expected_sha256) = expected_sha256 {
+            params["expectedSha256"] = json!(expected_sha256);
+        }
+        self.request_with_idempotency("transfer.begin", params, Some(idempotency_key))
+            .await
     }
 
     pub async fn begin_file_download(

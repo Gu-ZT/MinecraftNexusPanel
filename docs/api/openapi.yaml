@@ -3827,6 +3827,10 @@ components:
         sha256:
           type: string
           pattern: '^[A-Fa-f0-9]{64}$'
+        expectedSha256:
+          type: string
+          pattern: '^[A-Fa-f0-9]{64}$'
+          description: Current target digest required before creating the upload session
     FileDownloadBeginRequest:
       type: object
       required: [ path ]

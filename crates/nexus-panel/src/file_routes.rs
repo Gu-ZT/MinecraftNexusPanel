@@ -323,6 +323,11 @@ async fn begin_file_upload(
     else {
         return validation_error(request_id);
     };
+    let expected_sha256 = match payload.get("expectedSha256") {
+        None => None,
+        Some(Value::String(value)) if is_sha256(value) => Some(value.as_str()),
+        Some(_) => return validation_error(request_id),
+    };
     let Some(idempotency_key) = idempotency_key(&headers) else {
         return precondition_required_response(request_id);
     };
@@ -332,12 +337,13 @@ async fn begin_file_upload(
 
     match state
         .cores()
-        .begin_file_upload(
+        .begin_file_upload_with_expected(
             core_id,
             &instance_id,
             path,
             size_bytes,
             sha256,
+            expected_sha256,
             idempotency_key,
         )
         .await

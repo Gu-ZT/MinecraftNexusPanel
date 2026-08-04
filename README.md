@@ -41,7 +41,7 @@ The first file-management slice is now available through the Core `files` capabi
 - asynchronous file and recursive-directory deletion with explicit `DELETE` confirmation, task polling, and path-safety guards;
 - ordered batch file tasks for `MKDIR`, `MOVE`, `WRITE`, and `DELETE`, with per-item progress and partial-failure results;
 - asynchronous ZIP archive preparation for up to 128 files or directories, including empty directories and the instance root, with entry progress and atomic output;
-- session-based chunked uploads with fixed 1 MiB parts, per-part and full-file SHA-256 checks, ordered offsets, retries, cancellation, and atomic replacement;
+- session-based chunked uploads with fixed 1 MiB parts, per-part and full-file SHA-256 checks, optional target `ETag`/`If-Match` protection, ordered offsets, retries, cancellation, and atomic replacement;
 - session-based chunked downloads with fixed 1 MiB parts, full-file and per-part SHA-256 metadata, ordered offsets, retryable completed parts, and completion verification;
 - binary Panel responses and TypeScript Client methods for the same contract.
 

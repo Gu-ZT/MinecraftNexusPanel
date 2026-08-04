@@ -1659,7 +1659,20 @@ fn transfer_begin_response(
                     "transfer.begin requires a sha256",
                 );
             };
-            state.files().begin_upload(&instance, path, size, sha256)
+            let expected_target_sha256 = match params.get("expectedSha256") {
+                None => None,
+                Some(Value::String(value)) => Some(value.as_str()),
+                Some(_) => {
+                    return error_response(
+                        request_id,
+                        "BAD_REQUEST",
+                        "transfer.begin expectedSha256 is invalid",
+                    );
+                }
+            };
+            state
+                .files()
+                .begin_upload(&instance, path, size, sha256, expected_target_sha256)
         }
         "DOWNLOAD" => state.files().begin_download(&instance, path),
         _ => unreachable!("transfer mode was validated above"),

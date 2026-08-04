@@ -939,6 +939,29 @@ impl CoreRegistry {
         sha256: &str,
         idempotency_key: &str,
     ) -> Result<Value, CoreRegistryError> {
+        self.begin_file_upload_with_expected(
+            core_id,
+            instance_id,
+            path,
+            size_bytes,
+            sha256,
+            None,
+            idempotency_key,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn begin_file_upload_with_expected(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        path: &str,
+        size_bytes: u64,
+        sha256: &str,
+        expected_sha256: Option<&str>,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
         let core = self.find(core_id).await?;
         let mut connection = core.connection.lock().await;
         let connection = connection
@@ -946,7 +969,14 @@ impl CoreRegistry {
             .ok_or(CoreRegistryError::ConnectionUnavailable)?;
 
         Ok(connection
-            .begin_file_upload(instance_id, path, size_bytes, sha256, idempotency_key)
+            .begin_file_upload_with_expected(
+                instance_id,
+                path,
+                size_bytes,
+                sha256,
+                expected_sha256,
+                idempotency_key,
+            )
             .await?)
     }
 

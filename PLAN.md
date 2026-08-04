@@ -90,7 +90,7 @@ MinecraftNexusPanel/
 - Desktop/Mobile 使用短期 Access Token 与可轮换 Refresh Token，Token 必须绑定设备会话。
 - 实时日志、指标、节点状态和任务进度统一通过 WebSocket 推送。
 - 耗时或不可立即完成的操作返回 `202 Accepted` 和 `taskId`。
-- 当前文件管理首阶段通过 `files` capability 暴露 Core 沙箱列表、32 KiB 分块读取、1 MiB 内原子写入、目录创建、移动、批量操作、删除任务和异步 ZIP 归档准备；`transfer-v1` 通过固定 1 MiB 分片提供会话化上传和下载。Panel REST 使用二进制响应、`ETag`/`If-Match`、`Content-SHA256`、传输游标和幂等键传递同一约束。`config` capability 目前提供 `PROPERTIES` 配置识别、Schema/UI Schema、SHA-256 revision、保留布局的顶层补丁和 raw 读写。
+- 当前文件管理首阶段通过 `files` capability 暴露 Core 沙箱列表、32 KiB 分块读取、1 MiB 内原子写入、目录创建、移动、批量操作、删除任务和异步 ZIP 归档准备；`transfer-v1` 通过固定 1 MiB 分片提供会话化上传和下载，并可在创建上传会话时校验目标 `ETag`/`If-Match`。Panel REST 使用二进制响应、`ETag`/`If-Match`、`Content-SHA256`、传输游标和幂等键传递同一约束。`config` capability 目前提供 `PROPERTIES` 配置识别、Schema/UI Schema、SHA-256 revision、保留布局的顶层补丁和 raw 读写。
 - API 细节见 [`docs/api/web-api.md`](docs/api/web-api.md) 和 [`docs/api/websocket.md`](docs/api/websocket.md)。
 
 ### 4.3 数据与密钥

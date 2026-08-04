@@ -676,6 +676,7 @@ impl FileManager {
         relative_path: &str,
         expected_size: u64,
         expected_sha256: &str,
+        expected_target_sha256: Option<&str>,
     ) -> Result<Value, FileManagerError> {
         if expected_size > MAXIMUM_FILE_TRANSFER_BYTES {
             return Err(FileManagerError::ContentTooLarge {
@@ -685,6 +686,20 @@ impl FileManager {
         validate_hash(expected_sha256)?;
         let root = self.instance_root(instance)?;
         let target = self.resolve_write_target(&root, relative_path)?;
+        if let Some(expected_target_sha256) = expected_target_sha256 {
+            validate_hash(expected_target_sha256)?;
+            let actual_sha256 = if target.exists() {
+                hash_file(&target)?
+            } else {
+                String::new()
+            };
+            if !expected_target_sha256.eq_ignore_ascii_case(&actual_sha256) {
+                return Err(FileManagerError::HashMismatch {
+                    expected: expected_target_sha256.to_owned(),
+                    actual: actual_sha256,
+                });
+            }
+        }
         let parent = target
             .parent()
             .ok_or_else(|| FileManagerError::InvalidPath {
@@ -1928,6 +1943,8 @@ mod tests {
     use nexus_domain::TaskId;
     use serde_json::Value;
     use serde_json::json;
+    use sha2::Digest;
+    use sha2::Sha256;
     use tempfile::tempdir;
     use tokio::time::sleep;
     use tokio::time::timeout;
@@ -1935,6 +1952,7 @@ mod tests {
 
     use super::FileManager;
     use super::FileManagerError;
+    use super::sha256_hex;
 
     #[test]
     fn lists_entries_with_safe_relative_paths() {
@@ -2119,6 +2137,53 @@ mod tests {
         manager
             .write(&instance, "server.properties", b"motd=Changed", Some(&hash))
             .expect("matching hash permits replacement");
+    }
+
+    #[test]
+    fn checks_the_target_hash_before_beginning_an_upload() {
+        let directory = tempdir().expect("temporary directory is created");
+        let instance = instance();
+        let manager = FileManager::new(directory.path());
+        fs::create_dir_all(directory.path().join(instance.directory()).join("plugins"))
+            .expect("extension directory is created");
+        let entry = manager
+            .write(&instance, "plugins/example.jar", b"old", None)
+            .expect("existing extension is written");
+        let current_hash = entry
+            .sha256()
+            .expect("existing extension has a hash")
+            .to_owned();
+        let new_hash = sha256_hex(Sha256::digest(b"new"));
+
+        let stale_hash = "0".repeat(64);
+        let error = manager
+            .begin_upload(
+                &instance,
+                "plugins/example.jar",
+                3,
+                &new_hash,
+                Some(&stale_hash),
+            )
+            .expect_err("stale target hash is rejected");
+        assert!(matches!(error, FileManagerError::HashMismatch { .. }));
+
+        let transfer = manager
+            .begin_upload(
+                &instance,
+                "plugins/example.jar",
+                3,
+                &new_hash,
+                Some(&current_hash),
+            )
+            .expect("matching target hash starts an upload");
+        let transfer_id = transfer["transferId"]
+            .as_str()
+            .expect("transfer ID is returned")
+            .parse::<TaskId>()
+            .expect("transfer ID is valid");
+        manager
+            .abort_upload(transfer_id)
+            .expect("test upload is released");
     }
 
     #[test]
