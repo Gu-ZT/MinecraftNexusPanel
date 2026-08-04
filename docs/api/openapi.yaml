@@ -682,6 +682,59 @@ paths:
           $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags: [ Extensions ]
+      operationId: deleteInstanceExtension
+      summary: Delete an extension file within a template layout
+      description: |
+        Delete one extension file through the Core file task API. The path
+        must be below a directory declared for the selected template and
+        extension kind. This operation does not create or update an extension
+        installation record.
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - name: templateId
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: kind
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/ExtensionKind'
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: confirmation
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [ DELETE ]
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Extension deletion task accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instances:
     parameters:
       - $ref: '#/components/parameters/CoreId'
