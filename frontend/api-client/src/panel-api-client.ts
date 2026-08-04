@@ -369,7 +369,7 @@ export interface ExtensionInstallTask {
   taskId: string;
   coreId: string;
   instanceId: string;
-  kind: 'EXTENSION_INSTALL';
+  kind: 'EXTENSION_INSTALL' | 'EXTENSION_UPDATE';
   extensionKind: ExtensionKind;
   state: ExtensionInstallTaskState;
   progress: {
@@ -618,6 +618,13 @@ export interface PanelApiClient {
     coreId: string,
     instanceId: string,
     request: ExtensionInstallRequest,
+  ): Promise<TaskAccepted>;
+  updateExtension(
+    coreId: string,
+    instanceId: string,
+    extensionId: string,
+    request: ExtensionInstallRequest,
+    expectedSha256?: string,
   ): Promise<TaskAccepted>;
   getExtensionInstallTask(coreId: string, taskId: string): Promise<ExtensionInstallTask>;
   listManagedRuntimes(coreId: string): Promise<ManagedRuntimePage>;
@@ -929,6 +936,21 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
       return request<TaskAccepted>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/extensions`,
         { method: 'POST', body: installRequest, csrf: true, idempotent: true },
+      );
+    },
+    updateExtension(coreId, instanceId, extensionId, updateRequest, expectedSha256) {
+      const requestOptions: RequestOptions = {
+        method: 'POST',
+        body: updateRequest,
+        csrf: true,
+        idempotent: true,
+      };
+      if (expectedSha256 !== undefined) {
+        requestOptions.ifMatch = expectedSha256;
+      }
+      return request<TaskAccepted>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/extensions/${encodeURIComponent(extensionId)}/actions/update`,
+        requestOptions,
       );
     },
     getExtensionInstallTask(coreId, taskId) {

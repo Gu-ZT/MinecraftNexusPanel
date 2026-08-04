@@ -154,6 +154,10 @@
 | `CONFIG_LOSSY_WRITE_REQUIRED`  |  409 | 写入可能丢失格式，需要显式确认 |
 | `EXTENSION_INCOMPATIBLE`       |  422 | Minecraft/加载器/依赖不兼容    |
 | `EXTENSION_SOURCE_DENIED`      |  403 | 来源或下载许可不允许           |
+| `EXTENSION_NOT_FOUND`          |  404 | 扩展安装记录不存在             |
+| `EXTENSION_PROJECT_MISMATCH`   |  409 | 更新计划不属于目标扩展项目     |
+| `EXTENSION_REVISION_MISMATCH`  |  412 | 更新记录摘要已变化             |
+| `EXTENSION_UPDATE_UNSUPPORTED` |  409 | 本地产物没有可用来源更新信息   |
 | `DOCKER_UNAVAILABLE`           |  503 | Core 未安装或无法连接 Docker   |
 | `CONTAINER_POLICY_DENIED`      |  403 | 参数违反 Core 容器安全策略     |
 | `IMAGE_IN_USE`                 |  409 | 镜像仍被实例/容器引用          |

@@ -1025,6 +1025,63 @@ paths:
           $ref: '#/components/responses/PreconditionRequired'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/instances/{instanceId}/extensions/{extensionId}/actions/update:
+    post:
+      tags: [ Extensions ]
+      operationId: updateInstanceExtension
+      summary: Start an asynchronous source extension update
+      description: |
+        Re-resolve the requested Modrinth version for the recorded extension
+        project and replace only its root artifact. The recorded extension
+        directory and SHA-256 are used as the update target; If-Match, when
+        supplied, must match the recorded installation hash. A stale target
+        fails before the Core upload session can commit.
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - name: extensionId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - $ref: '#/components/parameters/FileIfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExtensionInstallRequest'
+      responses:
+        '202':
+          description: Extension update task accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '502':
+          $ref: '#/components/responses/CoreFailure'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/extension-tasks/{taskId}:
     get:
       tags: [ Extensions, Tasks ]
@@ -3006,7 +3063,7 @@ components:
           minLength: 1
         kind:
           type: string
-          enum: [ EXTENSION_INSTALL ]
+          enum: [ EXTENSION_INSTALL, EXTENSION_UPDATE ]
         extensionKind:
           $ref: '#/components/schemas/ExtensionKind'
         state:

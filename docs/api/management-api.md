@@ -220,13 +220,13 @@ API、授权和下载限制，禁止绕过需要授权的下载流程。
 搜索参数至少包括 `query`、`type`、`source`、`minecraftVersion`、`loader` 和分页。安装记录保存来源、项目 ID、文件
 ID、版本、SHA-256、依赖和本地相对路径。
 
-当前 Panel 已提供来源搜索、项目版本详情、受限依赖计划解析、异步计划安装、安装任务查询和实例扫描接口。`GET /extension-catalog/search` 当前接入 Modrinth，要求 `query`、`type=PLUGIN|MOD`，可选 `source=modrinth`、`minecraftVersion`、`loader`、`limit` 和 `offset`；返回项目支持版本、加载器及基于请求过滤条件的来源兼容性提示。`GET /extension-catalog/projects/{source}/{projectId}` 当前读取 Modrinth 版本、依赖记录和带 SHA-512 的 HTTPS 归档摘要；`POST /cores/{coreId}/instances/{instanceId}/extension-plans:resolve` 会校验模板/实例/扩展类型，递归解析最多 64 个 required 项目并检测版本冲突、缺失项目、循环和无归档，返回安装前计划；这些只读操作不下载或安装文件。`POST /cores/{coreId}/instances/{instanceId}/extensions` 接收同一计划字段和可选 `directory`，再次解析计划后创建内存安装任务并返回 `202`/`taskId`；后台只下载 HTTPS Modrinth 归档，校验来源声明的大小与 SHA-512，通过 Core `transfer-v1` 以 1 MiB 分片上传，原子提交后写入对应的来源安装记录。同一 Core、实例和扩展类型重复使用 `Idempotency-Key` 会复用原任务，不会重复下载或写入。`GET /cores/{coreId}/extension-tasks/{taskId}` 返回进度、已提交记录和失败状态；任务不跨 Panel 重启恢复。模板为同一扩展类型声明多个目录时必须显式选择目录，插件和模组始终使用独立的 `kind`。失败回滚、Core 侧统一任务和更新动作仍未提供。
+当前 Panel 已提供来源搜索、项目版本详情、受限依赖计划解析、异步计划安装、安装任务查询和实例扫描接口。`GET /extension-catalog/search` 当前接入 Modrinth，要求 `query`、`type=PLUGIN|MOD`，可选 `source=modrinth`、`minecraftVersion`、`loader`、`limit` 和 `offset`；返回项目支持版本、加载器及基于请求过滤条件的来源兼容性提示。`GET /extension-catalog/projects/{source}/{projectId}` 当前读取 Modrinth 版本、依赖记录和带 SHA-512 的 HTTPS 归档摘要；`POST /cores/{coreId}/instances/{instanceId}/extension-plans:resolve` 会校验模板/实例/扩展类型，递归解析最多 64 个 required 项目并检测版本冲突、缺失项目、循环和无归档，返回安装前计划；这些只读操作不下载或安装文件。`POST /cores/{coreId}/instances/{instanceId}/extensions` 接收同一计划字段和可选 `directory`，再次解析计划后创建内存安装任务并返回 `202`/`taskId`；后台只下载 HTTPS Modrinth 归档，校验来源声明的大小与 SHA-512，通过 Core `transfer-v1` 以 1 MiB 分片上传，原子提交后写入对应的来源安装记录。同一 Core、实例和扩展类型重复使用 `Idempotency-Key` 会复用原任务，不会重复下载或写入。`POST .../{instanceId}/extensions/{extensionId}/actions/update` 会定位已持久化的 Modrinth 来源记录，校验项目、扩展类型、模板目录和可选 `If-Match`，重新解析目标版本后只更新根文件，并以 `EXTENSION_UPDATE` 任务返回进度。`GET /cores/{coreId}/extension-tasks/{taskId}` 返回进度、已提交记录和失败状态；任务不跨 Panel 重启恢复。模板为同一扩展类型声明多个目录时必须显式选择目录，插件和模组始终使用独立的 `kind`。失败回滚、Core 侧统一任务和批量更新动作仍未提供。
 实例扫描调用时必须传入 `templateId` 和 `kind=PLUGIN|MOD`；Panel 校验模板与实例类型一致后，按
 `InstallTemplateExtensionLayout` 声明的目录分别读取 Core 文件页。混合端的插件和模组不会合并，模板声明多个目录时也会分别返回；不存在的目录返回空页。
 同一路径的 `DELETE` 操作要求额外传入 `path`、`confirmation=DELETE` 和合法的 `Idempotency-Key`，只允许删除所选模板和扩展类型声明目录下的单个文件，并返回 Core 异步文件任务。
 同一路径的 `PUT` 操作接收不超过 1 MiB 的 `application/octet-stream`，要求传入 `path` 和合法的 `Idempotency-Key`，可用 `If-Match` 校验已有文件 SHA-256，通过 Core 原子写入把已准备产物放到声明目录内，并持久化 `LOCAL` 来源、SHA-256、路径和安装时间。删除操作接受任务后清理对应记录；聚合 Core 安装任务、失败回滚、完整更新流程和安装级兼容性校验仍未提供。
 
-更新前生成 plan，标记 Minecraft/加载器不兼容、依赖缺失、冲突和需要停服的变更。批量更新是单个可回滚任务，替换前保留文件备份。
+更新前生成 plan，标记 Minecraft/加载器不兼容、依赖缺失、冲突和需要停服的变更。当前单个来源扩展更新只替换根文件并使用记录摘要保护并发；批量更新仍应实现为单个可回滚任务，替换前保留文件备份。
 
 ## 7. 终端
 

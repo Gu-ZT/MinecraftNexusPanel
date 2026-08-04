@@ -26,6 +26,7 @@ impl ExtensionTaskStore {
         instance_id: &InstanceId,
         kind: ExtensionKind,
         total: usize,
+        task_kind: &str,
         idempotency_key: &str,
     ) -> Result<(TaskId, bool), ()> {
         let mut tasks = self.tasks.lock().map_err(|_| ())?;
@@ -35,6 +36,7 @@ impl ExtensionTaskStore {
             (task.get("_idempotencyKey").and_then(Value::as_str) == Some(idempotency_key)
                 && task.get("coreId").and_then(Value::as_str) == Some(core_id.as_str())
                 && task.get("instanceId").and_then(Value::as_str) == Some(instance_id.as_str())
+                && task.get("kind").and_then(Value::as_str) == Some(task_kind)
                 && task.get("extensionKind") == Some(&json!(kind)))
             .then_some(*task_id)
         }) {
@@ -62,7 +64,7 @@ impl ExtensionTaskStore {
                 "taskId": task_id,
                 "coreId": core_id,
                 "instanceId": instance_id,
-                "kind": "EXTENSION_INSTALL",
+                "kind": task_kind,
                 "extensionKind": kind,
                 "state": "RUNNING",
                 "progress": { "completed": 0, "total": total },
@@ -156,7 +158,14 @@ mod tests {
             .expect("instance ID is valid");
         let core_id = CoreId::new();
         let task_id = store
-            .start(core_id, &instance_id, ExtensionKind::Plugin, 2, "request-1")
+            .start(
+                core_id,
+                &instance_id,
+                ExtensionKind::Plugin,
+                2,
+                "EXTENSION_INSTALL",
+                "request-1",
+            )
             .expect("task is created");
         let (task_id, created) = task_id;
         assert!(created);
@@ -194,6 +203,7 @@ mod tests {
                 &instance_id,
                 ExtensionKind::Mod,
                 3,
+                "EXTENSION_INSTALL",
                 "request-2",
             )
             .expect("task is created");
@@ -221,14 +231,40 @@ mod tests {
         let core_id = CoreId::new();
 
         let first = store
-            .start(core_id, &instance_id, ExtensionKind::Plugin, 1, "request-3")
+            .start(
+                core_id,
+                &instance_id,
+                ExtensionKind::Plugin,
+                1,
+                "EXTENSION_INSTALL",
+                "request-3",
+            )
             .expect("first task is created");
         let second = store
-            .start(core_id, &instance_id, ExtensionKind::Plugin, 1, "request-3")
+            .start(
+                core_id,
+                &instance_id,
+                ExtensionKind::Plugin,
+                1,
+                "EXTENSION_INSTALL",
+                "request-3",
+            )
             .expect("duplicate task is accepted");
+        let update = store
+            .start(
+                core_id,
+                &instance_id,
+                ExtensionKind::Plugin,
+                1,
+                "EXTENSION_UPDATE",
+                "request-3",
+            )
+            .expect("different operation can reuse a key");
 
         assert!(first.1);
         assert_eq!(second, (first.0, false));
+        assert!(update.1);
+        assert_ne!(update.0, first.0);
         let task = store
             .get(first.0)
             .expect("task lookup succeeds")

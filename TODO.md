@@ -124,6 +124,7 @@
   - [x] 安装请求重新解析 Modrinth 计划，仅接受 HTTPS 归档，校验声明大小与 SHA-512，通过 Core `transfer-v1` 分片上传到模板声明目录，并持久化每个已提交文件的来源安装记录。
   - [x] 将计划安装改为 Panel 内存异步任务，返回 `202`/`taskId`，提供进度、已提交记录和失败状态查询；任务不跨 Panel 重启恢复。
   - [x] 重复使用同一 Core、实例和扩展类型作用域内的 `Idempotency-Key` 时复用原安装任务，避免重复下载和写入。
+  - [x] 为已持久化的 Modrinth 来源扩展增加单个更新动作：重新解析目标版本，只更新根文件，并通过记录 SHA-256 和 Core 上传会话摘要保护并发。
   - [ ] 补齐 Core 侧统一安装任务、失败回滚、批量更新和更多来源适配器；后台顺序安装失败时不伪造整体回滚。
   - [x] `BedrockManagementProfile` 为 PocketMine-MP、Nukkit 和 Cloudburst Nukkit 暴露 `plugins/`，BDS/Geyser 保持无插件目录。
   - [ ] 为不同基岩端提供插件/扩展目录、配置和版本兼容性策略。

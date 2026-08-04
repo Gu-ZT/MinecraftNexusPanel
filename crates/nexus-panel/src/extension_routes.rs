@@ -91,6 +91,10 @@ pub(crate) fn extension_routes() -> Router<PanelState> {
                 .delete(delete_instance_extension),
         )
         .route(
+            "/api/v1/cores/{core_id}/instances/{instance_id}/extensions/{extension_id}/actions/update",
+            post(update_instance_extension),
+        )
+        .route(
             "/api/v1/cores/{core_id}/extension-tasks/{task_id}",
             get(get_extension_install_task),
         )
@@ -200,6 +204,7 @@ async fn install_instance_extensions(
         &instance_id,
         plan.kind(),
         plan.items().len(),
+        "EXTENSION_INSTALL",
         idempotency_key,
     ) {
         Ok(result) => result,
@@ -225,6 +230,237 @@ async fn install_instance_extensions(
                 task_instance_id,
                 task_directory,
                 plan,
+                None,
+                None,
+                task_idempotency_key,
+            )
+            .await;
+        });
+    }
+
+    (
+        StatusCode::ACCEPTED,
+        Json(json!({
+            "taskId": task_id,
+            "acceptedAt": current_timestamp(),
+        })),
+    )
+        .into_response()
+}
+
+async fn update_instance_extension(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, instance_id, extension_id)): Path<(String, String, String)>,
+    headers: HeaderMap,
+    payload: Result<Json<ExtensionInstallRequest>, JsonRejection>,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Some(idempotency_key) =
+        header_text(&headers, "idempotency-key").filter(|value| value.parse::<RequestId>().is_ok())
+    else {
+        return error_response(
+            StatusCode::PRECONDITION_REQUIRED,
+            "PRECONDITION_REQUIRED",
+            "Idempotency-Key is required",
+            request_id,
+        );
+    };
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return invalid_core_id_response(request_id);
+    };
+    let Some(instance_id) = instance_id.parse::<InstanceId>().ok() else {
+        return validation_error(request_id);
+    };
+    let request = match payload {
+        Ok(Json(request)) if is_valid_plan_request(request.plan()) => request,
+        Ok(_) | Err(_) => return validation_error(request_id),
+    };
+    let plan_request = request.plan();
+    let Some(template) = install_template(plan_request.template_id()) else {
+        return error_response(
+            StatusCode::NOT_FOUND,
+            "NOT_FOUND",
+            "Install template does not exist",
+            request_id,
+        );
+    };
+    let instance = match state.cores().get_instance(core_id, &instance_id).await {
+        Ok(value) => match from_value::<Instance>(value) {
+            Ok(instance) => instance,
+            Err(_) => return invalid_core_response(request_id),
+        },
+        Err(error) => return registry_error_response(error, request_id),
+    };
+    if instance.kind() != template.instance_kind() {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "TEMPLATE_INSTANCE_KIND_MISMATCH",
+            "Install template does not match the instance type",
+            request_id,
+        );
+    }
+
+    let directories = template.extension_directories(plan_request.kind());
+    if directories.is_empty() {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "EXTENSION_KIND_UNSUPPORTED",
+            "The install template does not declare this extension kind",
+            request_id,
+        );
+    }
+    let installations = match state
+        .cores()
+        .list_extension_installs(core_id, &instance_id, plan_request.kind())
+        .await
+    {
+        Ok(installations) => installations,
+        Err(error) => return registry_error_response(error, request_id),
+    };
+    let Some(existing) = installations
+        .into_iter()
+        .find(|installation| installation.id() == extension_id)
+    else {
+        return error_response(
+            StatusCode::NOT_FOUND,
+            "EXTENSION_NOT_FOUND",
+            "Extension installation does not exist",
+            request_id,
+        );
+    };
+    let Some(existing_project_id) = existing.project_id() else {
+        return error_response(
+            StatusCode::CONFLICT,
+            "EXTENSION_UPDATE_UNSUPPORTED",
+            "Local extension artifacts cannot be updated from a source plan",
+            request_id,
+        );
+    };
+    if existing_project_id != plan_request.project_id() {
+        return error_response(
+            StatusCode::CONFLICT,
+            "EXTENSION_PROJECT_MISMATCH",
+            "The update plan does not belong to the selected extension",
+            request_id,
+        );
+    }
+    let Some(existing_directory) = directories
+        .iter()
+        .copied()
+        .find(|directory| is_extension_path(existing.path(), directory))
+    else {
+        return error_response(
+            StatusCode::CONFLICT,
+            "EXTENSION_PATH_OUTSIDE_LAYOUT",
+            "The recorded extension path is outside the template layout",
+            request_id,
+        );
+    };
+    let directory = match request.directory() {
+        Some(requested) if requested != existing_directory => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "EXTENSION_DIRECTORY_INVALID",
+                "The update directory must match the recorded extension directory",
+                request_id,
+            );
+        }
+        Some(requested) => selected_extension_directory(&directories, Some(requested)),
+        None => Some(existing_directory),
+    };
+    let Some(directory) = directory else {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "EXTENSION_DIRECTORY_INVALID",
+            "The selected directory is not declared for this extension kind",
+            request_id,
+        );
+    };
+    let expected_sha256 = match expected_file_hash(&headers) {
+        Ok(Some(value)) if !value.eq_ignore_ascii_case(existing.sha256()) => {
+            return error_response(
+                StatusCode::PRECONDITION_FAILED,
+                "EXTENSION_REVISION_MISMATCH",
+                "The extension installation record has changed",
+                request_id,
+            );
+        }
+        Ok(_) => Some(existing.sha256().to_owned()),
+        Err(()) => return validation_error(request_id),
+    };
+    let resolved_plan = match state
+        .extension_sources()
+        .resolve_dependencies(
+            template.id(),
+            plan_request.kind(),
+            plan_request.project_id(),
+            plan_request.version_id(),
+            plan_request.minecraft_version(),
+            plan_request.loader(),
+        )
+        .await
+    {
+        Ok(plan) => plan,
+        Err(error) => return extension_source_error_response(error, request_id),
+    };
+    let Some(root_item) = resolved_plan
+        .items()
+        .iter()
+        .find(|item| item.project_id() == existing_project_id)
+        .cloned()
+    else {
+        return error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "EXTENSION_PLAN_UNRESOLVED",
+            "The update plan does not contain the selected extension",
+            request_id,
+        );
+    };
+    let update_plan = ExtensionPlanResolution::new(
+        resolved_plan.template_id().to_owned(),
+        resolved_plan.kind(),
+        resolved_plan.minecraft_version().to_owned(),
+        resolved_plan.loader().map(str::to_owned),
+        vec![root_item],
+    );
+    let (task_id, created) = match state.extension_tasks().start(
+        core_id,
+        &instance_id,
+        update_plan.kind(),
+        update_plan.items().len(),
+        "EXTENSION_UPDATE",
+        idempotency_key,
+    ) {
+        Ok(result) => result,
+        Err(()) => {
+            return error_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "TASK_STORE_UNAVAILABLE",
+                "The extension task store cannot accept more tasks",
+                request_id,
+            );
+        }
+    };
+    if created {
+        let task_state = state.clone();
+        let task_directory = directory.to_owned();
+        let task_instance_id = instance_id.clone();
+        let target_path = existing.path().to_owned();
+        let task_expected_sha256 = expected_sha256;
+        let task_idempotency_key = idempotency_key.to_owned();
+        spawn(async move {
+            run_extension_install_task(
+                task_state,
+                task_id,
+                core_id,
+                task_instance_id,
+                task_directory,
+                update_plan,
+                Some(target_path),
+                task_expected_sha256,
                 task_idempotency_key,
             )
             .await;
@@ -288,6 +524,7 @@ async fn get_extension_install_task(
     Json(task).into_response()
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_extension_install_task(
     state: PanelState,
     task_id: TaskId,
@@ -295,6 +532,8 @@ async fn run_extension_install_task(
     instance_id: InstanceId,
     directory: String,
     plan: ExtensionPlanResolution,
+    target_path: Option<String>,
+    expected_sha256: Option<String>,
     idempotency_key: String,
 ) {
     let directory_idempotency_key = RequestId::new().to_string();
@@ -316,7 +555,14 @@ async fn run_extension_install_task(
     let total = plan.items().len();
     let mut installations = Vec::with_capacity(total);
     for (index, item) in plan.items().iter().enumerate() {
-        let Some(path) = extension_install_path(&directory, item) else {
+        let path = if index == 0 {
+            target_path
+                .clone()
+                .or_else(|| extension_install_path(&directory, item))
+        } else {
+            extension_install_path(&directory, item)
+        };
+        let Some(path) = path else {
             fail_extension_task(
                 &state,
                 task_id,
@@ -338,6 +584,11 @@ async fn run_extension_install_task(
             &path,
             plan.kind(),
             item,
+            if index == 0 {
+                expected_sha256.as_deref()
+            } else {
+                None
+            },
             &transfer_idempotency_key,
         )
         .await
@@ -378,6 +629,7 @@ fn fail_extension_task(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn install_extension_artifact(
     state: &PanelState,
     core_id: CoreId,
@@ -385,6 +637,7 @@ async fn install_extension_artifact(
     path: &str,
     kind: ExtensionKind,
     item: &ExtensionPlanItem,
+    expected_sha256: Option<&str>,
     idempotency_key: &str,
 ) -> Result<ExtensionInstall, String> {
     let temporary_path = temporary_artifact_path();
@@ -392,9 +645,16 @@ async fn install_extension_artifact(
         let staged =
             download_artifact_to_file(state.extension_sources(), item.artifact(), &temporary_path)
                 .await?;
-        let entry =
-            upload_artifact_to_core(state, core_id, instance_id, path, &staged, idempotency_key)
-                .await?;
+        let entry = upload_artifact_to_core(
+            state,
+            core_id,
+            instance_id,
+            path,
+            &staged,
+            expected_sha256,
+            idempotency_key,
+        )
+        .await?;
         let Some(core_sha256) = entry.sha256() else {
             return Err("Core did not return an extension file hash".to_owned());
         };
@@ -495,16 +755,18 @@ async fn upload_artifact_to_core(
     instance_id: &InstanceId,
     path: &str,
     staged: &StagedArtifact,
+    expected_sha256: Option<&str>,
     idempotency_key: &str,
 ) -> Result<FileEntry, String> {
     let start = state
         .cores()
-        .begin_file_upload(
+        .begin_file_upload_with_expected(
             core_id,
             instance_id,
             path,
             staged.size,
             &staged.sha256,
+            expected_sha256,
             idempotency_key,
         )
         .await

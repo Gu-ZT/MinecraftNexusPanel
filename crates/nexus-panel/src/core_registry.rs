@@ -930,27 +930,6 @@ impl CoreRegistry {
         Ok(connection.get_file_task(task_id).await?)
     }
 
-    pub async fn begin_file_upload(
-        &self,
-        core_id: CoreId,
-        instance_id: &InstanceId,
-        path: &str,
-        size_bytes: u64,
-        sha256: &str,
-        idempotency_key: &str,
-    ) -> Result<Value, CoreRegistryError> {
-        self.begin_file_upload_with_expected(
-            core_id,
-            instance_id,
-            path,
-            size_bytes,
-            sha256,
-            None,
-            idempotency_key,
-        )
-        .await
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub async fn begin_file_upload_with_expected(
         &self,
