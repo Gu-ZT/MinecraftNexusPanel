@@ -9,8 +9,10 @@ pub enum StorageError {
     /// 无法创建数据目录。
     #[error("failed to create the Panel data directory {path}")]
     CreateDataDirectory {
+        /// 创建失败的 Panel 数据目录路径。
         path: PathBuf,
         #[source]
+        /// 操作系统返回的目录创建错误。
         source: io::Error,
     },
     /// 数据库连接锁发生中毒，不能继续安全访问。
@@ -22,8 +24,10 @@ pub enum StorageError {
     /// 无法打开数据库文件。
     #[error("failed to open the Panel database {path}")]
     Open {
+        /// 尝试打开的 SQLite 数据库路径。
         path: PathBuf,
         #[source]
+        /// SQLite 返回的打开错误。
         source: rusqlite::Error,
     },
     /// SQL 查询、写入或事务提交失败。
