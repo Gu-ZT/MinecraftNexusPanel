@@ -195,37 +195,41 @@ async fn install_instance_extensions(
         }
     }
 
-    let task_id =
-        match state
-            .extension_tasks()
-            .start(core_id, &instance_id, plan.kind(), plan.items().len())
-        {
-            Ok(task_id) => task_id,
-            Err(()) => {
-                return error_response(
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "TASK_STORE_UNAVAILABLE",
-                    "The extension task store cannot accept more tasks",
-                    request_id,
-                );
-            }
-        };
-    let task_state = state.clone();
-    let task_directory = directory.to_owned();
-    let task_instance_id = instance_id.clone();
-    let task_idempotency_key = idempotency_key.to_owned();
-    spawn(async move {
-        run_extension_install_task(
-            task_state,
-            task_id,
-            core_id,
-            task_instance_id,
-            task_directory,
-            plan,
-            task_idempotency_key,
-        )
-        .await;
-    });
+    let (task_id, created) = match state.extension_tasks().start(
+        core_id,
+        &instance_id,
+        plan.kind(),
+        plan.items().len(),
+        idempotency_key,
+    ) {
+        Ok(result) => result,
+        Err(()) => {
+            return error_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "TASK_STORE_UNAVAILABLE",
+                "The extension task store cannot accept more tasks",
+                request_id,
+            );
+        }
+    };
+    if created {
+        let task_state = state.clone();
+        let task_directory = directory.to_owned();
+        let task_instance_id = instance_id.clone();
+        let task_idempotency_key = idempotency_key.to_owned();
+        spawn(async move {
+            run_extension_install_task(
+                task_state,
+                task_id,
+                core_id,
+                task_instance_id,
+                task_directory,
+                plan,
+                task_idempotency_key,
+            )
+            .await;
+        });
+    }
 
     (
         StatusCode::ACCEPTED,

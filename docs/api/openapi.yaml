@@ -832,7 +832,10 @@ paths:
         The selected directory must be declared by the template; when a kind
         has multiple directories, directory is required. The response only
         accepts the task; query the task endpoint for progress and committed
-        installation records. Aggregate rollback is not provided yet.
+        installation records. Reusing the same Idempotency-Key for the same
+        Core, instance, and extension kind returns the original task without
+        starting a duplicate installation. Aggregate rollback is not provided
+        yet.
       security:
         - cookieAuth: [ ]
           csrfToken: [ ]

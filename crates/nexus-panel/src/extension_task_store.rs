@@ -26,9 +26,22 @@ impl ExtensionTaskStore {
         instance_id: &InstanceId,
         kind: ExtensionKind,
         total: usize,
-    ) -> Result<TaskId, ()> {
-        let task_id = TaskId::new();
+        idempotency_key: &str,
+    ) -> Result<(TaskId, bool), ()> {
         let mut tasks = self.tasks.lock().map_err(|_| ())?;
+        let core_id = core_id.to_string();
+        let instance_id = instance_id.to_string();
+        if let Some(task_id) = tasks.iter().find_map(|(task_id, task)| {
+            (task.get("_idempotencyKey").and_then(Value::as_str) == Some(idempotency_key)
+                && task.get("coreId").and_then(Value::as_str) == Some(core_id.as_str())
+                && task.get("instanceId").and_then(Value::as_str) == Some(instance_id.as_str())
+                && task.get("extensionKind") == Some(&json!(kind)))
+            .then_some(*task_id)
+        }) {
+            return Ok((task_id, false));
+        }
+
+        let task_id = TaskId::new();
         if tasks.len() >= MAXIMUM_EXTENSION_TASKS {
             let completed_task = tasks.iter().find_map(|(task_id, task)| {
                 matches!(
@@ -55,13 +68,20 @@ impl ExtensionTaskStore {
                 "progress": { "completed": 0, "total": total },
                 "installations": [],
                 "acceptedAt": current_timestamp(),
+                "_idempotencyKey": idempotency_key,
             }),
         );
-        Ok(task_id)
+        Ok((task_id, true))
     }
 
     pub(crate) fn get(&self, task_id: TaskId) -> Result<Option<Value>, ()> {
-        Ok(self.tasks.lock().map_err(|_| ())?.get(&task_id).cloned())
+        let task = self.tasks.lock().map_err(|_| ())?.get(&task_id).cloned();
+        Ok(task.map(|mut task| {
+            if let Some(object) = task.as_object_mut() {
+                object.remove("_idempotencyKey");
+            }
+            task
+        }))
     }
 
     pub(crate) fn update_progress(
@@ -136,8 +156,10 @@ mod tests {
             .expect("instance ID is valid");
         let core_id = CoreId::new();
         let task_id = store
-            .start(core_id, &instance_id, ExtensionKind::Plugin, 2)
+            .start(core_id, &instance_id, ExtensionKind::Plugin, 2, "request-1")
             .expect("task is created");
+        let (task_id, created) = task_id;
+        assert!(created);
 
         let task = store
             .get(task_id)
@@ -167,8 +189,16 @@ mod tests {
             .parse::<InstanceId>()
             .expect("instance ID is valid");
         let task_id = store
-            .start(CoreId::new(), &instance_id, ExtensionKind::Mod, 3)
+            .start(
+                CoreId::new(),
+                &instance_id,
+                ExtensionKind::Mod,
+                3,
+                "request-2",
+            )
             .expect("task is created");
+        let (task_id, created) = task_id;
+        assert!(created);
 
         store
             .fail(task_id, 1, &[], "artifact failed")
@@ -180,5 +210,29 @@ mod tests {
         assert_eq!(task["state"], "FAILED");
         assert_eq!(task["progress"], json!({ "completed": 1, "total": 3 }));
         assert_eq!(task["error"], "artifact failed");
+    }
+
+    #[test]
+    fn reuses_a_task_for_the_same_scoped_idempotency_key() {
+        let store = ExtensionTaskStore::default();
+        let instance_id = "survival"
+            .parse::<InstanceId>()
+            .expect("instance ID is valid");
+        let core_id = CoreId::new();
+
+        let first = store
+            .start(core_id, &instance_id, ExtensionKind::Plugin, 1, "request-3")
+            .expect("first task is created");
+        let second = store
+            .start(core_id, &instance_id, ExtensionKind::Plugin, 1, "request-3")
+            .expect("duplicate task is accepted");
+
+        assert!(first.1);
+        assert_eq!(second, (first.0, false));
+        let task = store
+            .get(first.0)
+            .expect("task lookup succeeds")
+            .expect("task exists");
+        assert!(task.get("_idempotencyKey").is_none());
     }
 }
