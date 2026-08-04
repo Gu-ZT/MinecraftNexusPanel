@@ -10,6 +10,7 @@ use axum::response::IntoResponse;
 use axum::response::Response;
 use axum::routing::delete;
 use axum::routing::get;
+use axum::routing::post;
 use nexus_domain::InstanceId;
 use nexus_domain::ProxySubserver;
 use nexus_domain::RequestId;
@@ -31,6 +32,10 @@ pub(crate) fn proxy_routes() -> Router<PanelState> {
         .route(
             "/api/v1/cores/{core_id}/instances/{proxy_instance_id}/proxy-subservers/{subserver_id}",
             delete(delete_proxy_subserver),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/instances/{proxy_instance_id}/proxy-subservers/{subserver_id}/actions/check",
+            post(check_proxy_subserver),
         )
 }
 
@@ -122,6 +127,35 @@ async fn delete_proxy_subserver(
         .await
     {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn check_proxy_subserver(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, proxy_instance_id, subserver_id)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return invalid_core_id_response(request_id);
+    };
+    let Some(proxy_instance_id) = parse_instance_id(&proxy_instance_id) else {
+        return validation_error(request_id);
+    };
+    if subserver_id.is_empty() {
+        return validation_error(request_id);
+    }
+
+    match state
+        .cores()
+        .check_proxy_subserver(core_id, &proxy_instance_id, &subserver_id)
+        .await
+    {
+        Ok(health) => Json(health).into_response(),
         Err(error) => registry_error_response(error, request_id),
     }
 }

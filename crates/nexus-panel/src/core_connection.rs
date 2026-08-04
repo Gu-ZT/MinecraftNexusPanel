@@ -19,6 +19,7 @@ use nexus_domain::ManagedRuntime;
 use nexus_domain::PRODUCT_VERSION;
 use nexus_domain::ProvisionPlan;
 use nexus_domain::ProxySubserver;
+use nexus_domain::ProxySubserverHealth;
 use nexus_domain::RequestId;
 use nexus_domain::RuntimeInstallManifest;
 use nexus_domain::TaskId;
@@ -382,6 +383,26 @@ impl CoreConnection {
         .await?;
 
         Ok(())
+    }
+
+    pub async fn check_proxy_subserver(
+        &mut self,
+        proxy_instance_id: &InstanceId,
+        subserver_id: &str,
+    ) -> Result<ProxySubserverHealth, CoreConnectionError> {
+        let result = self
+            .request(
+                "proxy.subserver.check",
+                json!({
+                    "proxyInstanceId": proxy_instance_id,
+                    "subserverId": subserver_id,
+                }),
+            )
+            .await?;
+
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse {
+            field: "proxySubserverHealth",
+        })
     }
 
     pub async fn create_instance(

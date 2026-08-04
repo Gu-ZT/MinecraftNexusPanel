@@ -35,6 +35,23 @@ impl ProxySubserverRepository {
             .unwrap_or_default())
     }
 
+    pub fn get(
+        &self,
+        proxy: &Instance,
+        subserver_id: &str,
+    ) -> Result<ProxySubserver, ProxySubserverRepositoryError> {
+        ensure_supported_proxy(proxy)?;
+        let subservers = self.lock_subservers()?;
+        subservers
+            .get(proxy.id())
+            .and_then(|items| items.get(subserver_id))
+            .cloned()
+            .ok_or_else(|| ProxySubserverRepositoryError::NotFound {
+                proxy_instance_id: proxy.id().clone(),
+                subserver_id: subserver_id.to_owned(),
+            })
+    }
+
     pub fn upsert(
         &self,
         proxy: &Instance,

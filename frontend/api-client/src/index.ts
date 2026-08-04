@@ -74,6 +74,8 @@ export type {
   PanelApiClient,
   ProxyTopology,
   ProxySubserver,
+  ProxySubserverHealth,
+  ProxySubserverHealthStatus,
   ProxySubserverPage,
   SessionTokens,
   RuntimeKind,

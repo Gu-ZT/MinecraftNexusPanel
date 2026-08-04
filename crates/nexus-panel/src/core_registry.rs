@@ -433,6 +433,24 @@ impl CoreRegistry {
         Ok(json!(profile))
     }
 
+    pub async fn check_proxy_subserver(
+        &self,
+        core_id: CoreId,
+        proxy_instance_id: &InstanceId,
+        subserver_id: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let health = connection
+            .check_proxy_subserver(proxy_instance_id, subserver_id)
+            .await?;
+
+        Ok(json!(health))
+    }
+
     pub async fn upsert_extension_install(
         &self,
         core_id: CoreId,

@@ -342,10 +342,12 @@ Core 将压缩包解压到受管 runtime 目录的临时目录，完成可执行
 | `proxy.subserver.list`  | proxyInstanceId                       | items                 |
 | `proxy.subserver.upsert`| proxyInstanceId、subserver            | ProxySubserver        |
 | `proxy.subserver.delete`| proxyInstanceId、subserverId          | 空对象                |
+| `proxy.subserver.check` | proxyInstanceId、subserverId          | ProxySubserverHealth  |
 
 Core 只允许 `VELOCITY`、`WATERFALL`、`BUNGEECORD`、`LIGHTFALL` 和 `GEYSER` 实例使用这些方法。
 一对多代理可以维护多个目标；Geyser 的一对一拓扑最多维护一个目标。每个目标必须指向已存在的非代理实例，
 变更请求必须带 `idempotencyKey`。
+`proxy.subserver.check` 从 Core 节点对启用的目标执行最多 3 秒 TCP 探测；连接失败作为 `UNREACHABLE` 健康结果返回，禁用目标返回 `DISABLED`，不会伪装成 Core 注册错误。
 
 ### 5.5.2 基岩端运维画像
 

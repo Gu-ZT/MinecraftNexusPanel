@@ -1253,6 +1253,36 @@ paths:
           $ref: '#/components/responses/PreconditionRequired'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/instances/{proxyInstanceId}/proxy-subservers/{subserverId}/actions/check:
+    parameters:
+      - $ref: '#/components/parameters/CoreId'
+      - $ref: '#/components/parameters/ProxyInstanceId'
+      - $ref: '#/components/parameters/SubserverId'
+    post:
+      tags: [ Proxy ]
+      operationId: checkProxySubserver
+      summary: Check proxy backend connectivity from Core
+      description: |
+        Probe the configured backend from the registered Core node. The
+        result reports disabled, reachable, or unreachable status and never
+        treats a backend connection failure as a Panel or Core registry error.
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      responses:
+        '200':
+          description: Proxy backend health result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxySubserverHealth'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instances/{instanceId}:
     parameters:
       - $ref: '#/components/parameters/CoreId'
@@ -3543,6 +3573,36 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ProxySubserver'
+    ProxySubserverHealth:
+      type: object
+      required: [ subserverId, targetInstanceId, host, port, enabled, status, reachable, latencyMs, checkedAt, error ]
+      properties:
+        subserverId:
+          type: string
+          minLength: 1
+        targetInstanceId:
+          type: string
+        host:
+          type: string
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        enabled:
+          type: boolean
+        status:
+          type: string
+          enum: [ DISABLED, REACHABLE, UNREACHABLE ]
+        reachable:
+          type: [ boolean, 'null' ]
+        latencyMs:
+          type: [ integer, 'null' ]
+          minimum: 0
+        checkedAt:
+          type: string
+          format: date-time
+        error:
+          type: [ string, 'null' ]
     InstanceKind:
       type: string
       enum:

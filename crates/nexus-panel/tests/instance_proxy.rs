@@ -21,6 +21,7 @@ use tempfile::TempDir;
 use tempfile::tempdir;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
+use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::spawn;
 use tokio::task::JoinHandle;
@@ -391,6 +392,13 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     assert!(bedrock_profile.body["extensionKind"].is_null());
 
     let proxy_path = format!("/api/v1/cores/{core_id}/instances/geyser-proxy/proxy-subservers");
+    let proxy_backend_listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("proxy backend health listener binds");
+    let proxy_backend_port = proxy_backend_listener
+        .local_addr()
+        .expect("proxy backend listener address is available")
+        .port();
     let first_subserver = send_json_request(
         panel_address,
         "POST",
@@ -404,13 +412,27 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
             "name": "Default",
             "targetInstanceId": "java-backend",
             "host": "127.0.0.1",
-            "port": 25565,
+            "port": proxy_backend_port,
             "enabled": true,
         })),
     )
     .await;
     assert_eq!(first_subserver.status, 200);
     assert_eq!(first_subserver.body["targetInstanceId"], "java-backend");
+
+    let checked_subserver = send_json_request(
+        panel_address,
+        "POST",
+        &format!("{proxy_path}/default/actions/check"),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(checked_subserver.status, 200);
+    assert_eq!(checked_subserver.body["status"], "REACHABLE");
+    assert_eq!(checked_subserver.body["reachable"], true);
+    assert_eq!(checked_subserver.body["port"], proxy_backend_port);
+    assert!(checked_subserver.body["latencyMs"].is_number());
 
     let listed_subservers = send_json_request(
         panel_address,

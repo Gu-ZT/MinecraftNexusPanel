@@ -1,8 +1,11 @@
 use std::collections::BTreeSet;
 use std::fs;
+use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
+use std::time::Instant;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -17,6 +20,8 @@ use nexus_domain::InstanceUpdate;
 use nexus_domain::PRODUCT_VERSION;
 use nexus_domain::ProvisionPlan;
 use nexus_domain::ProxySubserver;
+use nexus_domain::ProxySubserverHealth;
+use nexus_domain::ProxySubserverHealthStatus;
 use nexus_domain::RequestId;
 use nexus_domain::RuntimeInstallManifest;
 use nexus_domain::TaskId;
@@ -34,9 +39,11 @@ use time::format_description::well_known::Rfc3339;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::net::TcpListener;
+use tokio::net::TcpStream;
 use tokio::select;
 use tokio::spawn;
 use tokio::sync::broadcast::error::RecvError;
+use tokio::time::timeout;
 use tokio_rustls::TlsAcceptor;
 
 use crate::CoreError;
@@ -79,6 +86,7 @@ const INSTANCE_LIST_DEFAULT_LIMIT: usize = 50;
 const INSTANCE_LIST_MAXIMUM_LIMIT: usize = 200;
 const INSTANCE_LOG_DEFAULT_LIMIT: usize = 50;
 const INSTANCE_LOG_MAXIMUM_LIMIT: usize = 200;
+const PROXY_SUBSERVER_HEALTH_TIMEOUT: Duration = Duration::from_secs(3);
 
 pub struct CoreServer {
     core_id: CoreId,
@@ -444,6 +452,15 @@ async fn request_response(
             state.instances(),
             state.proxy_subservers(),
         ),
+        "proxy.subserver.check" => {
+            proxy_subserver_check_response(
+                request_id,
+                params,
+                state.instances(),
+                state.proxy_subservers(),
+            )
+            .await
+        }
         "instance.command" => {
             instance_command_response(request_id, params, state.processes()).await
         }
@@ -902,6 +919,98 @@ fn proxy_subserver_delete_response(
     match subservers.delete(&proxy, subserver_id) {
         Ok(()) => success_response(request_id, json!({})),
         Err(error) => proxy_subserver_repository_failure_response(request_id, &error),
+    }
+}
+
+async fn proxy_subserver_check_response(
+    request_id: RequestId,
+    params: &Value,
+    instances: &InstanceRepository,
+    subservers: &ProxySubserverRepository,
+) -> WireMessage {
+    let proxy = match find_proxy_instance(request_id, params, instances) {
+        Ok(proxy) => proxy,
+        Err(response) => return *response,
+    };
+    let Some(subserver_id) = params
+        .get("subserverId")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "proxy.subserver.check requires a subserverId",
+        );
+    };
+    let subserver = match subservers.get(&proxy, subserver_id) {
+        Ok(subserver) => subserver,
+        Err(error) => return proxy_subserver_repository_failure_response(request_id, &error),
+    };
+
+    if !subserver.enabled() {
+        return success_response(
+            request_id,
+            json!(ProxySubserverHealth::new(
+                subserver.id().to_owned(),
+                subserver.target_instance_id().clone(),
+                subserver.host().to_owned(),
+                subserver.port(),
+                false,
+                ProxySubserverHealthStatus::Disabled,
+                None,
+                None,
+                current_timestamp(),
+                None,
+            )),
+        );
+    }
+
+    let started_at = Instant::now();
+    let result = timeout(
+        PROXY_SUBSERVER_HEALTH_TIMEOUT,
+        TcpStream::connect((subserver.host(), subserver.port())),
+    )
+    .await;
+    let latency_ms = Some(started_at.elapsed().as_millis() as u64);
+    let (status, reachable, error) = match result {
+        Ok(Ok(_stream)) => (ProxySubserverHealthStatus::Reachable, Some(true), None),
+        Ok(Err(error)) => (
+            ProxySubserverHealthStatus::Unreachable,
+            Some(false),
+            Some(proxy_health_error(error.kind()).to_owned()),
+        ),
+        Err(_) => (
+            ProxySubserverHealthStatus::Unreachable,
+            Some(false),
+            Some("TIMEOUT".to_owned()),
+        ),
+    };
+
+    success_response(
+        request_id,
+        json!(ProxySubserverHealth::new(
+            subserver.id().to_owned(),
+            subserver.target_instance_id().clone(),
+            subserver.host().to_owned(),
+            subserver.port(),
+            true,
+            status,
+            reachable,
+            latency_ms,
+            current_timestamp(),
+            error,
+        )),
+    )
+}
+
+fn proxy_health_error(kind: ErrorKind) -> &'static str {
+    match kind {
+        ErrorKind::ConnectionRefused => "CONNECTION_REFUSED",
+        ErrorKind::ConnectionReset => "CONNECTION_RESET",
+        ErrorKind::AddrNotAvailable => "ADDRESS_UNAVAILABLE",
+        ErrorKind::TimedOut => "TIMEOUT",
+        _ => "CONNECT_FAILED",
     }
 }
 

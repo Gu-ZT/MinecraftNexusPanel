@@ -518,6 +518,21 @@ export interface ProxySubserverPage {
   items: ProxySubserver[];
 }
 
+export type ProxySubserverHealthStatus = 'DISABLED' | 'REACHABLE' | 'UNREACHABLE';
+
+export interface ProxySubserverHealth {
+  subserverId: string;
+  targetInstanceId: string;
+  host: string;
+  port: number;
+  enabled: boolean;
+  status: ProxySubserverHealthStatus;
+  reachable: boolean | null;
+  latencyMs: number | null;
+  checkedAt: string;
+  error: string | null;
+}
+
 export interface LaunchConfig {
   executable: string;
   args: string[];
@@ -773,6 +788,11 @@ export interface PanelApiClient {
     subserver: ProxySubserver,
   ): Promise<ProxySubserver>;
   deleteProxySubserver(coreId: string, proxyInstanceId: string, subserverId: string): Promise<void>;
+  checkProxySubserver(
+    coreId: string,
+    proxyInstanceId: string,
+    subserverId: string,
+  ): Promise<ProxySubserverHealth>;
   listInstances(coreId: string): Promise<InstancePage>;
   updateInstance(coreId: string, instanceId: string, update: InstanceUpdate, revision: number): Promise<Instance>;
   getInstanceLogs(coreId: string, instanceId: string): Promise<LogPage>;
@@ -1337,6 +1357,12 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
       return request<void>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(proxyInstanceId)}/proxy-subservers/${encodeURIComponent(subserverId)}`,
         { method: 'DELETE', csrf: true, idempotent: true },
+      );
+    },
+    checkProxySubserver(coreId, proxyInstanceId, subserverId) {
+      return request<ProxySubserverHealth>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(proxyInstanceId)}/proxy-subservers/${encodeURIComponent(subserverId)}/actions/check`,
+        { method: 'POST', csrf: true },
       );
     },
     listInstances(coreId) {
