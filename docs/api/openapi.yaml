@@ -1123,8 +1123,10 @@ paths:
       summary: Read extension installation task progress
       description: |
         Read an in-memory Panel task for a previously accepted extension
-        installation. The task reports committed files and may be FAILED after
-        a partial installation; it is not resumed across a Panel restart.
+        installation. New multi-file installs preflight target conflicts and
+        compensate-delete committed files after a failure when their hashes and
+        installation records still match. The task reports rollbackState and
+        is not resumed across a Panel restart.
       security:
         - cookieAuth: [ ]
         - bearerAuth: [ ]
@@ -3114,7 +3116,7 @@ components:
               minLength: 1
     ExtensionInstallTask:
       type: object
-      required: [ taskId, coreId, instanceId, kind, extensionKind, state, progress, installations, acceptedAt ]
+      required: [ taskId, coreId, instanceId, kind, extensionKind, state, rollbackState, progress, installations, acceptedAt ]
       properties:
         taskId:
           type: string
@@ -3133,6 +3135,9 @@ components:
         state:
           type: string
           enum: [ RUNNING, SUCCEEDED, FAILED ]
+        rollbackState:
+          type: string
+          enum: [ NOT_STARTED, NOT_NEEDED, SUCCEEDED, PARTIAL ]
         progress:
           type: object
           required: [ completed, total ]
