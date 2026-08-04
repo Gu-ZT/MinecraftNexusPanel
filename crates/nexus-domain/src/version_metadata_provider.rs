@@ -22,16 +22,19 @@ impl VersionMetadataProvider {
         Self { id, name, url }
     }
 
+    /// 返回 provider 的稳定标识，用于模板版本项引用来源。
     #[must_use]
     pub fn id(&self) -> &str {
         &self.id
     }
 
+    /// 返回 provider 的展示名称。
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// 返回 provider 的元数据入口 URL。
     #[must_use]
     pub fn url(&self) -> &str {
         &self.url

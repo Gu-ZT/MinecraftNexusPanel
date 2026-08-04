@@ -16,36 +16,67 @@ use crate::ProxyTopology;
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum InstanceKind {
+    /// Java 原版服务端，不预设插件或模组加载器。
     Vanilla,
+    /// 以 Bukkit/Spigot 插件生态为重点的高性能 Java 服务端。
     Paper,
+    /// Java 一对多反向代理，可管理多个非代理后端实例。
     Velocity,
+    /// 以 Fabric 加载器为基础的 Java 模组服务端。
     Fabric,
+    /// 以 NeoForge 加载器为基础的 Java 模组服务端。
     NeoForge,
+    /// 以 Forge 加载器为基础的 Java 模组服务端。
     Forge,
+    /// Bukkit 插件 API 兼容的 Java 插件服务端基线。
     Bukkit,
+    /// 以 Spigot 插件生态为重点的 Java 插件服务端。
     Spigot,
+    /// 在 Paper 兼容基础上提供额外配置和功能的 Java 插件服务端。
     Purpur,
+    /// 面向性能优化的 Java 插件服务端，兼容常见 Bukkit 插件接口。
     Pufferfish,
+    /// 面向区域化调度的 Java 插件服务端，插件需遵守其并发约束。
     Folia,
+    /// 面向性能优化的 Java 插件服务端分支，兼容 Bukkit 插件生态。
     Leaf,
+    /// 同时支持插件和模组的 Java 混合端；两类扩展必须分别管理。
     Mohist,
+    /// 同时支持插件和模组的 Java 混合端；安装目录由模板布局解析。
     Magma,
+    /// 可承载 Sponge 扩展的 Java 服务端；扩展种类由模板能力声明。
     Sponge,
+    /// 同时支持插件和模组的 Java 混合端；不能按物理目录合并记录。
     Arclight,
+    /// 同时支持插件和模组的 Java 混合端；版本配方需单独验证。
     Youer,
+    /// 同时支持插件和模组的 Java 混合端；启动和扩展布局可能异步化。
     AsyncYouer,
+    /// 同时支持插件和模组的 Java 混合端；插件与模组保持独立管理空间。
     Silkard,
+    /// 同时支持插件和模组的 Java 混合端；具体扩展目录由安装模板决定。
     CatServer,
+    /// 同时支持插件和模组的 Java 混合端；仅表示目录分类，不代表已验证安装器。
     Lingshu,
+    /// Java 一对多反向代理，可管理多个非代理后端实例。
     Waterfall,
+    /// Java 一对多反向代理，可管理多个非代理后端实例。
     BungeeCord,
+    /// Java 一对多反向代理，可管理多个非代理后端实例。
     Lightfall,
+    /// 面向基岩版的一对一反向代理，只能关联一个 Java 后端实例。
     Geyser,
+    /// Bedrock Dedicated Server 基岩版服务端，使用基岩专用运维画像。
     BedrockDedicatedServer,
+    /// PocketMine-MP 基岩版服务端，支持独立的插件管理。
     PocketMineMp,
+    /// Nukkit 基岩版服务端，支持独立的插件管理。
     Nukkit,
+    /// Cloudburst Nukkit 基岩版服务端，支持独立的插件管理。
     CloudburstNukkit,
+    /// 自定义服务端类型，必须由安装模板补充实际启动和管理能力。
     Custom,
+    /// 尚未识别的服务端类型，仅用于兼容旧数据或未知输入。
     Unknown,
 }
 
