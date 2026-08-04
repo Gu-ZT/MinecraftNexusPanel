@@ -2687,7 +2687,7 @@ components:
       enum: [ RAKNET_UDP ]
     BedrockManagementProfile:
       type: object
-      required: [ managementKind, transport, defaultPort, configurationFiles, extensionKind ]
+      required: [ managementKind, transport, defaultPort, configurationFiles, extensionKind, extensionDirectories ]
       properties:
         managementKind:
           $ref: '#/components/schemas/BedrockManagementKind'
@@ -2705,6 +2705,10 @@ components:
           oneOf:
             - $ref: '#/components/schemas/ExtensionKind'
             - type: 'null'
+        extensionDirectories:
+          type: array
+          items:
+            type: string
     ProxySubserver:
       type: object
       required: [ id, name, targetInstanceId, host, port, enabled ]

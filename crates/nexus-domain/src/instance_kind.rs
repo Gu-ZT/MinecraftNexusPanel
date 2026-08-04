@@ -82,37 +82,45 @@ impl InstanceKind {
 
     #[must_use]
     pub fn bedrock_management_profile(self) -> Option<BedrockManagementProfile> {
-        let (management_kind, configuration_files, extension_kind) = match self {
-            Self::BedrockDedicatedServer => (
-                BedrockManagementKind::DedicatedServer,
-                vec!["server.properties".to_owned()],
-                None,
-            ),
-            Self::PocketMineMp => (
-                BedrockManagementKind::PocketMine,
-                vec!["server.properties".to_owned()],
-                Some(ExtensionKind::Plugin),
-            ),
-            Self::Nukkit | Self::CloudburstNukkit => (
-                BedrockManagementKind::Nukkit,
-                vec!["server.properties".to_owned()],
-                Some(ExtensionKind::Plugin),
-            ),
-            Self::Geyser => (
-                BedrockManagementKind::Geyser,
-                vec!["config.yml".to_owned()],
-                None,
-            ),
-            _ => return None,
-        };
+        let (management_kind, configuration_files, extension_kind, extension_directories) =
+            match self {
+                Self::BedrockDedicatedServer => (
+                    BedrockManagementKind::DedicatedServer,
+                    vec!["server.properties".to_owned()],
+                    None,
+                    Vec::new(),
+                ),
+                Self::PocketMineMp => (
+                    BedrockManagementKind::PocketMine,
+                    vec!["server.properties".to_owned()],
+                    Some(ExtensionKind::Plugin),
+                    vec!["plugins".to_owned()],
+                ),
+                Self::Nukkit | Self::CloudburstNukkit => (
+                    BedrockManagementKind::Nukkit,
+                    vec!["server.properties".to_owned()],
+                    Some(ExtensionKind::Plugin),
+                    vec!["plugins".to_owned()],
+                ),
+                Self::Geyser => (
+                    BedrockManagementKind::Geyser,
+                    vec!["config.yml".to_owned()],
+                    None,
+                    Vec::new(),
+                ),
+                _ => return None,
+            };
 
-        Some(BedrockManagementProfile::new(
-            management_kind,
-            BedrockTransport::RaknetUdp,
-            19132,
-            configuration_files,
-            extension_kind,
-        ))
+        Some(
+            BedrockManagementProfile::new(
+                management_kind,
+                BedrockTransport::RaknetUdp,
+                19132,
+                configuration_files,
+                extension_kind,
+            )
+            .with_extension_directories(extension_directories),
+        )
     }
 }
 
@@ -138,6 +146,7 @@ mod tests {
             .bedrock_management_profile()
             .expect("PocketMine-MP has a Bedrock profile");
         assert_eq!(pocketmine.extension_kind(), Some(ExtensionKind::Plugin));
+        assert_eq!(pocketmine.extension_directories(), ["plugins"]);
         assert_eq!(pocketmine.default_port(), 19132);
 
         assert!(InstanceKind::Paper.bedrock_management_profile().is_none());

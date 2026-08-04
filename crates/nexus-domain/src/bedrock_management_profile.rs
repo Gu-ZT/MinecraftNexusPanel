@@ -13,6 +13,7 @@ pub struct BedrockManagementProfile {
     default_port: u16,
     configuration_files: Vec<String>,
     extension_kind: Option<ExtensionKind>,
+    extension_directories: Vec<String>,
 }
 
 impl BedrockManagementProfile {
@@ -30,7 +31,14 @@ impl BedrockManagementProfile {
             default_port,
             configuration_files,
             extension_kind,
+            extension_directories: Vec::new(),
         }
+    }
+
+    #[must_use]
+    pub fn with_extension_directories(mut self, extension_directories: Vec<String>) -> Self {
+        self.extension_directories = extension_directories;
+        self
     }
 
     #[must_use]
@@ -56,5 +64,10 @@ impl BedrockManagementProfile {
     #[must_use]
     pub const fn extension_kind(&self) -> Option<ExtensionKind> {
         self.extension_kind
+    }
+
+    #[must_use]
+    pub fn extension_directories(&self) -> &[String] {
+        &self.extension_directories
     }
 }
