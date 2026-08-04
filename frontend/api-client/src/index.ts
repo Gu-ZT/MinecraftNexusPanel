@@ -17,6 +17,7 @@ export type {
   DownloadManifest,
   DownloadPlatform,
   ExtensionDirectoryPage,
+  ExtensionInstall,
   ExtensionKind,
   Instance,
   InstanceExtensionScan,

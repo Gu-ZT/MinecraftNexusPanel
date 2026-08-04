@@ -264,10 +264,22 @@ export interface ExtensionDirectoryPage {
   page: FilePage;
 }
 
+export interface ExtensionInstall {
+  id: string;
+  kind: ExtensionKind;
+  path: string;
+  sha256: string;
+  source: string;
+  projectId: string | null;
+  version: string | null;
+  installedAt: string;
+}
+
 export interface InstanceExtensionScan {
   templateId: string;
   kind: ExtensionKind;
   directories: ExtensionDirectoryPage[];
+  installations: ExtensionInstall[];
 }
 
 export interface FileReadResult {
