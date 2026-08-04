@@ -22,6 +22,10 @@ use crate::StoredUser;
 
 const DATABASE_FILE_NAME: &str = "panel.db";
 
+/// 线程安全共享的 Panel SQLite 数据库访问器。
+///
+/// 打开数据库时会创建数据目录并执行迁移；连接使用互斥锁串行化 rusqlite
+/// 操作，写入方法在需要时使用立即事务保证初始化、轮换等操作的原子性。
 #[derive(Clone)]
 pub struct SqliteStore {
     connection: Arc<Mutex<Connection>>,
@@ -29,6 +33,7 @@ pub struct SqliteStore {
 }
 
 impl SqliteStore {
+    /// 打开数据目录中的 Panel 数据库并执行 schema 迁移。
     pub fn open(data_directory: &Path) -> Result<Self, StorageError> {
         fs::create_dir_all(data_directory).map_err(|source| StorageError::CreateDataDirectory {
             path: data_directory.to_path_buf(),
@@ -50,6 +55,9 @@ impl SqliteStore {
         })
     }
 
+    /// 在数据库为空时原子创建首个管理员用户。
+    ///
+    /// 返回 `true` 表示插入成功；已有任意用户时返回 `false`，不会覆盖现有数据。
     pub fn create_initial_user(
         &self,
         user_id: &str,
@@ -82,6 +90,7 @@ impl SqliteStore {
         Ok(true)
     }
 
+    /// 返回持久化的 Panel 标识，不存在时使用候选值创建。
     pub fn get_or_create_panel_id(&self, candidate: &str) -> Result<String, StorageError> {
         let mut connection = self.lock_connection()?;
         let transaction = connection
@@ -105,6 +114,7 @@ impl SqliteStore {
         Ok(panel_id)
     }
 
+    /// 插入 Core 注册记录；相同标识已存在时返回 `false`。
     pub fn insert_core(&self, core: &NewCore) -> Result<bool, StorageError> {
         let connection = self.lock_connection()?;
         let inserted = connection
@@ -131,6 +141,7 @@ impl SqliteStore {
         Ok(inserted == 1)
     }
 
+    /// 按稳定标识顺序列出所有 Core 注册记录。
     pub fn list_cores(&self) -> Result<Vec<StoredCore>, StorageError> {
         let connection = self.lock_connection()?;
         let mut statement = connection
@@ -148,6 +159,10 @@ impl SqliteStore {
             .map_err(StorageError::Query)
     }
 
+    /// 写入或更新一个实例扩展安装记录，并返回数据库中的最终值。
+    ///
+    /// 唯一键是 `(core_id, instance_id, path)`；调用方应通过 `kind` 保留插件和
+    /// 模组的领域区分，而不是因为路径相同就合并记录。
     pub fn upsert_extension_install(
         &self,
         install: &NewExtensionInstall,
@@ -193,6 +208,7 @@ impl SqliteStore {
             .map_err(StorageError::Query)
     }
 
+    /// 按 Core、实例和扩展种类列出安装记录。
     pub fn list_extension_installs(
         &self,
         core_id: &str,
@@ -217,6 +233,7 @@ impl SqliteStore {
             .map_err(StorageError::Query)
     }
 
+    /// 删除指定安装路径的扩展记录，返回是否删除了一行。
     pub fn delete_extension_install(
         &self,
         core_id: &str,
@@ -235,6 +252,7 @@ impl SqliteStore {
         Ok(deleted == 1)
     }
 
+    /// 创建一条登录会话记录。
     pub fn create_session(&self, session: &NewSession) -> Result<(), StorageError> {
         let connection = self.lock_connection()?;
         connection
@@ -260,6 +278,7 @@ impl SqliteStore {
         Ok(())
     }
 
+    /// 按用户名查找用户，用户名比较遵循数据库的大小写不敏感约束。
     pub fn find_user_by_username(
         &self,
         username: &str,
@@ -276,6 +295,7 @@ impl SqliteStore {
             .map_err(StorageError::Query)
     }
 
+    /// 查找未撤销且访问令牌未过期的会话。
     pub fn find_session_by_access_token(
         &self,
         token_hash: &str,
@@ -288,6 +308,7 @@ impl SqliteStore {
         )
     }
 
+    /// 查找未撤销且刷新令牌未过期的会话。
     pub fn find_session_by_refresh_token(
         &self,
         token_hash: &str,
@@ -300,6 +321,9 @@ impl SqliteStore {
         )
     }
 
+    /// 原子轮换刷新令牌并登记旧令牌，以支持重放撤销。
+    ///
+    /// 返回 `true` 表示旧令牌仍有效且会话已更新；并发或重复轮换返回 `false`。
     pub fn rotate_session(
         &self,
         session_id: &str,
@@ -352,6 +376,7 @@ impl SqliteStore {
         Ok(updated == 1)
     }
 
+    /// 撤销指定会话，返回是否实际更新了一行。
     pub fn revoke_session(&self, session_id: &str, now: i64) -> Result<bool, StorageError> {
         let connection = self.lock_connection()?;
         let updated = connection
@@ -365,6 +390,7 @@ impl SqliteStore {
         Ok(updated == 1)
     }
 
+    /// 根据已轮换的旧刷新令牌撤销其关联会话。
     pub fn revoke_session_for_rotated_token(
         &self,
         token_hash: &str,
@@ -385,11 +411,13 @@ impl SqliteStore {
         Ok(updated == 1)
     }
 
+    /// 返回当前数据库文件路径。
     #[must_use]
     pub fn database_path(&self) -> &Path {
         &self.database_path
     }
 
+    /// 判断数据库中是否已经存在用户。
     pub fn has_users(&self) -> Result<bool, StorageError> {
         let connection = self.lock_connection()?;
 
