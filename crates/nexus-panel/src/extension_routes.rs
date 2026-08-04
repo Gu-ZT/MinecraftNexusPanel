@@ -23,6 +23,7 @@ use crate::CoreConnectionError;
 use crate::CoreRegistryError;
 use crate::PanelState;
 use crate::auth_routes::error_response;
+use crate::auth_routes::header_text;
 use crate::core_routes::authorize;
 use crate::core_routes::invalid_core_id_response;
 use crate::core_routes::parse_core_id;
@@ -34,7 +35,7 @@ const EXTENSION_DIRECTORY_LIST_LIMIT: usize = 200;
 pub(crate) fn extension_routes() -> Router<PanelState> {
     Router::new().route(
         "/api/v1/cores/{core_id}/instances/{instance_id}/extensions",
-        get(list_instance_extensions),
+        get(list_instance_extensions).delete(delete_instance_extension),
     )
 }
 
@@ -127,6 +128,108 @@ async fn list_instance_extensions(
         "directories": directory_pages,
     }))
     .into_response()
+}
+
+async fn delete_instance_extension(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, instance_id)): Path<(String, String)>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return invalid_core_id_response(request_id);
+    };
+    let Some(instance_id) = instance_id.parse::<InstanceId>().ok() else {
+        return validation_error(request_id);
+    };
+    let Some(template_id) = query.get("templateId").filter(|value| !value.is_empty()) else {
+        return validation_error(request_id);
+    };
+    let Some(kind) = query
+        .get("kind")
+        .and_then(|value| from_value::<ExtensionKind>(json!(value)).ok())
+    else {
+        return validation_error(request_id);
+    };
+    let Some(path) = query.get("path").filter(|value| !value.is_empty()) else {
+        return validation_error(request_id);
+    };
+    if query.get("confirmation").map(String::as_str) != Some("DELETE") {
+        return validation_error(request_id);
+    }
+    let Some(idempotency_key) =
+        header_text(&headers, "idempotency-key").filter(|value| value.parse::<RequestId>().is_ok())
+    else {
+        return error_response(
+            StatusCode::PRECONDITION_REQUIRED,
+            "PRECONDITION_REQUIRED",
+            "Idempotency-Key is required",
+            request_id,
+        );
+    };
+    let Some(template) = install_template(template_id) else {
+        return error_response(
+            StatusCode::NOT_FOUND,
+            "NOT_FOUND",
+            "Install template does not exist",
+            request_id,
+        );
+    };
+
+    let instance = match state.cores().get_instance(core_id, &instance_id).await {
+        Ok(value) => match from_value::<Instance>(value) {
+            Ok(instance) => instance,
+            Err(_) => return invalid_core_response(request_id),
+        },
+        Err(error) => return registry_error_response(error, request_id),
+    };
+    if instance.kind() != template.instance_kind() {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "TEMPLATE_INSTANCE_KIND_MISMATCH",
+            "Install template does not match the instance type",
+            request_id,
+        );
+    }
+
+    let directories = template.extension_directories(kind);
+    if directories.is_empty() {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "EXTENSION_KIND_UNSUPPORTED",
+            "The install template does not declare this extension kind",
+            request_id,
+        );
+    }
+    if !directories
+        .iter()
+        .any(|directory| is_extension_path(path, directory))
+    {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "EXTENSION_PATH_OUTSIDE_LAYOUT",
+            "Extension path is outside the declared template directories",
+            request_id,
+        );
+    }
+
+    match state
+        .cores()
+        .delete_instance_file(core_id, &instance_id, path, false, idempotency_key)
+        .await
+    {
+        Ok(task) => (StatusCode::ACCEPTED, Json(task)).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+fn is_extension_path(path: &str, directory: &str) -> bool {
+    path.strip_prefix(directory)
+        .is_some_and(|suffix| suffix.starts_with('/') && suffix.len() > 1)
 }
 
 fn is_missing_directory(error: &CoreRegistryError) -> bool {

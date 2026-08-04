@@ -175,6 +175,68 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
         "TEMPLATE_INSTANCE_KIND_MISMATCH"
     );
 
+    let delete_idempotency_key = RequestId::new().to_string();
+    let delete_extension = send_json_request(
+        panel_address,
+        "DELETE",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/hybrid-backend/extensions?templateId=mohist&kind=PLUGIN&path=plugins/example.jar&confirmation=DELETE"
+        ),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", delete_idempotency_key.as_str()),
+        ],
+        None,
+    )
+    .await;
+    assert_eq!(delete_extension.status, 202);
+    let delete_task = wait_for_file_task(
+        panel_address,
+        authorization.as_str(),
+        &core_id,
+        delete_extension.body["taskId"]
+            .as_str()
+            .expect("extension delete task id is returned"),
+    )
+    .await;
+    assert_eq!(delete_task["state"], "SUCCEEDED");
+
+    let plugin_scan_after_delete = send_json_request(
+        panel_address,
+        "GET",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/hybrid-backend/extensions?templateId=mohist&kind=PLUGIN"
+        ),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(plugin_scan_after_delete.status, 200);
+    assert!(
+        plugin_scan_after_delete.body["directories"][0]["page"]["items"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+    );
+
+    let invalid_extension_path = send_json_request(
+        panel_address,
+        "DELETE",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/hybrid-backend/extensions?templateId=mohist&kind=PLUGIN&path=mods/example.jar&confirmation=DELETE"
+        ),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", RequestId::new().to_string().as_str()),
+        ],
+        None,
+    )
+    .await;
+    assert_eq!(invalid_extension_path.status, 400);
+    assert_eq!(
+        invalid_extension_path.body["error"]["code"],
+        "EXTENSION_PATH_OUTSIDE_LAYOUT"
+    );
+
     let bedrock_profile = send_json_request(
         panel_address,
         "GET",
