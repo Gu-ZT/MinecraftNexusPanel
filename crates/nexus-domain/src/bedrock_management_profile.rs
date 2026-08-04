@@ -10,6 +10,7 @@ use crate::ExtensionKind;
 pub struct BedrockManagementProfile {
     management_kind: BedrockManagementKind,
     transport: BedrockTransport,
+    default_bind_address: String,
     default_port: u16,
     configuration_files: Vec<String>,
     extension_kind: Option<ExtensionKind>,
@@ -28,6 +29,7 @@ impl BedrockManagementProfile {
         Self {
             management_kind,
             transport,
+            default_bind_address: "0.0.0.0".to_owned(),
             default_port,
             configuration_files,
             extension_kind,
@@ -42,6 +44,12 @@ impl BedrockManagementProfile {
     }
 
     #[must_use]
+    pub fn with_default_bind_address(mut self, default_bind_address: String) -> Self {
+        self.default_bind_address = default_bind_address;
+        self
+    }
+
+    #[must_use]
     pub const fn management_kind(&self) -> BedrockManagementKind {
         self.management_kind
     }
@@ -49,6 +57,11 @@ impl BedrockManagementProfile {
     #[must_use]
     pub const fn transport(&self) -> BedrockTransport {
         self.transport
+    }
+
+    #[must_use]
+    pub fn default_bind_address(&self) -> &str {
+        &self.default_bind_address
     }
 
     #[must_use]

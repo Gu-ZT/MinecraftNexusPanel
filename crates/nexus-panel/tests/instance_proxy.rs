@@ -387,6 +387,7 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     assert_eq!(bedrock_profile.status, 200);
     assert_eq!(bedrock_profile.body["managementKind"], "GEYSER");
     assert_eq!(bedrock_profile.body["transport"], "RAKNET_UDP");
+    assert_eq!(bedrock_profile.body["defaultBindAddress"], "0.0.0.0");
     assert_eq!(bedrock_profile.body["defaultPort"], 19132);
     assert_eq!(bedrock_profile.body["configurationFiles"][0], "config.yml");
     assert!(bedrock_profile.body["extensionKind"].is_null());
@@ -412,6 +413,8 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     assert_eq!(bedrock_port_check.status, 200);
     assert_eq!(bedrock_port_check.body["managementKind"], "GEYSER");
     assert_eq!(bedrock_port_check.body["transport"], "RAKNET_UDP");
+    assert_eq!(bedrock_port_check.body["bindAddress"], "0.0.0.0");
+    assert_eq!(bedrock_port_check.body["bindAddressSource"], "CONFIGURED");
     assert_eq!(bedrock_port_check.body["port"], 19133);
     assert_eq!(bedrock_port_check.body["portSource"], "CONFIGURED");
     assert!(bedrock_port_check.body["state"].is_string());

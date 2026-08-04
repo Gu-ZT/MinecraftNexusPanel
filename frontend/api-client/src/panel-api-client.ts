@@ -66,6 +66,7 @@ export type BedrockManagementKind = 'DEDICATED_SERVER' | 'POCKET_MINE' | 'NUKKIT
 export type BedrockTransport = 'RAKNET_UDP';
 export type BedrockPortCheckState = 'AVAILABLE' | 'IN_USE' | 'UNAVAILABLE';
 export type BedrockPortSource = 'CONFIGURED' | 'DEFAULT';
+export type BedrockBindAddressSource = 'CONFIGURED' | 'DEFAULT';
 export type InstallRuntimeRequirement = 'JAVA' | 'NODE_JS' | 'PYTHON' | 'PHP' | 'NATIVE';
 export type InstallTemplateFamily = 'JAVA_SERVER' | 'JAVA_PROXY' | 'BEDROCK_SERVER' | 'BEDROCK_PROXY';
 export type ProxyTopology = 'NONE' | 'ONE_TO_MANY' | 'ONE_TO_ONE';
@@ -205,6 +206,7 @@ export interface ProvisionOperation {
 export interface BedrockManagementProfile {
   managementKind: BedrockManagementKind;
   transport: BedrockTransport;
+  defaultBindAddress: string;
   defaultPort: number;
   configurationFiles: string[];
   extensionKind: ExtensionKind | null;
@@ -215,6 +217,8 @@ export interface BedrockPortCheck {
   instanceId: string;
   managementKind: BedrockManagementKind;
   transport: BedrockTransport;
+  bindAddress: string;
+  bindAddressSource: BedrockBindAddressSource;
   port: number;
   portSource: BedrockPortSource;
   state: BedrockPortCheckState;

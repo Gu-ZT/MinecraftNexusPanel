@@ -1,6 +1,8 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::ErrorKind;
+use std::net::IpAddr;
+use std::net::Ipv4Addr;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
@@ -10,6 +12,7 @@ use std::time::Instant;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use nexus_config::CoreConfig;
+use nexus_domain::BedrockBindAddressSource;
 use nexus_domain::BedrockManagementKind;
 use nexus_domain::BedrockManagementProfile;
 use nexus_domain::BedrockPortCheck;
@@ -852,10 +855,10 @@ async fn bedrock_port_check_response(
         );
     };
 
-    let (port, port_source, configuration_error) =
-        configured_bedrock_port(&instance, &profile, files);
+    let (bind_address, bind_address_source, port, port_source, configuration_error) =
+        configured_bedrock_endpoint(&instance, &profile, files);
 
-    let (state, available, bind_error) = match UdpSocket::bind(("0.0.0.0", port)).await {
+    let (state, available, bind_error) = match UdpSocket::bind((bind_address, port)).await {
         Ok(_socket) => (BedrockPortCheckState::Available, true, None),
         Err(error) if error.kind() == ErrorKind::AddrInUse => {
             (BedrockPortCheckState::InUse, false, None)
@@ -874,6 +877,8 @@ async fn bedrock_port_check_response(
             instance_id,
             profile.management_kind(),
             profile.transport(),
+            bind_address.to_string(),
+            bind_address_source,
             port,
             port_source,
             state,
@@ -884,19 +889,37 @@ async fn bedrock_port_check_response(
     )
 }
 
-fn configured_bedrock_port(
+fn configured_bedrock_endpoint(
     instance: &Instance,
     profile: &BedrockManagementProfile,
     files: &FileManager,
-) -> (u16, BedrockPortSource, Option<&'static str>) {
+) -> (
+    IpAddr,
+    BedrockBindAddressSource,
+    u16,
+    BedrockPortSource,
+    Option<&'static str>,
+) {
+    let default_address = profile
+        .default_bind_address()
+        .parse::<IpAddr>()
+        .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
     let default_port = profile.default_port();
     let Some(configuration_path) = profile.configuration_files().first() else {
-        return (default_port, BedrockPortSource::Default, None);
+        return (
+            default_address,
+            BedrockBindAddressSource::Default,
+            default_port,
+            BedrockPortSource::Default,
+            None,
+        );
     };
     let content = match files.read(instance, configuration_path, 0, MAXIMUM_FILE_READ_BYTES) {
         Ok(content) => content,
         Err(_) => {
             return (
+                default_address,
+                BedrockBindAddressSource::Default,
                 default_port,
                 BedrockPortSource::Default,
                 Some("CONFIGURATION_UNAVAILABLE"),
@@ -907,11 +930,19 @@ fn configured_bedrock_port(
         Ok(bytes) => bytes,
         Err(_) => {
             return (
+                default_address,
+                BedrockBindAddressSource::Default,
                 default_port,
                 BedrockPortSource::Default,
                 Some("CONFIGURATION_INVALID"),
             );
         }
+    };
+    let address = match profile.management_kind() {
+        BedrockManagementKind::Geyser => parse_geyser_address(&bytes),
+        BedrockManagementKind::DedicatedServer
+        | BedrockManagementKind::PocketMine
+        | BedrockManagementKind::Nukkit => parse_server_properties_address(&bytes),
     };
     let port = match profile.management_kind() {
         BedrockManagementKind::Geyser => parse_geyser_port(&bytes),
@@ -919,13 +950,58 @@ fn configured_bedrock_port(
         | BedrockManagementKind::PocketMine
         | BedrockManagementKind::Nukkit => parse_server_properties_port(&bytes),
     };
-    match port {
+    let (address, address_source, address_error) = match address {
+        Ok(Some(address)) => (address, BedrockBindAddressSource::Configured, None),
+        Ok(None) => (default_address, BedrockBindAddressSource::Default, None),
+        Err(error) => (
+            default_address,
+            BedrockBindAddressSource::Default,
+            Some(error),
+        ),
+    };
+    let (port, port_source, port_error) = match port {
         Ok(port) => (port, BedrockPortSource::Configured, None),
         Err(error) => (default_port, BedrockPortSource::Default, Some(error)),
-    }
+    };
+
+    (
+        address,
+        address_source,
+        port,
+        port_source,
+        address_error.or(port_error),
+    )
 }
 
 fn parse_server_properties_port(content: &[u8]) -> Result<u16, &'static str> {
+    let value = parse_server_properties_value(content, "server-port")?
+        .ok_or("CONFIGURATION_PORT_MISSING")?;
+    let port = value
+        .parse::<u16>()
+        .map_err(|_| "CONFIGURATION_PORT_INVALID")?;
+    (port > 0)
+        .then_some(port)
+        .ok_or("CONFIGURATION_PORT_INVALID")
+}
+
+fn parse_server_properties_address(content: &[u8]) -> Result<Option<IpAddr>, &'static str> {
+    let Some(value) = parse_server_properties_value(content, "server-ip")? else {
+        return Ok(None);
+    };
+    if value.is_empty() {
+        return Ok(None);
+    }
+
+    value
+        .parse::<IpAddr>()
+        .map(Some)
+        .map_err(|_| "CONFIGURATION_ADDRESS_INVALID")
+}
+
+fn parse_server_properties_value(
+    content: &[u8],
+    target_key: &str,
+) -> Result<Option<String>, &'static str> {
     let content = std::str::from_utf8(content).map_err(|_| "CONFIGURATION_INVALID")?;
     for line in content.lines() {
         let line = line.trim();
@@ -935,18 +1011,11 @@ fn parse_server_properties_port(content: &[u8]) -> Result<u16, &'static str> {
         let Some((key, value)) = line.split_once('=').or_else(|| line.split_once(':')) else {
             continue;
         };
-        if key.trim() != "server-port" {
-            continue;
+        if key.trim() == target_key {
+            return Ok(Some(value.trim().to_owned()));
         }
-        let port = value
-            .trim()
-            .parse::<u16>()
-            .map_err(|_| "CONFIGURATION_PORT_INVALID")?;
-        return (port > 0)
-            .then_some(port)
-            .ok_or("CONFIGURATION_PORT_INVALID");
     }
-    Err("CONFIGURATION_PORT_MISSING")
+    Ok(None)
 }
 
 fn parse_geyser_port(content: &[u8]) -> Result<u16, &'static str> {
@@ -958,6 +1027,28 @@ fn parse_geyser_port(content: &[u8]) -> Result<u16, &'static str> {
         .filter(|port| *port > 0)
         .ok_or("CONFIGURATION_PORT_INVALID")?;
     Ok(port)
+}
+
+fn parse_geyser_address(content: &[u8]) -> Result<Option<IpAddr>, &'static str> {
+    let document: YamlValue = yaml_from_slice(content).map_err(|_| "CONFIGURATION_INVALID")?;
+    let Some(bedrock) = yaml_field(&document, "bedrock") else {
+        return Ok(None);
+    };
+    let Some(value) = yaml_field(bedrock, "address") else {
+        return Ok(None);
+    };
+    let value = value
+        .as_str()
+        .ok_or("CONFIGURATION_ADDRESS_INVALID")?
+        .trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+
+    value
+        .parse::<IpAddr>()
+        .map(Some)
+        .map_err(|_| "CONFIGURATION_ADDRESS_INVALID")
 }
 
 fn yaml_field<'a>(value: &'a YamlValue, key: &str) -> Option<&'a YamlValue> {
@@ -2780,7 +2871,9 @@ fn error_response_with_details(
 
 #[cfg(test)]
 mod tests {
+    use super::parse_geyser_address;
     use super::parse_geyser_port;
+    use super::parse_server_properties_address;
     use super::parse_server_properties_port;
 
     #[test]
@@ -2800,6 +2893,26 @@ mod tests {
     }
 
     #[test]
+    fn reads_the_bedrock_bind_address_from_server_properties() {
+        assert_eq!(
+            parse_server_properties_address(b"server-ip=192.0.2.10\nserver-port=19133\n")
+                .expect("server-ip is valid")
+                .map(|address| address.to_string()),
+            Some("192.0.2.10".to_owned())
+        );
+    }
+
+    #[test]
+    fn reads_the_bedrock_bind_address_from_geyser_yaml() {
+        assert_eq!(
+            parse_geyser_address(b"bedrock:\n  address: '::'\n  port: 19134\n")
+                .expect("Geyser address is valid")
+                .map(|address| address.to_string()),
+            Some("::".to_owned())
+        );
+    }
+
+    #[test]
     fn rejects_invalid_bedrock_ports() {
         assert_eq!(
             parse_server_properties_port(b"server-port=0\n"),
@@ -2808,6 +2921,18 @@ mod tests {
         assert_eq!(
             parse_geyser_port(b"bedrock:\n  port: invalid\n"),
             Err("CONFIGURATION_PORT_INVALID")
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_bedrock_bind_addresses() {
+        assert_eq!(
+            parse_server_properties_address(b"server-ip=example.invalid\n"),
+            Err("CONFIGURATION_ADDRESS_INVALID")
+        );
+        assert_eq!(
+            parse_geyser_address(b"bedrock:\n  address: example.invalid\n"),
+            Err("CONFIGURATION_ADDRESS_INVALID")
         );
     }
 }
