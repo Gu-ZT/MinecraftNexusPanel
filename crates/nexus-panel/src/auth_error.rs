@@ -26,7 +26,10 @@ pub enum AuthError {
     RateLimitLock,
     /// 登录尝试超过账户或来源 IP 限制。
     #[error("too many login attempts")]
-    RateLimited { retry_after_seconds: u64 },
+    RateLimited {
+        /// 客户端再次尝试登录前应等待的秒数。
+        retry_after_seconds: u64,
+    },
     /// 已轮换的刷新凭据被再次使用。
     #[error("a rotated refresh credential was reused")]
     RefreshReused,
