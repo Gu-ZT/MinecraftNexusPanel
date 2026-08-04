@@ -1,3 +1,8 @@
+//! 安装模板版本元数据的受限 HTTPS 客户端。
+//!
+//! 每个模板通过 `VersionMetadataProvider` 声明一个或多个来源；客户端只负责读取
+//! 和规范化版本元数据，不把成功解析误认为归档布局、启动命令或升级流程已经验证。
+
 use std::collections::BTreeMap;
 use std::str;
 use std::time::Duration;
@@ -59,12 +64,14 @@ const YOUER_PROJECT_PROVIDER_ID: &str = "youer-project-api";
 const SILKARD_BRANCH_PROVIDER_ID: &str = "silkard-github-branches";
 const PAPERMC_CONTACT_URL: &str = "https://github.com/Gu-ZT/MinecraftNexusPanel";
 
+/// 从模板声明的供应商读取并规范化安装版本的内部客户端。
 #[derive(Clone)]
 pub(crate) struct VersionMetadataClient {
     client: Client,
 }
 
 impl VersionMetadataClient {
+    /// 创建仅允许 HTTPS、禁止重定向的元数据客户端。
     pub(crate) fn new() -> Result<Self, VersionMetadataError> {
         let _ = ring::default_provider().install_default();
         let client = Client::builder()
@@ -81,6 +88,10 @@ impl VersionMetadataClient {
         Ok(Self { client })
     }
 
+    /// 按模板标识读取其全部版本元数据。
+    ///
+    /// 该方法支持 Java 服务端、代理、混合端和基岩端 provider；Fabric 需要分别
+    /// 读取游戏与加载器版本，Pufferfish 需要合并多个 Minecraft 分支来源。
     pub(crate) async fn list_versions(
         &self,
         template: &InstallTemplate,
