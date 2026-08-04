@@ -193,6 +193,10 @@ async fn write_instance_extension(
     let Some(path) = query.get("path").filter(|value| !value.is_empty()) else {
         return validation_error(request_id);
     };
+    let expected_sha256 = match expected_file_hash(&headers) {
+        Ok(hash) => hash,
+        Err(()) => return validation_error(request_id),
+    };
     let Some(template) = install_template(template_id) else {
         return error_response(
             StatusCode::NOT_FOUND,
@@ -241,7 +245,14 @@ async fn write_instance_extension(
 
     let entry = match state
         .cores()
-        .write_instance_file(core_id, &instance_id, path, &body, None, idempotency_key)
+        .write_instance_file(
+            core_id,
+            &instance_id,
+            path,
+            &body,
+            expected_sha256.as_deref(),
+            idempotency_key,
+        )
         .await
     {
         Ok(entry) => entry,
@@ -384,6 +395,23 @@ async fn delete_instance_extension(
 fn is_extension_path(path: &str, directory: &str) -> bool {
     path.strip_prefix(directory)
         .is_some_and(|suffix| suffix.starts_with('/') && suffix.len() > 1)
+}
+
+fn expected_file_hash(headers: &HeaderMap) -> Result<Option<String>, ()> {
+    let Some(value) = header_text(headers, "if-match") else {
+        return Ok(None);
+    };
+    let Some(value) = value
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+    else {
+        return Err(());
+    };
+    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(());
+    }
+
+    Ok(Some(value.to_owned()))
 }
 
 fn is_missing_directory(error: &CoreRegistryError) -> bool {

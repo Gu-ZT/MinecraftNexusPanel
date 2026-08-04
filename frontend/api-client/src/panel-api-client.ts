@@ -514,6 +514,7 @@ export interface PanelApiClient {
     kind: ExtensionKind,
     path: string,
     content: FileBytes,
+    expectedSha256?: string,
   ): Promise<FileEntry>;
   deleteInstanceExtension(
     coreId: string,
@@ -812,11 +813,20 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
         `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/extensions?${query.toString()}`,
       );
     },
-    writeInstanceExtension(coreId, instanceId, templateId, kind, path, content) {
+    writeInstanceExtension(coreId, instanceId, templateId, kind, path, content, expectedSha256) {
       const query = new URLSearchParams({ templateId, kind, path });
+      const requestOptions: RequestOptions = {
+        method: 'PUT',
+        body: content,
+        csrf: true,
+        idempotent: true,
+      };
+      if (expectedSha256 !== undefined) {
+        requestOptions.ifMatch = expectedSha256;
+      }
       return request<FileEntry>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/extensions?${query.toString()}`,
-        { method: 'PUT', body: content, csrf: true, idempotent: true },
+        requestOptions,
       );
     },
     deleteInstanceExtension(coreId, instanceId, templateId, kind, path) {

@@ -261,12 +261,66 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
         plugin_scan_after_install.body["installations"][0]["source"],
         "LOCAL"
     );
-    assert_eq!(
-        plugin_scan_after_install.body["installations"][0]["sha256"]
-            .as_str()
-            .map(str::len),
-        Some(64)
-    );
+    let installed_sha256 = plugin_scan_after_install.body["installations"][0]["sha256"]
+        .as_str()
+        .expect("installed extension hash is returned")
+        .to_owned();
+    assert_eq!(installed_sha256.len(), 64);
+
+    let update_if_match = format!("\"{installed_sha256}\"");
+    let update_idempotency_key = RequestId::new().to_string();
+    let update_extension = send_raw_request(
+        panel_address,
+        "PUT",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/hybrid-backend/extensions?templateId=mohist&kind=PLUGIN&path=plugins/installed.jar"
+        ),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", update_idempotency_key.as_str()),
+            ("If-Match", update_if_match.as_str()),
+        ],
+        b"updated plugin",
+    )
+    .await;
+    assert_eq!(update_extension.status, 200);
+
+    let updated_scan = send_json_request(
+        panel_address,
+        "GET",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/hybrid-backend/extensions?templateId=mohist&kind=PLUGIN"
+        ),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(updated_scan.status, 200);
+    let updated_sha256 = updated_scan.body["installations"][0]["sha256"]
+        .as_str()
+        .expect("updated extension hash is returned");
+    assert_ne!(updated_sha256, installed_sha256);
+
+    let stale_if_match = format!("\"{}\"", "0".repeat(64));
+    let stale_update_idempotency_key = RequestId::new().to_string();
+    let stale_update = send_raw_request(
+        panel_address,
+        "PUT",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/hybrid-backend/extensions?templateId=mohist&kind=PLUGIN&path=plugins/installed.jar"
+        ),
+        &[
+            ("Authorization", authorization.as_str()),
+            (
+                "Idempotency-Key",
+                stale_update_idempotency_key.as_str(),
+            ),
+            ("If-Match", stale_if_match.as_str()),
+        ],
+        b"stale plugin",
+    )
+    .await;
+    assert_eq!(stale_update.status, 412);
 
     let delete_installed_idempotency_key = RequestId::new().to_string();
     let delete_installed_extension = send_json_request(
