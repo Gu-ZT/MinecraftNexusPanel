@@ -159,7 +159,7 @@ MinecraftNexusPanel/
 
 - 混合端的插件和模组必须使用独立的 `ExtensionKind`、安装记录和兼容性结果。`InstallTemplate` 已能按类型展开一个或多个声明目录；目录不能由 Panel 全局硬编码，同一端可以有多个目录，同一目录也可能承载不同扩展种类（例如当前 Sponge 画像），因此后续扫描和安装必须以模板声明为准。
 - Velocity、Waterfall、BungeeCord、Lightfall 是一对多代理，Geyser 是一对一代理。子服务器关系独立于实例基本设置，目标必须是同一 Core 上已存在的非代理实例；Core 强制拓扑数量上限。
-- Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit 和 Geyser 使用 `BedrockManagementProfile` 描述 RakNet UDP、默认端口、配置文件、插件能力和扩展目录；PocketMine-MP/Nukkit 画像声明 `plugins/`，BDS/Geyser 不声明插件目录。Core 已能探测画像声明的默认 UDP `19132` 并区分端口可用/占用/绑定失败；基岩端的实际配置端口、配置、扩展、健康检查、升级和备份恢复不能假设为 Java 服务端逻辑。
+- Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit 和 Geyser 使用 `BedrockManagementProfile` 描述 RakNet UDP、默认端口、配置文件、插件能力和扩展目录；PocketMine-MP/Nukkit 画像声明 `plugins/`，BDS/Geyser 不声明插件目录。Core 已能优先读取 BDS/PocketMine/Nukkit 的 `server.properties:server-port` 或 Geyser 的 `config.yml:bedrock.port`，配置失败时回退默认 UDP `19132` 并区分端口可用/占用/绑定失败；基岩端的监听绑定地址、配置、扩展、健康检查、升级和备份恢复不能假设为 Java 服务端逻辑。
 - 当前已完成类型枚举、内置目录、扩展布局、代理子服务器关系和基岩画像；Vanilla、Paper、Velocity、Fabric、NeoForge、Forge、Bukkit、Spigot、Purpur、Pufferfish、Folia、Leaf、Mohist、Youer、Silkard、Magma、Sponge、Arclight、CatServer、Waterfall、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit 已接入官方版本元数据目录。NeoForge 使用官方 Maven XML，Pufferfish 聚合五个官方 Jenkins job，Bukkit/Spigot 使用官方 Jenkins RSS Atom feed，Mohist/Youer 使用 MohistMC 官方 project API，Silkard 使用官方 GitHub branches API，Leaf/Magma/Sponge/Arclight/CatServer/Lightfall/PocketMine 使用官方 GitHub Releases 资产，BDS 使用 Mojang 官方下载链接 API 解析 Windows/Linux 稳定版和 Preview ZIP，Nukkit/Cloudburst Nukkit 使用 OpenCollab Maven 版本 API；Sponge 当前来源是官方历史 SpongeVanilla Releases，Magma 当前主要是开发构建。RSS/Release/Maven/project/branch provider 仍只证明版本目录可读取，归档结构、启动命令和版本化运维配方仍需逐项验证，AsyncYouer、Lingshu 仍需补充 provider。
 
 ### 4.7 文件管理边界
@@ -258,7 +258,7 @@ stateDiagram-v2
 
 - 配置识别和结构化表单、文件管理、分块上传/下载、实例终端；当前已完成带 Minecraft 字段元数据的 `server.properties` provider、JSON/YAML/TOML provider、文件沙箱列表、分块读取、小文件原子写入、目录创建、移动、批量操作、删除任务、ZIP 归档准备和活动 Core 内会话化分块上传/下载，后续补齐跨文件校验、复杂结构化控件、跨重启续传、快照、差异比较和统一任务中心进度。
 - 模组/插件聚合搜索、安装、更新、删除和兼容性提示；当前已接入 Modrinth MOD/PLUGIN 搜索、项目版本详情、依赖记录、HTTPS 归档摘要、根项目 required 依赖计划解析、Minecraft 版本/加载器过滤、分页和来源兼容性提示；计划安装会重新解析并创建可查询的 Panel 异步任务，校验归档后通过 Core `transfer-v1` 分片写入声明目录、持久化安装记录，同一 Core、实例、扩展类型和操作重复使用 `Idempotency-Key` 会复用原任务，已持久化的 Modrinth 扩展可重新解析目标版本并在 Core 目标摘要保护下只更新根文件，混合端插件/模组分开处理，目录由模板布局决定。Core 侧统一任务、失败回滚、更多来源和批量更新仍待完成。
-- 代理子服务器连通性与启停编排；当前已完成由 Core 节点执行的登记后端 TCP 连通性检查，并返回禁用/可达/不可达状态和延迟；启停编排、协议级健康检查仍待完成。基岩端已完成默认 RakNet UDP `19132` 端口探测，实际配置端口、配置文件、扩展目录、健康检查和升级运维仍需独立实现。
+- 代理子服务器连通性与启停编排；当前已完成由 Core 节点执行的登记后端 TCP 连通性检查，并返回禁用/可达/不可达状态和延迟；启停编排、协议级健康检查仍待完成。基岩端已完成配置优先的 RakNet UDP 端口探测和默认 `19132` 回退，监听绑定地址、配置文件、扩展目录、健康检查和升级运维仍需独立实现。
 - Cron/事件计划任务、执行历史、任务中心、备份/恢复。
 - 细粒度用户组权限和实例可见清单。
 - 验收：受限用户只看到授权实例，能使用终端但不能访问文件或修改启动/容器设置。
