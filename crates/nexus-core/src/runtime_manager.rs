@@ -1,3 +1,5 @@
+//! 受管运行时的安装、验证、删除和异步任务编排。
+
 use std::collections::HashMap;
 use std::path::Component;
 use std::path::Path;
@@ -26,6 +28,7 @@ use crate::runtime_discovery::RuntimeDiscovery;
 
 const DESCRIPTOR_FILE_NAME: &str = ".mcnp-runtime.json";
 
+/// 组合下载、归档解压、运行时发现和实例引用检查的内部管理器。
 #[derive(Clone)]
 pub(crate) struct RuntimeManager {
     discovery: RuntimeDiscovery,
@@ -34,6 +37,7 @@ pub(crate) struct RuntimeManager {
 }
 
 impl RuntimeManager {
+    /// 创建运行时管理器并初始化下载缓存。
     pub(crate) fn new(data_directory: &Path) -> Result<Self, RuntimeManagerError> {
         Ok(Self {
             discovery: RuntimeDiscovery::new(data_directory),
@@ -42,10 +46,14 @@ impl RuntimeManager {
         })
     }
 
+    /// 发现并验证当前可用的运行时。
     pub(crate) async fn discover(&self) -> Vec<ManagedRuntime> {
         self.discovery.discover().await
     }
 
+    /// 根据可选受管标识解析实例所需的可执行文件。
+    ///
+    /// 未指定标识时返回系统命令名；指定标识时必须匹配运行时类别且验证状态有效。
     pub(crate) async fn resolve_executable(
         &self,
         runtime_id: Option<&str>,
@@ -68,6 +76,7 @@ impl RuntimeManager {
         Ok(runtime.executable().to_owned())
     }
 
+    /// 启动异步运行时安装任务。
     pub(crate) fn start_install(
         &self,
         manifest: &RuntimeInstallManifest,
@@ -84,6 +93,7 @@ impl RuntimeManager {
         Ok(task_id)
     }
 
+    /// 启动异步运行时验证任务。
     pub(crate) fn start_verify(&self, runtime_id: &str) -> Result<TaskId, RuntimeManagerError> {
         validate_runtime_id(runtime_id)?;
         let task_id = self.start_task(task_kind("verify"))?;
@@ -96,6 +106,9 @@ impl RuntimeManager {
         Ok(task_id)
     }
 
+    /// 启动异步运行时删除任务。
+    ///
+    /// 删除前会检查实例是否仍引用该受管运行时。
     pub(crate) fn start_delete(
         &self,
         runtime_id: &str,
@@ -113,6 +126,7 @@ impl RuntimeManager {
         Ok(task_id)
     }
 
+    /// 查询运行时异步任务状态。
     pub(crate) fn task(&self, task_id: TaskId) -> Result<Option<Value>, RuntimeManagerError> {
         let tasks = self
             .tasks
@@ -121,6 +135,7 @@ impl RuntimeManager {
         Ok(tasks.get(&task_id).cloned())
     }
 
+    /// 下载、解压并登记一个受管运行时。
     pub(crate) async fn install(
         &self,
         manifest: &RuntimeInstallManifest,
@@ -207,6 +222,7 @@ impl RuntimeManager {
             })
     }
 
+    /// 重新发现并验证指定受管运行时。
     pub(crate) async fn verify(
         &self,
         runtime_id: &str,
@@ -220,6 +236,7 @@ impl RuntimeManager {
             })
     }
 
+    /// 删除未被实例引用的受管运行时目录。
     pub(crate) async fn delete(
         &self,
         runtime_id: &str,

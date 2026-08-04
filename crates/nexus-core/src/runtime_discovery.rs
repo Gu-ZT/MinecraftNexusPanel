@@ -1,3 +1,8 @@
+//! Core 对系统 PATH 和受管目录中的运行时发现与版本校验。
+//!
+//! 发现过程只执行版本探测，不会安装或删除系统运行时；带有安装清单的目录才会
+//! 被识别为可由 MCNP 管理的运行时。
+
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -14,18 +19,21 @@ use tokio::time::timeout;
 
 const VERSION_CHECK_TIMEOUT: Duration = Duration::from_secs(3);
 
+/// 扫描并验证 Java、Node.js 和 Python 运行时的内部服务。
 #[derive(Clone)]
 pub(crate) struct RuntimeDiscovery {
     managed_root: PathBuf,
 }
 
 impl RuntimeDiscovery {
+    /// 创建指向 Core 受管运行时根目录的发现服务。
     pub(crate) fn new(data_directory: &Path) -> Self {
         Self {
             managed_root: data_directory.join("runtimes"),
         }
     }
 
+    /// 扫描受管目录和系统 PATH，并验证每个候选运行时版本。
     pub(crate) async fn discover(&self) -> Vec<ManagedRuntime> {
         let mut runtimes = Vec::new();
         for candidate in self.candidates() {
@@ -35,10 +43,12 @@ impl RuntimeDiscovery {
         runtimes
     }
 
+    /// 返回受管运行时根目录。
     pub(crate) fn managed_root(&self) -> &Path {
         &self.managed_root
     }
 
+    /// 按稳定运行时标识查找并验证受管运行时。
     pub(crate) async fn find_managed(&self, runtime_id: &str) -> Option<ManagedRuntime> {
         self.discover()
             .await
@@ -46,6 +56,7 @@ impl RuntimeDiscovery {
             .find(|runtime| runtime.runtime_id() == Some(runtime_id))
     }
 
+    /// 查找受管运行时目录，不执行可执行文件版本校验。
     pub(crate) fn find_managed_path(&self, runtime_id: &str) -> Option<PathBuf> {
         for kind in RuntimeKind::ALL {
             let path = self
@@ -118,6 +129,7 @@ impl RuntimeDiscovery {
     }
 }
 
+/// 尚未执行版本探测的运行时候选项。
 #[derive(Eq, PartialEq)]
 struct RuntimeCandidate {
     kind: RuntimeKind,
