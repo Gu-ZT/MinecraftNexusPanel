@@ -28,7 +28,7 @@
 - 混合端的插件与模组分别管理，扩展目录由模板和版本声明，不能使用全局固定路径；领域目录可按扩展类型分别展开这些目录。
 - Panel 已支持按模板和 `PLUGIN`/`MOD` 类型扫描扩展：每个声明目录独立返回文件页，缺失目录返回空页；还可通过带可选 `If-Match` 的受限原子写入放置或更新已准备的本地产物、持久化本地安装元数据，并在显式确认、校验幂等键后异步删除单个文件。对应安装记录仅在 Core 删除任务成功后清理；删除失败或超时会保留记录，且旧删除任务不会误删同路径的新安装记录。扩展目录还可通过 Modrinth 搜索 MOD/PLUGIN 项目，支持 Minecraft 版本、加载器和分页过滤，读取项目版本与依赖记录，并解析受限的 required 依赖计划。安装请求会重新解析计划，创建可查询的异步任务，仅下载 HTTPS Modrinth 归档，校验大小与 SHA-512，通过 Core `transfer-v1` 分片上传到用户选择的声明目录，并写入每个已提交文件的来源安装记录。已持久化的 Modrinth 扩展现在可以启动来源更新任务，重新解析目标版本，只替换根文件，并通过 Core 上传会话的目标摘要保护记录的 SHA-256；共享 TypeScript Client 已暴露这些操作和任务查询。同一 Core、实例、扩展类型和操作重复使用 `Idempotency-Key` 会复用原任务，不会重复下载或写入。多目录安装需要显式选择，任务不跨 Panel 重启恢复，失败回滚、Core 侧统一任务、更多来源适配器和批量更新仍待完成。
 - Velocity、Waterfall、BungeeCord、Lightfall 使用一对多后端拓扑；Geyser 使用一对一拓扑，并提供专门的基岩版管理能力。Panel 可要求登记的 Core 节点对每个后端关系执行有界 TCP 连通性检查。
-- Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit 与 Geyser 使用专门画像管理 RakNet UDP、配置文件、扩展能力和声明的扩展目录。Core 会在支持时读取基岩端配置端口，配置不可用时回退到 `19132`，并报告 UDP 端口可用、已占用或不可用。
+- Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit 与 Geyser 使用专门画像管理 RakNet UDP、默认绑定地址、配置文件、扩展能力和声明的扩展目录。Core 会在支持时读取 BDS/PocketMine/Nukkit 的 `server-ip`/`server-port` 或 Geyser 的 `bedrock.address`/`bedrock.port`，只接受 IP 字面量，地址和端口配置分别在不可用或非法时回退到 `0.0.0.0` 与 `19132`，并报告地址/端口来源以及 UDP 绑定可用、已占用或不可用。
 
 ### 当前文件管理能力
 

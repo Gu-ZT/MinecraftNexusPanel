@@ -353,12 +353,12 @@ Core 只允许 `VELOCITY`、`WATERFALL`、`BUNGEECORD`、`LIGHTFALL` 和 `GEYSER
 
 | 方法              | 参数       | 结果                                      |
 |-------------------|------------|-------------------------------------------|
-| `bedrock.profile` | instanceId | transport、defaultPort、配置文件和扩展类型 |
-| `bedrock.port.check` | instanceId | 默认 RakNet UDP 端口的可用性与冲突状态 |
+| `bedrock.profile` | instanceId | transport、defaultBindAddress、defaultPort、配置文件和扩展类型 |
+| `bedrock.port.check` | instanceId | RakNet UDP 绑定地址、端口的来源、可用性与冲突状态 |
 
 该方法仅对 Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit 和 Geyser 返回结果。
-`bedrock.port.check` 从 Core 节点探测配置端口；BDS、PocketMine-MP、Nukkit/Cloudburst Nukkit 读取 `server.properties` 的 `server-port`，Geyser 读取 `config.yml` 的 `bedrock.port`，读取失败时回退到画像默认端口 `19132` 并返回 `portSource=DEFAULT`。结果返回 `AVAILABLE`、`IN_USE` 或 `UNAVAILABLE`，不复用 Java TCP 健康检查假设。
-画像统一标记 RakNet UDP 与默认端口 `19132`，同时区分 `server.properties`、Geyser `config.yml` 和可管理插件类型。
+`bedrock.port.check` 从 Core 节点探测配置绑定地址和端口；BDS、PocketMine-MP、Nukkit/Cloudburst Nukkit 读取 `server.properties` 的 `server-ip`/`server-port`，Geyser 读取 `config.yml` 的 `bedrock.address`/`bedrock.port`。绑定地址只接受 IP 字面量，缺失或非法时回退画像默认地址 `0.0.0.0` 并返回 `bindAddressSource=DEFAULT`；端口读取失败时回退默认端口 `19132` 并返回 `portSource=DEFAULT`。结果返回 `AVAILABLE`、`IN_USE` 或 `UNAVAILABLE`，不复用 Java TCP 健康检查假设。
+画像统一标记 RakNet UDP、默认绑定地址 `0.0.0.0`、默认端口 `19132`，同时区分 `server.properties`、Geyser `config.yml` 和可管理插件类型。
 
 ### 5.6 配置与扩展
 

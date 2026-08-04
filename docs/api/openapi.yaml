@@ -3500,12 +3500,15 @@ components:
       enum: [ RAKNET_UDP ]
     BedrockManagementProfile:
       type: object
-      required: [ managementKind, transport, defaultPort, configurationFiles, extensionKind, extensionDirectories ]
+      required: [ managementKind, transport, defaultBindAddress, defaultPort, configurationFiles, extensionKind, extensionDirectories ]
       properties:
         managementKind:
           $ref: '#/components/schemas/BedrockManagementKind'
         transport:
           $ref: '#/components/schemas/BedrockTransport'
+        defaultBindAddress:
+          type: string
+          description: Default IP literal used for the RakNet UDP bind probe
         defaultPort:
           type: integer
           minimum: 1
@@ -3524,7 +3527,7 @@ components:
             type: string
     BedrockPortCheck:
       type: object
-      required: [ instanceId, managementKind, transport, port, portSource, state, available, checkedAt, error ]
+      required: [ instanceId, managementKind, transport, bindAddress, bindAddressSource, port, portSource, state, available, checkedAt, error ]
       properties:
         instanceId:
           type: string
@@ -3532,6 +3535,11 @@ components:
           $ref: '#/components/schemas/BedrockManagementKind'
         transport:
           $ref: '#/components/schemas/BedrockTransport'
+        bindAddress:
+          type: string
+          description: IP literal used by the RakNet UDP bind probe
+        bindAddressSource:
+          $ref: '#/components/schemas/BedrockBindAddressSource'
         port:
           type: integer
           minimum: 1
@@ -3549,6 +3557,9 @@ components:
         error:
           type: [ string, 'null' ]
     BedrockPortSource:
+      type: string
+      enum: [ CONFIGURED, DEFAULT ]
+    BedrockBindAddressSource:
       type: string
       enum: [ CONFIGURED, DEFAULT ]
     ExtensionDirectoryPage:
