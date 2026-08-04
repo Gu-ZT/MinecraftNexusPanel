@@ -1,3 +1,8 @@
+//! Core 运行时发现、安装、验证和删除 HTTP 路由。
+//!
+//! 运行时任务是异步的；删除操作由 Core 检查实例引用，Panel 不把元数据 provider
+//! 的版本记录直接当作已安装运行时。
+
 use axum::Extension;
 use axum::Json;
 use axum::Router;

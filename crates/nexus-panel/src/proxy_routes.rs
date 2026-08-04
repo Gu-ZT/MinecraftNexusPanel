@@ -1,3 +1,8 @@
+//! 代理后端关系、健康检查和代理编排 HTTP 路由。
+//!
+//! 后端数量和一对多/一对一拓扑由 Core 领域校验；编排请求明确控制是否连带
+//! 启停后端以及停止超时。
+
 use axum::Extension;
 use axum::Json;
 use axum::Router;

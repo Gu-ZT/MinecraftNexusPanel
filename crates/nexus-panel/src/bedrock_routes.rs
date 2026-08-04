@@ -1,3 +1,8 @@
+//! 基岩服务端和 Geyser 专用管理 HTTP 路由。
+//!
+//! 路由把基岩端口绑定检查、RakNet 健康检查和管理画像暴露为独立操作，避免
+//! 对 Bedrock-facing 实例套用 Java TCP/Status 假设。
+
 use axum::Extension;
 use axum::Json;
 use axum::Router;

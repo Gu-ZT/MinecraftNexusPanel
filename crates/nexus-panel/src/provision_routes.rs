@@ -1,3 +1,7 @@
+//! 一键搭建计划解析、执行和任务查询 HTTP 路由。
+//!
+//! 执行请求必须携带解析阶段返回的计划哈希；计划与执行均要求管理员和幂等键。
+
 use axum::Extension;
 use axum::Json;
 use axum::Router;

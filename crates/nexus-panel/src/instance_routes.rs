@@ -1,3 +1,8 @@
+//! Core 实例创建、配置更新、生命周期、日志和指标 HTTP 路由。
+//!
+//! 配置更新使用 ETag/修订号并限制在非运行状态，启停和命令操作都通过幂等键
+//! 交给 Core 的进程管理器执行。
+
 use std::collections::HashMap;
 
 use axum::Extension;

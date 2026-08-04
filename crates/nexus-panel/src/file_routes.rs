@@ -1,3 +1,8 @@
+//! Core 实例文件、目录、归档和分块传输 HTTP 路由。
+//!
+//! 路径和内容大小限制在 Panel 与 Core 两侧共同执行；写入、删除和传输提交要求
+//! 幂等键，摘要头用于防止覆盖并发修改。
+
 use std::collections::HashMap;
 
 use axum::Json;

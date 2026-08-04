@@ -1,3 +1,8 @@
+//! 实例配置文档扫描、读取和 Merge Patch HTTP 路由。
+//!
+//! 读取返回 schema、UI schema 和内容修订号；写入要求客户端带修订号和幂等键，
+//! 有损格式重写必须显式确认。
+
 use axum::Json;
 use axum::Router;
 use axum::body::Body;
