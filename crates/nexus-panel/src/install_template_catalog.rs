@@ -1,3 +1,8 @@
+//! Minecraft 服务端、代理和基岩端安装模板目录。
+//!
+//! 模板是领域能力声明，不等于每个版本都已验证可安装；插件和模组目录按
+//! `ExtensionKind` 分开解析，混合端可以声明多个物理目录。
+
 use nexus_domain::ExtensionKind;
 use nexus_domain::InstallRuntimeRequirement;
 use nexus_domain::InstallTemplate;
@@ -7,6 +12,7 @@ use nexus_domain::InstanceKind;
 use nexus_domain::ProxyTopology;
 use nexus_domain::VersionMetadataProvider;
 
+/// 返回当前 Panel 编译内置的安装模板目录。
 pub(crate) fn install_templates() -> Vec<InstallTemplate> {
     vec![
         template(
@@ -411,6 +417,7 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
     ]
 }
 
+/// 按稳定模板标识查找模板。
 pub(crate) fn install_template(id: &str) -> Option<InstallTemplate> {
     install_templates()
         .into_iter()

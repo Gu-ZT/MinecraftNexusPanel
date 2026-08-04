@@ -1,3 +1,8 @@
+//! 插件和模组搜索、安装、更新、扫描及删除 HTTP 路由。
+//!
+//! 路由始终根据安装模板解析目标目录，并用 `ExtensionKind` 分离插件与模组记录；
+//! 写入和删除要求幂等键及必要的目标摘要确认。
+
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path as FilePath;

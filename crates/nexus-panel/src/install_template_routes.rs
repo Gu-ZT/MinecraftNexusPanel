@@ -1,3 +1,5 @@
+//! 安装模板和版本元数据 HTTP 路由。
+
 use axum::Extension;
 use axum::Json;
 use axum::Router;

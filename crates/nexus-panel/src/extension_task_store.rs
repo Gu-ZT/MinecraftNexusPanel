@@ -14,12 +14,16 @@ use time::format_description::well_known::Rfc3339;
 
 const MAXIMUM_EXTENSION_TASKS: usize = 512;
 
+/// Panel 内存中的扩展安装/更新任务状态存储。
+///
+/// 幂等键按 Core、实例、扩展种类和任务类型隔离；内部幂等键不会出现在对外查询结果。
 #[derive(Clone, Default)]
 pub(crate) struct ExtensionTaskStore {
     tasks: Arc<Mutex<HashMap<TaskId, Value>>>,
 }
 
 impl ExtensionTaskStore {
+    /// 创建或复用一个扩展任务，返回任务标识及是否新建。
     pub(crate) fn start(
         &self,
         core_id: CoreId,
@@ -77,6 +81,7 @@ impl ExtensionTaskStore {
         Ok((task_id, true))
     }
 
+    /// 查询任务并移除内部幂等字段。
     pub(crate) fn get(&self, task_id: TaskId) -> Result<Option<Value>, ()> {
         let task = self.tasks.lock().map_err(|_| ())?.get(&task_id).cloned();
         Ok(task.map(|mut task| {
@@ -87,6 +92,7 @@ impl ExtensionTaskStore {
         }))
     }
 
+    /// 更新任务完成数和总数。
     pub(crate) fn update_progress(
         &self,
         task_id: TaskId,
@@ -101,6 +107,7 @@ impl ExtensionTaskStore {
         Ok(())
     }
 
+    /// 将任务标记成功并记录安装结果。
     pub(crate) fn complete(
         &self,
         task_id: TaskId,
@@ -118,6 +125,7 @@ impl ExtensionTaskStore {
         Ok(())
     }
 
+    /// 将任务标记失败并记录回滚状态和已完成安装。
     pub(crate) fn fail(
         &self,
         task_id: TaskId,

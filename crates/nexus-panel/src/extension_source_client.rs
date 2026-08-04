@@ -1,3 +1,8 @@
+//! 扩展来源的 HTTPS 元数据和工件客户端。
+//!
+//! 当前来源只接受 Modrinth API 与其允许的 CDN 域名；返回的工件在安装前还必须
+//! 由调用方按大小和强哈希再次校验。
+
 use std::collections::BTreeMap;
 use std::time::Duration;
 
@@ -33,12 +38,14 @@ const MODRINTH_SEARCH_URL: &str = "https://api.modrinth.com/v2/search";
 const MODRINTH_PROJECT_VERSION_URL_PREFIX: &str = "https://api.modrinth.com/v2/project/";
 const MODRINTH_SOURCE: &str = "modrinth";
 
+/// 查询扩展项目、版本、依赖和下载工件的内部客户端。
 #[derive(Clone)]
 pub(crate) struct ExtensionSourceClient {
     client: Client,
 }
 
 impl ExtensionSourceClient {
+    /// 创建限制重定向、仅允许 HTTPS 的扩展来源客户端。
     pub(crate) fn new() -> Result<Self, ExtensionSourceError> {
         let _ = ring::default_provider().install_default();
         let client = Client::builder()
@@ -53,6 +60,7 @@ impl ExtensionSourceClient {
         Ok(Self { client })
     }
 
+    /// 按扩展种类、Minecraft 版本和加载器搜索项目。
     pub(crate) async fn search(
         &self,
         query: &str,
@@ -88,6 +96,7 @@ impl ExtensionSourceClient {
         parse_modrinth_search(&metadata, kind, minecraft_version, loader, limit, offset)
     }
 
+    /// 列出项目版本并按版本过滤条件解析来源数据。
     pub(crate) async fn list_versions(
         &self,
         project_id: &str,
@@ -113,6 +122,9 @@ impl ExtensionSourceClient {
         parse_modrinth_versions(&metadata, project_id, minecraft_version, loader)
     }
 
+    /// 解析必需依赖，构建插件或模组安装计划。
+    ///
+    /// 同一项目的冲突版本和超过节点上限的依赖图会被拒绝。
     pub(crate) async fn resolve_dependencies(
         &self,
         template_id: &str,
@@ -193,6 +205,7 @@ impl ExtensionSourceClient {
         ))
     }
 
+    /// 校验工件 HTTPS URL、允许域名和大小后返回响应流。
     pub(crate) async fn download_artifact(
         &self,
         artifact: &ExtensionArtifact,
