@@ -14,7 +14,10 @@ pub enum TlsError {
     Handshake(#[source] io::Error),
     /// 服务器名称不是合法的 TLS ServerName。
     #[error("invalid TLS server name: {server_name}")]
-    InvalidServerName { server_name: String },
+    InvalidServerName {
+        /// 用于证书名称校验的原始主机名文本。
+        server_name: String,
+    },
     /// 握手完成但对端没有提供证书。
     #[error("TLS peer did not provide a certificate")]
     MissingPeerCertificate,

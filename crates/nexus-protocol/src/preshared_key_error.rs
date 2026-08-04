@@ -9,7 +9,10 @@ pub enum PresharedKeyError {
     InvalidBase64Url(#[source] DecodeError),
     /// 解码后的原始秘密短于最低长度。
     #[error("pre-shared key must contain at least 32 bytes; received {actual}")]
-    SecretTooShort { actual: usize },
+    SecretTooShort {
+        /// Base64URL 解码后得到的原始秘密字节数。
+        actual: usize,
+    },
     /// HKDF 无法生成目标长度的派生密钥。
     #[error("could not derive the pre-shared key")]
     KeyDerivation,

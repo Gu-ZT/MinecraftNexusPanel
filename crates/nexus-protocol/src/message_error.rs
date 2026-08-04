@@ -8,5 +8,10 @@ pub enum MessageError {
     InvalidJson(serde_json::Error),
     /// 明文 JSON 超过协议规定的最大长度。
     #[error("message length {actual} exceeds the maximum of {maximum} bytes")]
-    MessageTooLarge { actual: usize, maximum: usize },
+    MessageTooLarge {
+        /// 输入 JSON 消息的实际字节数。
+        actual: usize,
+        /// 协议允许的单条 JSON 消息最大字节数。
+        maximum: usize,
+    },
 }
