@@ -9,6 +9,10 @@ use crate::instance_update::is_valid_name;
 use serde::Deserialize;
 use serde::Serialize;
 
+/// 创建实例所需的最小配置。
+///
+/// 构造和 [`Self::validate`] 只检查领域边界，不负责下载服务端、创建目录或启动进程；
+/// 这些副作用由 Core 的编排层在配置通过后执行。
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstanceCreate {
@@ -20,6 +24,7 @@ pub struct InstanceCreate {
 }
 
 impl InstanceCreate {
+    /// 创建并校验实例配置。
     pub fn new(
         id: InstanceId,
         name: String,
@@ -39,17 +44,20 @@ impl InstanceCreate {
         Ok(instance)
     }
 
+    /// 返回实例标识。
     #[must_use]
     pub fn id(&self) -> &InstanceId {
         &self.id
     }
 
+    /// 校验配置并转换为初始运行时状态为 `Created` 的实例。
     pub fn into_instance(self) -> Result<Instance, InstanceCreateError> {
         self.validate()?;
 
         Ok(Instance::from_create(self))
     }
 
+    /// 校验名称、目录和启动配置是否满足实例领域约束。
     pub fn validate(&self) -> Result<(), InstanceCreateError> {
         if !is_valid_name(&self.name) {
             return Err(InstanceCreateError::InvalidName);

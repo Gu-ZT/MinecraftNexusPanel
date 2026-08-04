@@ -10,6 +10,10 @@ use crate::InstanceUpdateError;
 use crate::LaunchConfig;
 use crate::PatchField;
 
+/// Core 持久化的 Minecraft 实例配置与运行时状态。
+///
+/// 配置字段由创建和更新校验保护，`revision` 用于让调用方识别配置是否发生变化；
+/// `runtime` 是 Core 对进程的最新观察结果，不应被当作用户配置写回。
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Instance {
@@ -43,51 +47,63 @@ impl Instance {
         }
     }
 
+    /// 返回实例标识。
     #[must_use]
     pub fn id(&self) -> &InstanceId {
         &self.id
     }
 
+    /// 返回实例工作目录的规范化相对路径。
     #[must_use]
     pub fn directory(&self) -> &str {
         &self.directory
     }
 
+    /// 返回实例到期时间；未设置时为 `None`。
     #[must_use]
     pub fn expires_at(&self) -> Option<&str> {
         self.expires_at.as_deref()
     }
 
+    /// 返回进程启动配置。
     #[must_use]
     pub fn launch(&self) -> &LaunchConfig {
         &self.launch
     }
 
+    /// 返回实例显示名称。
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// 返回实例的权威服务端类型。
     #[must_use]
     pub const fn kind(&self) -> InstanceKind {
         self.kind
     }
 
+    /// 返回 Core 观察到的进程运行时快照。
     #[must_use]
     pub fn runtime(&self) -> &InstanceRuntime {
         &self.runtime
     }
 
+    /// 返回配置修订号。
     #[must_use]
     pub const fn revision(&self) -> u64 {
         self.revision
     }
 
+    /// 返回更新命令；未配置时为 `None`。
     #[must_use]
     pub fn update_command(&self) -> Option<&str> {
         self.update_command.as_deref()
     }
 
+    /// 应用一个经过领域校验的部分更新，并在配置实际变化时递增修订号。
+    ///
+    /// 运行时快照不会被部分更新修改；调用方应使用 [`Self::set_runtime`] 更新它。
     pub fn apply_update(&mut self, update: &InstanceUpdate) -> Result<(), InstanceUpdateError> {
         update.validate()?;
         let mut changed = false;
@@ -126,6 +142,7 @@ impl Instance {
         Ok(())
     }
 
+    /// 替换 Core 保存的运行时快照，不改变配置修订号。
     pub fn set_runtime(&mut self, runtime: InstanceRuntime) {
         self.runtime = runtime;
     }

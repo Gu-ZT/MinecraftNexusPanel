@@ -8,6 +8,10 @@ use crate::InstanceUpdateError;
 use crate::LaunchConfig;
 use crate::PatchField;
 
+/// 实例配置的部分更新请求。
+///
+/// 每个字段使用 [`PatchField`] 表达保留、设置或清空。名称、类型、目录和启动配置
+/// 是必填配置，不能被清空；更新命令和到期时间可以显式清除。
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstanceUpdate {
@@ -26,36 +30,43 @@ pub struct InstanceUpdate {
 }
 
 impl InstanceUpdate {
+    /// 返回名称更新操作。
     #[must_use]
     pub const fn name(&self) -> &PatchField<String> {
         &self.name
     }
 
+    /// 返回服务端类型更新操作。
     #[must_use]
     pub const fn kind(&self) -> &PatchField<InstanceKind> {
         &self.kind
     }
 
+    /// 返回实例目录更新操作。
     #[must_use]
     pub const fn directory(&self) -> &PatchField<String> {
         &self.directory
     }
 
+    /// 返回启动配置更新操作。
     #[must_use]
     pub const fn launch(&self) -> &PatchField<LaunchConfig> {
         &self.launch
     }
 
+    /// 返回更新命令更新操作。
     #[must_use]
     pub const fn update_command(&self) -> &PatchField<String> {
         &self.update_command
     }
 
+    /// 返回到期时间更新操作。
     #[must_use]
     pub const fn expires_at(&self) -> &PatchField<String> {
         &self.expires_at
     }
 
+    /// 校验更新不是空操作，并检查各个被设置字段的领域约束。
     pub fn validate(&self) -> Result<(), InstanceUpdateError> {
         if self.name.is_unchanged()
             && self.kind.is_unchanged()
