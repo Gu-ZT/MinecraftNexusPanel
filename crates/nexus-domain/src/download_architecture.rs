@@ -1,14 +1,20 @@
+//! 下载清单的 CPU 架构约束。
+
 use serde::Deserialize;
 use serde::Serialize;
 
+/// 受管下载产物支持的 CPU 架构。
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum DownloadArchitecture {
+    /// AArch64/ARM64。
     Aarch64,
+    /// x86_64/AMD64。
     X86_64,
 }
 
 impl DownloadArchitecture {
+    /// 返回当前编译目标对应的架构；未知架构返回 `None`。
     #[must_use]
     pub fn current() -> Option<Self> {
         match std::env::consts::ARCH {
@@ -18,6 +24,7 @@ impl DownloadArchitecture {
         }
     }
 
+    /// 判断该架构是否与当前编译目标一致。
     #[must_use]
     pub fn is_current(self) -> bool {
         Self::current() == Some(self)

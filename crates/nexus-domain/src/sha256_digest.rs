@@ -1,3 +1,5 @@
+//! 规范化的 SHA-256 十六进制摘要值对象。
+
 use std::fmt;
 use std::str::FromStr;
 
@@ -9,10 +11,12 @@ use serde::de::Error as DeserializeError;
 
 use crate::Sha256DigestError;
 
+/// 始终保存为 64 位小写 ASCII 十六进制的 SHA-256 摘要。
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Sha256Digest(String);
 
 impl Sha256Digest {
+    /// 从十六进制文本创建并规范化摘要。
     pub fn from_hex(value: &str) -> Result<Self, Sha256DigestError> {
         if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return Err(Sha256DigestError::InvalidFormat);
@@ -21,6 +25,8 @@ impl Sha256Digest {
         Ok(Self(value.to_ascii_lowercase()))
     }
 
+    /// 以字符串形式返回规范化摘要。
+    /// 返回规范化后的小写十六进制摘要。
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
