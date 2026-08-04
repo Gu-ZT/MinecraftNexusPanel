@@ -12,8 +12,10 @@ pub enum CoreConnectionError {
     /// TCP 连接失败。
     #[error("failed to connect to Core at {address}")]
     Connect {
+        /// 连接失败的 Core 地址文本。
         address: String,
         #[source]
+        /// 操作系统返回的连接错误。
         source: io::Error,
     },
     /// TLS 层指纹与会话欢迎消息不一致。
@@ -24,10 +26,16 @@ pub enum CoreConnectionError {
     Endpoint(#[from] CoreEndpointError),
     /// Core 响应缺少或包含错误类型的字段。
     #[error("Core returned a malformed response field: {field}")]
-    InvalidResponse { field: &'static str },
+    InvalidResponse {
+        /// 缺失或类型不正确的响应字段名称。
+        field: &'static str,
+    },
     /// Core 明确拒绝了请求。
     #[error("Core rejected the request: {code}")]
-    Rejected { code: String },
+    Rejected {
+        /// Core 返回的稳定错误代码。
+        code: String,
+    },
     /// 协议版本无法协商。
     #[error(transparent)]
     ProtocolVersion(#[from] ProtocolVersionError),

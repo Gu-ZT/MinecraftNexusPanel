@@ -21,8 +21,10 @@ pub enum PanelError {
     /// HTTP 监听地址绑定失败。
     #[error("failed to bind the Panel HTTP listener at {address}")]
     Bind {
+        /// Panel 试图监听的本地 HTTP 地址。
         address: SocketAddr,
         #[source]
+        /// 操作系统返回的监听器绑定错误。
         source: io::Error,
     },
     /// HTTP 服务器运行失败。
