@@ -1,3 +1,8 @@
+//! 一键搭建计划的解析、哈希确认和异步执行。
+//!
+//! 执行器先下载并校验归档，在临时目录完成解压和启动配置准备，全部成功后再
+//! 原子移动到实例目录；中途失败会清理临时目录并避免留下半成品实例。
+
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::path::Component;
@@ -29,6 +34,7 @@ use crate::ProvisionManagerError;
 use crate::RuntimeManager;
 use crate::archive_extractor;
 
+/// 编排运行时解析、服务端归档安装和实例注册的内部管理器。
 #[derive(Clone)]
 pub(crate) struct ProvisionManager {
     data_directory: PathBuf,
@@ -38,6 +44,7 @@ pub(crate) struct ProvisionManager {
 }
 
 impl ProvisionManager {
+    /// 创建一键搭建管理器。
     pub(crate) fn new(
         data_directory: &Path,
         runtimes: RuntimeManager,
@@ -50,6 +57,9 @@ impl ProvisionManager {
         })
     }
 
+    /// 校验计划并返回带稳定哈希的解析结果。
+    ///
+    /// 返回的哈希用于执行阶段防止调用方执行未经确认的计划变体。
     pub(crate) fn resolve(&self, plan: &ProvisionPlan) -> Result<Value, ProvisionManagerError> {
         validate_plan(plan)?;
         let plan_hash = plan_hash(plan)?;
@@ -60,6 +70,7 @@ impl ProvisionManager {
         }))
     }
 
+    /// 校验计划哈希并启动异步搭建任务。
     pub(crate) fn start_execute(
         &self,
         plan: &ProvisionPlan,
@@ -87,6 +98,7 @@ impl ProvisionManager {
         Ok(task_id)
     }
 
+    /// 查询一键搭建任务状态。
     pub(crate) fn task(&self, task_id: TaskId) -> Result<Option<Value>, ProvisionManagerError> {
         let tasks = self
             .tasks

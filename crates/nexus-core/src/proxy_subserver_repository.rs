@@ -1,3 +1,8 @@
+//! 代理实例到后端实例关系的并发安全内存仓库。
+//!
+//! 关系数量由实例类型的 [`nexus_domain::ProxyTopology`] 决定：普通 Java 代理允许
+//! 多后端，Geyser 只允许一个后端，非代理实例不能创建后端关系。
+
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -11,17 +16,20 @@ use crate::ProxySubserverRepositoryError;
 
 type SubserverMap = BTreeMap<InstanceId, BTreeMap<String, ProxySubserver>>;
 
+/// 管理代理实例的持久化后端关系。
 #[derive(Clone, Default)]
 pub struct ProxySubserverRepository {
     subservers: Arc<Mutex<SubserverMap>>,
 }
 
 impl ProxySubserverRepository {
+    /// 创建空的代理后端关系仓库。
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// 列出代理实例当前的全部后端关系。
     pub fn list(
         &self,
         proxy: &Instance,
@@ -35,6 +43,7 @@ impl ProxySubserverRepository {
             .unwrap_or_default())
     }
 
+    /// 获取代理实例上的指定后端关系。
     pub fn get(
         &self,
         proxy: &Instance,
@@ -52,6 +61,10 @@ impl ProxySubserverRepository {
             })
     }
 
+    /// 校验并新增或替换代理后端关系。
+    ///
+    /// 替换同一关系标识不增加拓扑数量；新增关系必须满足代理类型的一对多或
+    /// 一对一上限，关系自身还负责校验目标标识、主机和端口。
     pub fn upsert(
         &self,
         proxy: &Instance,
@@ -79,6 +92,7 @@ impl ProxySubserverRepository {
         Ok(subserver)
     }
 
+    /// 删除代理实例上的指定后端关系。
     pub fn delete(
         &self,
         proxy: &Instance,
