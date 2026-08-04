@@ -129,6 +129,8 @@
   - [x] `BedrockManagementProfile` 为 PocketMine-MP、Nukkit 和 Cloudburst Nukkit 暴露 `plugins/`，BDS/Geyser 保持无插件目录。
   - [ ] 为不同基岩端提供插件/扩展目录、配置和版本兼容性策略。
 - [ ] 代理端与基岩端专门运维：子服务器连通性、Bedrock/RakNet 监听、端口冲突、健康检查、升级和备份恢复。
+  - [x] 从实际 Core 节点对已登记代理后端执行受限 TCP 连通性检查，返回禁用、可达/不可达状态、延迟和错误分类。
+  - [ ] 代理启停编排、协议级健康检查，以及基岩端 RakNet 监听/端口冲突/升级/备份恢复。
 - [ ] Cron/事件计划任务、去重、执行记录和任务中心。
 - [ ] RBAC、用户组、实例 scope 与审计日志。
 

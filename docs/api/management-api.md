@@ -103,9 +103,11 @@ SHA-256、平台/架构、实例目录、归档条目和受管运行时；下载
 | GET    | `/cores/{coreId}/instances/{proxyInstanceId}/proxy-subservers`     | 查询代理后端                 |
 | POST   | `/cores/{coreId}/instances/{proxyInstanceId}/proxy-subservers`     | 创建或替换一个后端关系       |
 | DELETE | `/cores/{coreId}/instances/{proxyInstanceId}/proxy-subservers/{subserverId}` | 删除后端关系                 |
+| POST   | `/cores/{coreId}/instances/{proxyInstanceId}/proxy-subservers/{subserverId}/actions/check` | 从 Core 检查后端连通性 |
 
 后端记录包含 `targetInstanceId`、监听目标地址、端口和启用状态。目标实例必须已存在且不是代理实例；Geyser 的第二个目标返回
 `PROXY_SUBSERVER_LIMIT_REACHED`。
+连通性检查从登记 Core 节点执行最多 3 秒的 TCP 探测，返回 `DISABLED`、`REACHABLE` 或 `UNREACHABLE`、延迟和受限错误分类；后端不可达不会被转换为 Core 注册错误。
 
 ### 3.3 基岩端运维画像
 
