@@ -7,13 +7,16 @@ use axum::body::Bytes;
 use axum::extract::Path;
 use axum::extract::Query;
 use axum::extract::State;
+use axum::extract::rejection::JsonRejection;
 use axum::http::HeaderMap;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::response::Response;
 use axum::routing::get;
+use axum::routing::post;
 use nexus_domain::ExtensionInstall;
 use nexus_domain::ExtensionKind;
+use nexus_domain::ExtensionPlanRequest;
 use nexus_domain::FilePage;
 use nexus_domain::Instance;
 use nexus_domain::InstanceId;
@@ -49,11 +52,96 @@ pub(crate) fn extension_routes() -> Router<PanelState> {
             get(get_extension_project_versions),
         )
         .route(
+            "/api/v1/cores/{core_id}/instances/{instance_id}/extension-plans:resolve",
+            post(resolve_extension_plan),
+        )
+        .route(
             "/api/v1/cores/{core_id}/instances/{instance_id}/extensions",
             get(list_instance_extensions)
                 .put(write_instance_extension)
                 .delete(delete_instance_extension),
         )
+}
+
+async fn resolve_extension_plan(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, instance_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    payload: Result<Json<ExtensionPlanRequest>, JsonRejection>,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return invalid_core_id_response(request_id);
+    };
+    let Some(instance_id) = instance_id.parse::<InstanceId>().ok() else {
+        return validation_error(request_id);
+    };
+    let request = match payload {
+        Ok(Json(request))
+            if !request.template_id().is_empty()
+                && !request.project_id().is_empty()
+                && !request.version_id().is_empty()
+                && !request.minecraft_version().is_empty()
+                && request.minecraft_version().chars().count() <= 64
+                && request.loader().is_none_or(|loader| {
+                    !loader.is_empty() && loader.chars().count() <= 64 && !loader.contains('\0')
+                }) =>
+        {
+            request
+        }
+        Ok(_) | Err(_) => return validation_error(request_id),
+    };
+    let Some(template) = install_template(request.template_id()) else {
+        return error_response(
+            StatusCode::NOT_FOUND,
+            "NOT_FOUND",
+            "Install template does not exist",
+            request_id,
+        );
+    };
+    if template.extension_directories(request.kind()).is_empty() {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "EXTENSION_KIND_UNSUPPORTED",
+            "The install template does not declare this extension kind",
+            request_id,
+        );
+    }
+
+    let instance = match state.cores().get_instance(core_id, &instance_id).await {
+        Ok(value) => match from_value::<Instance>(value) {
+            Ok(instance) => instance,
+            Err(_) => return invalid_core_response(request_id),
+        },
+        Err(error) => return registry_error_response(error, request_id),
+    };
+    if instance.kind() != template.instance_kind() {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "TEMPLATE_INSTANCE_KIND_MISMATCH",
+            "Install template does not match the instance type",
+            request_id,
+        );
+    }
+
+    match state
+        .extension_sources()
+        .resolve_dependencies(
+            template.id(),
+            request.kind(),
+            request.project_id(),
+            request.version_id(),
+            request.minecraft_version(),
+            request.loader(),
+        )
+        .await
+    {
+        Ok(result) => Json(result).into_response(),
+        Err(error) => extension_source_error_response(error, request_id),
+    }
 }
 
 async fn search_extension_catalog(
@@ -187,11 +275,27 @@ async fn get_extension_project_versions(
 fn extension_source_error_response(error: ExtensionSourceError, request_id: RequestId) -> Response {
     tracing::warn!(%error, %request_id, "Extension source lookup failed");
 
-    if matches!(error, ExtensionSourceError::InvalidRequest) {
+    if matches!(&error, ExtensionSourceError::InvalidRequest) {
         return error_response(
             StatusCode::BAD_REQUEST,
             "VALIDATION_FAILED",
-            "Extension project ID is invalid",
+            "Extension source request parameters are invalid",
+            request_id,
+        );
+    }
+    if matches!(
+        &error,
+        ExtensionSourceError::VersionNotFound { .. }
+            | ExtensionSourceError::NoCompatibleVersion { .. }
+            | ExtensionSourceError::NoArtifact { .. }
+            | ExtensionSourceError::MissingDependencyProject { .. }
+            | ExtensionSourceError::DependencyConflict { .. }
+            | ExtensionSourceError::DependencyGraphTooLarge { .. }
+    ) {
+        return error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "EXTENSION_PLAN_UNRESOLVED",
+            "Extension dependencies could not be resolved",
             request_id,
         );
     }

@@ -333,6 +333,32 @@ export interface ExtensionVersionResult {
   items: ExtensionVersion[];
 }
 
+export interface ExtensionPlanRequest {
+  templateId: string;
+  kind: ExtensionKind;
+  projectId: string;
+  versionId: string;
+  minecraftVersion: string;
+  loader?: string;
+}
+
+export interface ExtensionPlanItem {
+  source: string;
+  projectId: string;
+  versionId: string;
+  versionNumber: string;
+  artifact: ExtensionArtifact;
+  dependencies: ExtensionDependency[];
+}
+
+export interface ExtensionPlanResolution {
+  templateId: string;
+  kind: ExtensionKind;
+  minecraftVersion: string;
+  loader: string | null;
+  items: ExtensionPlanItem[];
+}
+
 export interface InstanceExtensionScan {
   templateId: string;
   kind: ExtensionKind;
@@ -561,6 +587,11 @@ export interface PanelApiClient {
     minecraftVersion?: string,
     loader?: string,
   ): Promise<ExtensionVersionResult>;
+  resolveExtensionPlan(
+    coreId: string,
+    instanceId: string,
+    plan: ExtensionPlanRequest,
+  ): Promise<ExtensionPlanResolution>;
   listManagedRuntimes(coreId: string): Promise<ManagedRuntimePage>;
   resolveProvisionPlan(coreId: string, plan: ProvisionPlan): Promise<ProvisionResolution>;
   executeProvision(coreId: string, plan: ProvisionPlan, planHash: string): Promise<ProvisionOperation>;
@@ -857,6 +888,12 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
       const query = params.toString();
       return request<ExtensionVersionResult>(
         `/api/v1/extension-catalog/projects/${encodeURIComponent(source)}/${encodeURIComponent(projectId)}${query ? `?${query}` : ''}`,
+      );
+    },
+    resolveExtensionPlan(coreId, instanceId, plan) {
+      return request<ExtensionPlanResolution>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/extension-plans:resolve`,
+        { method: 'POST', body: plan, csrf: true },
       );
     },
     listManagedRuntimes(coreId) {

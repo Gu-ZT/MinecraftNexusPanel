@@ -1,9 +1,12 @@
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use nexus_domain::ExtensionArtifact;
 use nexus_domain::ExtensionCompatibility;
 use nexus_domain::ExtensionDependency;
 use nexus_domain::ExtensionKind;
+use nexus_domain::ExtensionPlanItem;
+use nexus_domain::ExtensionPlanResolution;
 use nexus_domain::ExtensionProject;
 use nexus_domain::ExtensionSearchResult;
 use nexus_domain::ExtensionVersion;
@@ -23,6 +26,7 @@ use crate::extension_source_error::ExtensionSourceError;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(30);
 const MAXIMUM_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+const MAXIMUM_DEPENDENCY_NODES: usize = 64;
 const MODRINTH_SEARCH_URL: &str = "https://api.modrinth.com/v2/search";
 const MODRINTH_PROJECT_VERSION_URL_PREFIX: &str = "https://api.modrinth.com/v2/project/";
 const MODRINTH_SOURCE: &str = "modrinth";
@@ -105,6 +109,86 @@ impl ExtensionSourceClient {
             from_slice(&bytes).map_err(|_| ExtensionSourceError::InvalidResponse)?;
 
         parse_modrinth_versions(&metadata, project_id, minecraft_version, loader)
+    }
+
+    pub(crate) async fn resolve_dependencies(
+        &self,
+        template_id: &str,
+        kind: ExtensionKind,
+        project_id: &str,
+        version_id: &str,
+        minecraft_version: &str,
+        loader: Option<&str>,
+    ) -> Result<ExtensionPlanResolution, ExtensionSourceError> {
+        if !is_valid_project_id(project_id) || version_id.is_empty() {
+            return Err(ExtensionSourceError::InvalidRequest);
+        }
+
+        let mut pending = vec![(project_id.to_owned(), Some(version_id.to_owned()))];
+        let mut selected = BTreeMap::new();
+        let mut items = Vec::new();
+        while let Some((project_id, requested_version_id)) = pending.pop() {
+            if let Some(existing_version_id) = selected.get(&project_id) {
+                if requested_version_id
+                    .as_deref()
+                    .is_some_and(|version_id| version_id != existing_version_id)
+                {
+                    return Err(ExtensionSourceError::DependencyConflict { project_id });
+                }
+                continue;
+            }
+            if selected.len() >= MAXIMUM_DEPENDENCY_NODES {
+                return Err(ExtensionSourceError::DependencyGraphTooLarge {
+                    maximum_nodes: MAXIMUM_DEPENDENCY_NODES,
+                });
+            }
+
+            let versions = self
+                .list_versions(&project_id, Some(minecraft_version), loader)
+                .await?;
+            let version = select_version(&versions, &project_id, requested_version_id.as_deref())?;
+            let artifact = version
+                .artifacts()
+                .iter()
+                .find(|artifact| artifact.primary())
+                .or_else(|| version.artifacts().first())
+                .cloned()
+                .ok_or_else(|| ExtensionSourceError::NoArtifact {
+                    project_id: project_id.clone(),
+                    version_id: version.id().to_owned(),
+                })?;
+            selected.insert(project_id.clone(), version.id().to_owned());
+            for dependency in version.dependencies() {
+                if dependency.dependency_type() != "required" {
+                    continue;
+                }
+                let dependency_project_id = dependency.project_id().ok_or_else(|| {
+                    ExtensionSourceError::MissingDependencyProject {
+                        version_id: version.id().to_owned(),
+                    }
+                })?;
+                pending.push((
+                    dependency_project_id.to_owned(),
+                    dependency.version_id().map(str::to_owned),
+                ));
+            }
+            items.push(ExtensionPlanItem::new(
+                MODRINTH_SOURCE.to_owned(),
+                project_id,
+                version.id().to_owned(),
+                version.version_number().to_owned(),
+                artifact,
+                version.dependencies().to_vec(),
+            ));
+        }
+
+        Ok(ExtensionPlanResolution::new(
+            template_id.to_owned(),
+            kind,
+            minecraft_version.to_owned(),
+            loader.map(str::to_owned),
+            items,
+        ))
     }
 }
 
@@ -195,6 +279,37 @@ fn parse_modrinth_versions(
         project_id.to_owned(),
         items,
     ))
+}
+
+fn select_version<'a>(
+    versions: &'a ExtensionVersionResult,
+    project_id: &str,
+    requested_version_id: Option<&str>,
+) -> Result<&'a ExtensionVersion, ExtensionSourceError> {
+    let version = match requested_version_id {
+        Some(version_id) => versions
+            .items()
+            .iter()
+            .find(|version| version.id() == version_id)
+            .ok_or_else(|| ExtensionSourceError::VersionNotFound {
+                project_id: project_id.to_owned(),
+                version_id: version_id.to_owned(),
+            })?,
+        None => versions
+            .items()
+            .iter()
+            .find(|version| version.compatibility() == ExtensionCompatibility::Compatible)
+            .ok_or_else(|| ExtensionSourceError::NoCompatibleVersion {
+                project_id: project_id.to_owned(),
+            })?,
+    };
+    if version.compatibility() != ExtensionCompatibility::Compatible {
+        return Err(ExtensionSourceError::NoCompatibleVersion {
+            project_id: project_id.to_owned(),
+        });
+    }
+
+    Ok(version)
 }
 
 fn parse_version(

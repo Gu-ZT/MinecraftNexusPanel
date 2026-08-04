@@ -203,6 +203,57 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /cores/{coreId}/instances/{instanceId}/extension-plans:resolve:
+    post:
+      tags: [ Extensions ]
+      operationId: resolveExtensionPlan
+      summary: Resolve a bounded extension dependency plan
+      description: |
+        Resolve a Modrinth root version and its required dependencies for an
+        instance template. The response contains verified HTTPS artifact
+        metadata, but this operation does not download or install files.
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExtensionPlanRequest'
+      responses:
+        '200':
+          description: Resolved extension dependency plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionPlanResolution'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Required dependencies could not be resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: The extension source could not be queried or parsed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /health/live:
     get:
       tags: [ System ]
@@ -2820,6 +2871,68 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ExtensionVersion'
+    ExtensionPlanRequest:
+      type: object
+      required: [ templateId, kind, projectId, versionId, minecraftVersion ]
+      properties:
+        templateId:
+          type: string
+          minLength: 1
+        kind:
+          $ref: '#/components/schemas/ExtensionKind'
+        projectId:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{1,64}$'
+        versionId:
+          type: string
+          minLength: 1
+        minecraftVersion:
+          type: string
+          minLength: 1
+          maxLength: 64
+        loader:
+          type: [ string, 'null' ]
+          maxLength: 64
+    ExtensionPlanItem:
+      type: object
+      required: [ source, projectId, versionId, versionNumber, artifact, dependencies ]
+      properties:
+        source:
+          type: string
+          minLength: 1
+        projectId:
+          type: string
+          minLength: 1
+        versionId:
+          type: string
+          minLength: 1
+        versionNumber:
+          type: string
+          minLength: 1
+        artifact:
+          $ref: '#/components/schemas/ExtensionArtifact'
+        dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtensionDependency'
+    ExtensionPlanResolution:
+      type: object
+      required: [ templateId, kind, minecraftVersion, loader, items ]
+      properties:
+        templateId:
+          type: string
+          minLength: 1
+        kind:
+          $ref: '#/components/schemas/ExtensionKind'
+        minecraftVersion:
+          type: string
+          minLength: 1
+        loader:
+          type: [ string, 'null' ]
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtensionPlanItem'
     InstallTemplateExtensionLayout:
       type: object
       required: [ kind, directories ]

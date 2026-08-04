@@ -120,7 +120,8 @@
   - [x] 为本地产物持久化扩展安装记录，记录类型、路径、SHA-256、来源和安装时间；更新支持 If-Match 并发保护，删除接受后清理记录。
   - [x] 通过 Modrinth 公共 API 搜索 MOD/PLUGIN 项目，支持 Minecraft 版本、加载器和分页过滤，并返回来源元数据兼容性提示。
   - [x] 读取 Modrinth 项目版本、依赖记录、HTTPS 归档 URL 和 SHA-512 元数据，并按请求版本/加载器返回版本兼容性提示。
-  - [ ] 完成跨项目依赖求解、授权下载、Core 安装计划和完整扩展安装/更新流程；更多来源适配器仍需逐项接入。
+  - [x] 解析根项目及 required 依赖的 Modrinth 版本，检测循环/冲突/缺失归档，并通过 `extension-plans:resolve` 返回受限安装前计划。
+  - [ ] 完成来源授权下载、Core 安装任务、回滚和完整扩展安装/更新流程；更多来源适配器仍需逐项接入。
   - [x] `BedrockManagementProfile` 为 PocketMine-MP、Nukkit 和 Cloudburst Nukkit 暴露 `plugins/`，BDS/Geyser 保持无插件目录。
   - [ ] 为不同基岩端提供插件/扩展目录、配置和版本兼容性策略。
 - [ ] 代理端与基岩端专门运维：子服务器连通性、Bedrock/RakNet 监听、端口冲突、健康检查、升级和备份恢复。
