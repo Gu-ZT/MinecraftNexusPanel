@@ -821,6 +821,61 @@ paths:
     parameters:
       - $ref: '#/components/parameters/CoreId'
       - $ref: '#/components/parameters/InstanceId'
+    post:
+      tags: [ Extensions ]
+      operationId: installExtensions
+      summary: Download and install a resolved extension plan
+      description: |
+        Re-resolve the requested Modrinth project and required dependencies,
+        download only the resulting HTTPS artifacts, verify their declared
+        size and SHA-512, and upload each file to Core through transfer-v1.
+        The selected directory must be declared by the template; when a kind
+        has multiple directories, directory is required. The operation writes
+        one installation record per committed file and does not provide
+        aggregate asynchronous task status or rollback yet.
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExtensionInstallRequest'
+      responses:
+        '201':
+          description: Extension artifacts installed and recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionInstallResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/PreconditionRequired'
+        '422':
+          description: The dependency plan or artifact set could not be resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: The source artifact or Core installation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
     get:
       tags: [ Extensions ]
       operationId: listInstanceExtensions
@@ -2893,6 +2948,33 @@ components:
         loader:
           type: [ string, 'null' ]
           maxLength: 64
+    ExtensionInstallRequest:
+      allOf:
+        - $ref: '#/components/schemas/ExtensionPlanRequest'
+        - type: object
+          properties:
+            directory:
+              type: [ string, 'null' ]
+              minLength: 1
+    ExtensionInstallResult:
+      type: object
+      required: [ templateId, kind, directory, installations, acceptedAt ]
+      properties:
+        templateId:
+          type: string
+          minLength: 1
+        kind:
+          $ref: '#/components/schemas/ExtensionKind'
+        directory:
+          type: string
+          minLength: 1
+        installations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtensionInstall'
+        acceptedAt:
+          type: string
+          format: date-time
     ExtensionPlanItem:
       type: object
       required: [ source, projectId, versionId, versionNumber, artifact, dependencies ]

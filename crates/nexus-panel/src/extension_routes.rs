@@ -1,4 +1,7 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::path::Path as FilePath;
+use std::path::PathBuf;
 
 use axum::Extension;
 use axum::Json;
@@ -14,17 +17,31 @@ use axum::response::IntoResponse;
 use axum::response::Response;
 use axum::routing::get;
 use axum::routing::post;
+use nexus_domain::CoreId;
+use nexus_domain::ExtensionArtifact;
 use nexus_domain::ExtensionInstall;
+use nexus_domain::ExtensionInstallRequest;
 use nexus_domain::ExtensionKind;
+use nexus_domain::ExtensionPlanItem;
 use nexus_domain::ExtensionPlanRequest;
+use nexus_domain::FileEntry;
 use nexus_domain::FilePage;
 use nexus_domain::Instance;
 use nexus_domain::InstanceId;
 use nexus_domain::RequestId;
+use nexus_domain::TaskId;
+use serde_json::Value;
 use serde_json::from_value;
 use serde_json::json;
+use sha2::Digest;
+use sha2::Sha256;
+use sha2::Sha512;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
+use tokio::fs::File;
+use tokio::fs::remove_file;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 
 use crate::CoreConnectionError;
 use crate::CoreRegistryError;
@@ -35,11 +52,20 @@ use crate::core_routes::authorize;
 use crate::core_routes::invalid_core_id_response;
 use crate::core_routes::parse_core_id;
 use crate::core_routes::registry_error_response;
+use crate::extension_source_client::ExtensionSourceClient;
+use crate::extension_source_client::MAXIMUM_ARTIFACT_BYTES;
 use crate::extension_source_error::ExtensionSourceError;
 use crate::install_template_catalog::install_template;
 
 const EXTENSION_DIRECTORY_LIST_LIMIT: usize = 200;
 const MAXIMUM_EXTENSION_WRITE_BYTES: usize = 1024 * 1024;
+const EXTENSION_TRANSFER_CHUNK_BYTES: u64 = 1024 * 1024;
+
+struct StagedArtifact {
+    path: PathBuf,
+    size: u64,
+    sha256: String,
+}
 
 pub(crate) fn extension_routes() -> Router<PanelState> {
     Router::new()
@@ -58,9 +84,440 @@ pub(crate) fn extension_routes() -> Router<PanelState> {
         .route(
             "/api/v1/cores/{core_id}/instances/{instance_id}/extensions",
             get(list_instance_extensions)
+                .post(install_instance_extensions)
                 .put(write_instance_extension)
                 .delete(delete_instance_extension),
         )
+}
+
+async fn install_instance_extensions(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, instance_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    payload: Result<Json<ExtensionInstallRequest>, JsonRejection>,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Some(idempotency_key) =
+        header_text(&headers, "idempotency-key").filter(|value| value.parse::<RequestId>().is_ok())
+    else {
+        return error_response(
+            StatusCode::PRECONDITION_REQUIRED,
+            "PRECONDITION_REQUIRED",
+            "Idempotency-Key is required",
+            request_id,
+        );
+    };
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return invalid_core_id_response(request_id);
+    };
+    let Some(instance_id) = instance_id.parse::<InstanceId>().ok() else {
+        return validation_error(request_id);
+    };
+    let request = match payload {
+        Ok(Json(request)) if is_valid_plan_request(request.plan()) => request,
+        Ok(_) | Err(_) => return validation_error(request_id),
+    };
+    let plan = request.plan();
+    let Some(template) = install_template(plan.template_id()) else {
+        return error_response(
+            StatusCode::NOT_FOUND,
+            "NOT_FOUND",
+            "Install template does not exist",
+            request_id,
+        );
+    };
+    let instance = match state.cores().get_instance(core_id, &instance_id).await {
+        Ok(value) => match from_value::<Instance>(value) {
+            Ok(instance) => instance,
+            Err(_) => return invalid_core_response(request_id),
+        },
+        Err(error) => return registry_error_response(error, request_id),
+    };
+    if instance.kind() != template.instance_kind() {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "TEMPLATE_INSTANCE_KIND_MISMATCH",
+            "Install template does not match the instance type",
+            request_id,
+        );
+    }
+
+    let directories = template.extension_directories(plan.kind());
+    let Some(directory) = selected_extension_directory(&directories, request.directory()) else {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "EXTENSION_DIRECTORY_INVALID",
+            "The selected directory is not declared for this extension kind",
+            request_id,
+        );
+    };
+    let plan = match state
+        .extension_sources()
+        .resolve_dependencies(
+            template.id(),
+            plan.kind(),
+            plan.project_id(),
+            plan.version_id(),
+            plan.minecraft_version(),
+            plan.loader(),
+        )
+        .await
+    {
+        Ok(plan) => plan,
+        Err(error) => return extension_source_error_response(error, request_id),
+    };
+    let mut paths = HashSet::with_capacity(plan.items().len());
+    for item in plan.items() {
+        let Some(path) = extension_install_path(directory, item) else {
+            return error_response(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "EXTENSION_ARTIFACT_INVALID",
+                "The resolved extension artifact has an invalid file name",
+                request_id,
+            );
+        };
+        if !paths.insert(path) {
+            return error_response(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "EXTENSION_ARTIFACT_CONFLICT",
+                "Resolved extensions would overwrite the same file",
+                request_id,
+            );
+        }
+    }
+
+    let directory_idempotency_key = RequestId::new().to_string();
+    if let Err(error) = state
+        .cores()
+        .create_instance_directory(
+            core_id,
+            &instance_id,
+            directory,
+            true,
+            &directory_idempotency_key,
+        )
+        .await
+    {
+        return registry_error_response(error, request_id);
+    }
+
+    let mut installations = Vec::with_capacity(plan.items().len());
+    for item in plan.items() {
+        let Some(path) = extension_install_path(directory, item) else {
+            return error_response(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "EXTENSION_ARTIFACT_INVALID",
+                "The resolved extension artifact has an invalid file name",
+                request_id,
+            );
+        };
+        let transfer_idempotency_key = if installations.is_empty() {
+            idempotency_key.to_owned()
+        } else {
+            RequestId::new().to_string()
+        };
+        match install_extension_artifact(
+            &state,
+            core_id,
+            &instance_id,
+            &path,
+            plan.kind(),
+            item,
+            &transfer_idempotency_key,
+        )
+        .await
+        {
+            Ok(installation) => installations.push(installation),
+            Err(error) => return extension_install_error_response(error, request_id),
+        }
+    }
+
+    (
+        StatusCode::CREATED,
+        Json(json!({
+        "templateId": plan.template_id(),
+        "kind": plan.kind(),
+        "directory": directory,
+        "installations": installations,
+        "acceptedAt": current_timestamp(),
+        })),
+    )
+        .into_response()
+}
+
+async fn install_extension_artifact(
+    state: &PanelState,
+    core_id: CoreId,
+    instance_id: &InstanceId,
+    path: &str,
+    kind: ExtensionKind,
+    item: &ExtensionPlanItem,
+    idempotency_key: &str,
+) -> Result<ExtensionInstall, String> {
+    let temporary_path = temporary_artifact_path();
+    let result = async {
+        let staged =
+            download_artifact_to_file(state.extension_sources(), item.artifact(), &temporary_path)
+                .await?;
+        let entry =
+            upload_artifact_to_core(state, core_id, instance_id, path, &staged, idempotency_key)
+                .await?;
+        let Some(core_sha256) = entry.sha256() else {
+            return Err("Core did not return an extension file hash".to_owned());
+        };
+        if !core_sha256.eq_ignore_ascii_case(&staged.sha256) {
+            return Err("Core returned an unexpected extension file hash".to_owned());
+        }
+
+        let installation = ExtensionInstall::new(
+            RequestId::new().to_string(),
+            kind,
+            path.to_owned(),
+            staged.sha256,
+            item.source().to_owned(),
+            Some(item.project_id().to_owned()),
+            Some(item.version_id().to_owned()),
+            current_timestamp(),
+        );
+        state
+            .cores()
+            .upsert_extension_install(core_id, instance_id, &installation)
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(installation)
+    }
+    .await;
+
+    if let Err(error) = remove_file(&temporary_path).await {
+        tracing::debug!(%error, path = %temporary_path.display(), "Failed to remove extension staging file");
+    }
+
+    result
+}
+
+async fn download_artifact_to_file(
+    source: &ExtensionSourceClient,
+    artifact: &ExtensionArtifact,
+    path: &FilePath,
+) -> Result<StagedArtifact, String> {
+    let response = source
+        .download_artifact(artifact)
+        .await
+        .map_err(|error| error.to_string())?;
+    if response
+        .content_length()
+        .is_some_and(|length| length != artifact.size())
+    {
+        return Err("Extension artifact size does not match source metadata".to_owned());
+    }
+
+    let mut file = File::create(path)
+        .await
+        .map_err(|error| format!("failed to create extension staging file: {error}"))?;
+    let mut sha256 = Sha256::new();
+    let mut sha512 = Sha512::new();
+    let mut size = 0_u64;
+    let mut response = response;
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| format!("failed to read extension artifact: {error}"))?
+    {
+        let chunk_size = u64::try_from(chunk.len())
+            .map_err(|_| "extension artifact chunk size is invalid".to_owned())?;
+        size = size
+            .checked_add(chunk_size)
+            .ok_or_else(|| "extension artifact size overflowed".to_owned())?;
+        if size > artifact.size() || size > MAXIMUM_ARTIFACT_BYTES {
+            return Err("Extension artifact exceeds its declared size".to_owned());
+        }
+        file.write_all(&chunk)
+            .await
+            .map_err(|error| format!("failed to stage extension artifact: {error}"))?;
+        sha256.update(&chunk);
+        sha512.update(&chunk);
+    }
+    file.flush()
+        .await
+        .map_err(|error| format!("failed to flush extension staging file: {error}"))?;
+
+    if size != artifact.size() {
+        return Err("Extension artifact size does not match source metadata".to_owned());
+    }
+    let actual_sha512 = digest_hex(sha512.finalize());
+    if !actual_sha512.eq_ignore_ascii_case(artifact.sha512()) {
+        return Err("Extension artifact SHA-512 does not match source metadata".to_owned());
+    }
+
+    Ok(StagedArtifact {
+        path: path.to_path_buf(),
+        size,
+        sha256: digest_hex(sha256.finalize()),
+    })
+}
+
+async fn upload_artifact_to_core(
+    state: &PanelState,
+    core_id: CoreId,
+    instance_id: &InstanceId,
+    path: &str,
+    staged: &StagedArtifact,
+    idempotency_key: &str,
+) -> Result<FileEntry, String> {
+    let start = state
+        .cores()
+        .begin_file_upload(
+            core_id,
+            instance_id,
+            path,
+            staged.size,
+            &staged.sha256,
+            idempotency_key,
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+    let Some(transfer_id) = start
+        .get("transferId")
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse::<TaskId>().ok())
+    else {
+        return Err("Core did not return an extension transfer ID".to_owned());
+    };
+
+    let result =
+        upload_artifact_chunks(state, core_id, &transfer_id, &staged.path, staged.size).await;
+    let result = match result {
+        Ok(()) => {
+            let commit_idempotency_key = RequestId::new().to_string();
+            state
+                .cores()
+                .commit_file_upload(core_id, &transfer_id, &commit_idempotency_key)
+                .await
+                .map_err(|error| error.to_string())
+        }
+        Err(error) => Err(error),
+    };
+    if result.is_err() {
+        let abort_idempotency_key = RequestId::new().to_string();
+        if let Err(error) = state
+            .cores()
+            .abort_file_upload(core_id, &transfer_id, &abort_idempotency_key)
+            .await
+        {
+            tracing::error!(%error, %transfer_id, "Failed to abort extension upload");
+        }
+    }
+
+    result
+}
+
+async fn upload_artifact_chunks(
+    state: &PanelState,
+    core_id: CoreId,
+    transfer_id: &TaskId,
+    temporary_path: &FilePath,
+    size: u64,
+) -> Result<(), String> {
+    let mut file = File::open(temporary_path)
+        .await
+        .map_err(|error| format!("failed to open extension staging file: {error}"))?;
+    let mut offset = 0_u64;
+    while offset < size {
+        let chunk_size = (size - offset).min(EXTENSION_TRANSFER_CHUNK_BYTES);
+        let chunk_size = usize::try_from(chunk_size)
+            .map_err(|_| "extension transfer chunk size is invalid".to_owned())?;
+        let mut chunk = vec![0; chunk_size];
+        file.read_exact(&mut chunk)
+            .await
+            .map_err(|error| format!("failed to read extension staging file: {error}"))?;
+        let chunk_sha256 = digest_hex(Sha256::digest(&chunk));
+        let idempotency_key = RequestId::new().to_string();
+        state
+            .cores()
+            .upload_file_chunk(
+                core_id,
+                transfer_id,
+                offset,
+                &chunk,
+                &chunk_sha256,
+                &idempotency_key,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        offset += u64::try_from(chunk_size)
+            .map_err(|_| "extension transfer offset overflowed".to_owned())?;
+    }
+    if offset != size {
+        return Err("Extension upload did not consume the complete artifact".to_owned());
+    }
+    Ok(())
+}
+
+fn is_valid_plan_request(request: &ExtensionPlanRequest) -> bool {
+    !request.template_id().is_empty()
+        && !request.project_id().is_empty()
+        && !request.version_id().is_empty()
+        && !request.minecraft_version().is_empty()
+        && request.minecraft_version().chars().count() <= 64
+        && request.loader().is_none_or(|loader| {
+            !loader.is_empty() && loader.chars().count() <= 64 && !loader.contains('\0')
+        })
+}
+
+fn extension_install_error_response(error: String, request_id: RequestId) -> Response {
+    tracing::warn!(%request_id, %error, "Extension installation failed");
+    error_response(
+        StatusCode::BAD_GATEWAY,
+        "EXTENSION_INSTALL_FAILED",
+        "The extension artifact could not be installed",
+        request_id,
+    )
+}
+
+fn selected_extension_directory<'a>(
+    directories: &[&'a str],
+    requested: Option<&str>,
+) -> Option<&'a str> {
+    match requested {
+        Some(requested) => directories
+            .iter()
+            .copied()
+            .find(|directory| *directory == requested),
+        None if directories.len() == 1 => directories.first().copied(),
+        None => None,
+    }
+}
+
+fn extension_install_path(directory: &str, item: &ExtensionPlanItem) -> Option<String> {
+    let file_name = item.artifact().file_name();
+    if file_name.is_empty()
+        || file_name == "."
+        || file_name == ".."
+        || file_name.chars().count() > 255
+        || file_name.contains('/')
+        || file_name.contains('\\')
+        || file_name.contains('\0')
+    {
+        return None;
+    }
+    Some(format!("{directory}/{file_name}"))
+}
+
+fn temporary_artifact_path() -> PathBuf {
+    let mut path = std::env::temp_dir();
+    path.push(format!("mcnp-extension-{}.part", TaskId::new()));
+    path
+}
+
+fn digest_hex(bytes: impl AsRef<[u8]>) -> String {
+    bytes
+        .as_ref()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 async fn resolve_extension_plan(
@@ -80,18 +537,7 @@ async fn resolve_extension_plan(
         return validation_error(request_id);
     };
     let request = match payload {
-        Ok(Json(request))
-            if !request.template_id().is_empty()
-                && !request.project_id().is_empty()
-                && !request.version_id().is_empty()
-                && !request.minecraft_version().is_empty()
-                && request.minecraft_version().chars().count() <= 64
-                && request.loader().is_none_or(|loader| {
-                    !loader.is_empty() && loader.chars().count() <= 64 && !loader.contains('\0')
-                }) =>
-        {
-            request
-        }
+        Ok(Json(request)) if is_valid_plan_request(&request) => request,
         Ok(_) | Err(_) => return validation_error(request_id),
     };
     let Some(template) = install_template(request.template_id()) else {
@@ -706,4 +1152,71 @@ fn current_timestamp() -> String {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::digest_hex;
+    use super::extension_install_path;
+    use super::selected_extension_directory;
+    use nexus_domain::ExtensionArtifact;
+    use nexus_domain::ExtensionDependency;
+    use nexus_domain::ExtensionPlanItem;
+    use sha2::Digest;
+    use sha2::Sha256;
+
+    #[test]
+    fn requires_a_directory_when_a_kind_has_multiple_layouts() {
+        assert_eq!(
+            selected_extension_directory(&["plugins", "extra-plugins"], None),
+            None
+        );
+        assert_eq!(
+            selected_extension_directory(&["plugins", "extra-plugins"], Some("extra-plugins")),
+            Some("extra-plugins")
+        );
+    }
+
+    #[test]
+    fn rejects_artifact_names_that_escape_the_declared_directory() {
+        let item = plan_item("../escape.jar");
+
+        assert_eq!(extension_install_path("plugins", &item), None);
+    }
+
+    #[test]
+    fn builds_a_path_for_a_simple_artifact_name() {
+        let item = plan_item("example.jar");
+
+        assert_eq!(
+            extension_install_path("plugins", &item),
+            Some("plugins/example.jar".to_owned())
+        );
+    }
+
+    #[test]
+    fn encodes_digests_as_lowercase_hex() {
+        assert_eq!(
+            digest_hex(Sha256::digest(b"MCNP")),
+            "ae682c35f1e161b90c064080705fd2c48406b5fad3d6ea5f8995980954ac43a6"
+        );
+    }
+
+    fn plan_item(file_name: &str) -> ExtensionPlanItem {
+        ExtensionPlanItem::new(
+            "modrinth".to_owned(),
+            "project".to_owned(),
+            "version".to_owned(),
+            "1.0.0".to_owned(),
+            ExtensionArtifact::new(
+                file_name.to_owned(),
+                "https://cdn.modrinth.com/example.jar".to_owned(),
+                4,
+                None,
+                "a".repeat(128),
+                true,
+            ),
+            Vec::<ExtensionDependency>::new(),
+        )
+    }
 }

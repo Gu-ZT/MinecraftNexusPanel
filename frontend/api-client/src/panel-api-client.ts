@@ -359,6 +359,18 @@ export interface ExtensionPlanResolution {
   items: ExtensionPlanItem[];
 }
 
+export interface ExtensionInstallRequest extends ExtensionPlanRequest {
+  directory?: string;
+}
+
+export interface ExtensionInstallResult {
+  templateId: string;
+  kind: ExtensionKind;
+  directory: string;
+  installations: ExtensionInstall[];
+  acceptedAt: string;
+}
+
 export interface InstanceExtensionScan {
   templateId: string;
   kind: ExtensionKind;
@@ -592,6 +604,11 @@ export interface PanelApiClient {
     instanceId: string,
     plan: ExtensionPlanRequest,
   ): Promise<ExtensionPlanResolution>;
+  installExtensions(
+    coreId: string,
+    instanceId: string,
+    request: ExtensionInstallRequest,
+  ): Promise<ExtensionInstallResult>;
   listManagedRuntimes(coreId: string): Promise<ManagedRuntimePage>;
   resolveProvisionPlan(coreId: string, plan: ProvisionPlan): Promise<ProvisionResolution>;
   executeProvision(coreId: string, plan: ProvisionPlan, planHash: string): Promise<ProvisionOperation>;
@@ -894,6 +911,12 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
       return request<ExtensionPlanResolution>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/extension-plans:resolve`,
         { method: 'POST', body: plan, csrf: true },
+      );
+    },
+    installExtensions(coreId, instanceId, installRequest) {
+      return request<ExtensionInstallResult>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/extensions`,
+        { method: 'POST', body: installRequest, csrf: true, idempotent: true },
       );
     },
     listManagedRuntimes(coreId) {

@@ -25,7 +25,9 @@ use crate::extension_source_error::ExtensionSourceError;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(30);
+const ARTIFACT_TIMEOUT: Duration = Duration::from_secs(300);
 const MAXIMUM_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+pub(crate) const MAXIMUM_ARTIFACT_BYTES: u64 = 512 * 1024 * 1024;
 const MAXIMUM_DEPENDENCY_NODES: usize = 64;
 const MODRINTH_SEARCH_URL: &str = "https://api.modrinth.com/v2/search";
 const MODRINTH_PROJECT_VERSION_URL_PREFIX: &str = "https://api.modrinth.com/v2/project/";
@@ -189,6 +191,46 @@ impl ExtensionSourceClient {
             loader.map(str::to_owned),
             items,
         ))
+    }
+
+    pub(crate) async fn download_artifact(
+        &self,
+        artifact: &ExtensionArtifact,
+    ) -> Result<Response, ExtensionSourceError> {
+        let url = Url::parse(artifact.download_url())
+            .map_err(|_| ExtensionSourceError::InvalidArtifactUrl)?;
+        if url.scheme() != "https"
+            || url
+                .host_str()
+                .is_none_or(|host| !is_allowed_artifact_host(host))
+        {
+            return Err(ExtensionSourceError::InvalidArtifactUrl);
+        }
+        if artifact.size() > MAXIMUM_ARTIFACT_BYTES {
+            return Err(ExtensionSourceError::ArtifactTooLarge {
+                maximum_bytes: MAXIMUM_ARTIFACT_BYTES,
+            });
+        }
+
+        let response = self
+            .client
+            .get(url)
+            .timeout(ARTIFACT_TIMEOUT)
+            .send()
+            .await
+            .map_err(ExtensionSourceError::Request)?
+            .error_for_status()
+            .map_err(ExtensionSourceError::Request)?;
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAXIMUM_ARTIFACT_BYTES)
+        {
+            return Err(ExtensionSourceError::ArtifactTooLarge {
+                maximum_bytes: MAXIMUM_ARTIFACT_BYTES,
+            });
+        }
+
+        Ok(response)
     }
 }
 
@@ -601,8 +643,14 @@ fn project_type(kind: ExtensionKind) -> &'static str {
     }
 }
 
+fn is_allowed_artifact_host(host: &str) -> bool {
+    host.eq_ignore_ascii_case("modrinth.com")
+        || host.to_ascii_lowercase().ends_with(".modrinth.com")
+}
+
 #[cfg(test)]
 mod tests {
+    use super::is_allowed_artifact_host;
     use super::parse_modrinth_search;
     use nexus_domain::ExtensionCompatibility;
     use nexus_domain::ExtensionKind;
@@ -771,5 +819,13 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn restricts_artifact_hosts_to_modrinth_domains() {
+        assert!(is_allowed_artifact_host("cdn.modrinth.com"));
+        assert!(is_allowed_artifact_host("MODRINTH.COM"));
+        assert!(!is_allowed_artifact_host("cdn.example.invalid"));
+        assert!(!is_allowed_artifact_host("modrinth.com.example.invalid"));
     }
 }

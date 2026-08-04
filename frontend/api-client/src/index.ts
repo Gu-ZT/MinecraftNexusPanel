@@ -21,6 +21,8 @@ export type {
   ExtensionDependency,
   ExtensionDirectoryPage,
   ExtensionInstall,
+  ExtensionInstallRequest,
+  ExtensionInstallResult,
   ExtensionKind,
   ExtensionPlanItem,
   ExtensionPlanRequest,

@@ -12,6 +12,10 @@ pub enum ExtensionSourceError {
     Request(#[source] reqwest::Error),
     #[error("extension source response exceeds {maximum_bytes} bytes")]
     ResponseTooLarge { maximum_bytes: usize },
+    #[error("extension artifact URL is not a valid HTTPS URL")]
+    InvalidArtifactUrl,
+    #[error("extension artifact exceeds {maximum_bytes} bytes")]
+    ArtifactTooLarge { maximum_bytes: u64 },
     #[error("extension version {version_id} was not found in project {project_id}")]
     VersionNotFound {
         project_id: String,
