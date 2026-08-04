@@ -1,9 +1,13 @@
 use std::time::Duration;
 
+use nexus_domain::ExtensionArtifact;
 use nexus_domain::ExtensionCompatibility;
+use nexus_domain::ExtensionDependency;
 use nexus_domain::ExtensionKind;
 use nexus_domain::ExtensionProject;
 use nexus_domain::ExtensionSearchResult;
+use nexus_domain::ExtensionVersion;
+use nexus_domain::ExtensionVersionResult;
 use reqwest::Client;
 use reqwest::Response;
 use reqwest::redirect::Policy;
@@ -12,6 +16,7 @@ use serde_json::Map;
 use serde_json::Value;
 use serde_json::from_slice;
 use serde_json::to_string;
+use url::Url;
 
 use crate::extension_source_error::ExtensionSourceError;
 
@@ -19,6 +24,7 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(30);
 const MAXIMUM_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 const MODRINTH_SEARCH_URL: &str = "https://api.modrinth.com/v2/search";
+const MODRINTH_PROJECT_VERSION_URL_PREFIX: &str = "https://api.modrinth.com/v2/project/";
 const MODRINTH_SOURCE: &str = "modrinth";
 
 #[derive(Clone)]
@@ -74,6 +80,31 @@ impl ExtensionSourceClient {
             from_slice(&bytes).map_err(|_| ExtensionSourceError::InvalidResponse)?;
 
         parse_modrinth_search(&metadata, kind, minecraft_version, loader, limit, offset)
+    }
+
+    pub(crate) async fn list_versions(
+        &self,
+        project_id: &str,
+        minecraft_version: Option<&str>,
+        loader: Option<&str>,
+    ) -> Result<ExtensionVersionResult, ExtensionSourceError> {
+        if !is_valid_project_id(project_id) {
+            return Err(ExtensionSourceError::InvalidRequest);
+        }
+        let url = format!("{MODRINTH_PROJECT_VERSION_URL_PREFIX}{project_id}/version");
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(ExtensionSourceError::Request)?
+            .error_for_status()
+            .map_err(ExtensionSourceError::Request)?;
+        let bytes = read_response(response).await?;
+        let metadata: Value =
+            from_slice(&bytes).map_err(|_| ExtensionSourceError::InvalidResponse)?;
+
+        parse_modrinth_versions(&metadata, project_id, minecraft_version, loader)
     }
 }
 
@@ -143,6 +174,201 @@ fn parse_modrinth_search(
         limit,
         offset,
     ))
+}
+
+fn parse_modrinth_versions(
+    metadata: &Value,
+    project_id: &str,
+    minecraft_version: Option<&str>,
+    loader: Option<&str>,
+) -> Result<ExtensionVersionResult, ExtensionSourceError> {
+    let versions = metadata
+        .as_array()
+        .ok_or(ExtensionSourceError::InvalidResponse)?;
+    let items = versions
+        .iter()
+        .map(|version| parse_version(version, project_id, minecraft_version, loader))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(ExtensionVersionResult::new(
+        MODRINTH_SOURCE.to_owned(),
+        project_id.to_owned(),
+        items,
+    ))
+}
+
+fn parse_version(
+    value: &Value,
+    project_id: &str,
+    minecraft_version: Option<&str>,
+    loader: Option<&str>,
+) -> Result<ExtensionVersion, ExtensionSourceError> {
+    let object = value
+        .as_object()
+        .ok_or(ExtensionSourceError::InvalidResponse)?;
+    let id = required_string(object, "id")?;
+    let version_number = required_string(object, "version_number")?;
+    let game_versions = required_array(object, "game_versions")?;
+    let loaders = required_array(object, "loaders")?;
+    let dependencies = dependency_array(object)?;
+    let artifacts = artifact_array(object)?;
+    let compatibility = compatibility(&game_versions, &loaders, minecraft_version, loader);
+
+    Ok(ExtensionVersion::new(
+        id,
+        project_id.to_owned(),
+        object
+            .get("name")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(&version_number)
+            .to_owned(),
+        version_number,
+        game_versions,
+        loaders,
+        dependencies,
+        artifacts,
+        object
+            .get("downloads")
+            .and_then(Value::as_u64)
+            .ok_or(ExtensionSourceError::InvalidResponse)?,
+        compatibility,
+    ))
+}
+
+fn required_array(
+    object: &Map<String, Value>,
+    key: &str,
+) -> Result<Vec<String>, ExtensionSourceError> {
+    object
+        .get(key)
+        .ok_or(ExtensionSourceError::InvalidResponse)
+        .and_then(string_array_value)
+}
+
+fn string_array_value(value: &Value) -> Result<Vec<String>, ExtensionSourceError> {
+    value
+        .as_array()
+        .ok_or(ExtensionSourceError::InvalidResponse)?
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .ok_or(ExtensionSourceError::InvalidResponse)
+        })
+        .collect()
+}
+
+fn dependency_array(
+    object: &Map<String, Value>,
+) -> Result<Vec<ExtensionDependency>, ExtensionSourceError> {
+    let Some(value) = object.get("dependencies") else {
+        return Ok(Vec::new());
+    };
+    value
+        .as_array()
+        .ok_or(ExtensionSourceError::InvalidResponse)?
+        .iter()
+        .map(|value| {
+            let object = value
+                .as_object()
+                .ok_or(ExtensionSourceError::InvalidResponse)?;
+            Ok(ExtensionDependency::new(
+                optional_string(object, "project_id")?,
+                optional_string(object, "version_id")?,
+                optional_string(object, "file_name")?,
+                required_string(object, "dependency_type")?,
+            ))
+        })
+        .collect()
+}
+
+fn artifact_array(
+    object: &Map<String, Value>,
+) -> Result<Vec<ExtensionArtifact>, ExtensionSourceError> {
+    let files = object
+        .get("files")
+        .and_then(Value::as_array)
+        .ok_or(ExtensionSourceError::InvalidResponse)?;
+    files.iter().map(parse_artifact).collect()
+}
+
+fn parse_artifact(value: &Value) -> Result<ExtensionArtifact, ExtensionSourceError> {
+    let object = value
+        .as_object()
+        .ok_or(ExtensionSourceError::InvalidResponse)?;
+    let file_name = required_string(object, "filename")?;
+    let download_url = required_string(object, "url")?;
+    let parsed_url =
+        Url::parse(&download_url).map_err(|_| ExtensionSourceError::InvalidResponse)?;
+    if parsed_url.scheme() != "https" || parsed_url.host_str().is_none() {
+        return Err(ExtensionSourceError::InvalidResponse);
+    }
+    let hashes = object
+        .get("hashes")
+        .and_then(Value::as_object)
+        .ok_or(ExtensionSourceError::InvalidResponse)?;
+    let sha512 = hashes
+        .get("sha512")
+        .and_then(Value::as_str)
+        .filter(|value| is_hex_digest(value, 128))
+        .map(str::to_owned)
+        .ok_or(ExtensionSourceError::InvalidResponse)?;
+    let sha1 = hashes
+        .get("sha1")
+        .and_then(Value::as_str)
+        .map(|value| {
+            if is_hex_digest(value, 40) {
+                Ok(value.to_owned())
+            } else {
+                Err(ExtensionSourceError::InvalidResponse)
+            }
+        })
+        .transpose()?;
+
+    Ok(ExtensionArtifact::new(
+        file_name,
+        download_url,
+        object
+            .get("size")
+            .and_then(Value::as_u64)
+            .ok_or(ExtensionSourceError::InvalidResponse)?,
+        sha1,
+        sha512,
+        object
+            .get("primary")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+    ))
+}
+
+fn optional_string(
+    object: &Map<String, Value>,
+    key: &str,
+) -> Result<Option<String>, ExtensionSourceError> {
+    match object.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => value
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+            .map(Some)
+            .ok_or(ExtensionSourceError::InvalidResponse),
+    }
+}
+
+fn is_hex_digest(value: &str, length: usize) -> bool {
+    value.len() == length && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn is_valid_project_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
 fn parse_project(
@@ -352,6 +578,81 @@ mod tests {
             None,
             20,
             0,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parses_version_dependencies_and_hashed_artifacts() {
+        let result = super::parse_modrinth_versions(
+            &json!([{
+                "id": "version-id",
+                "project_id": "project-id",
+                "name": "Release 1",
+                "version_number": "1.0.0",
+                "game_versions": ["1.21.1"],
+                "loaders": ["fabric"],
+                "downloads": 7,
+                "dependencies": [{
+                    "project_id": "dependency-project",
+                    "version_id": "dependency-version",
+                    "file_name": null,
+                    "dependency_type": "required"
+                }],
+                "files": [{
+                    "filename": "example.jar",
+                    "url": "https://cdn.example.invalid/example.jar",
+                    "size": 123,
+                    "primary": true,
+                    "hashes": {
+                        "sha1": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                        "sha512": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    }
+                }]
+            }]),
+            "project-id",
+            Some("1.21.1"),
+            Some("fabric"),
+        )
+        .expect("Modrinth version response is valid");
+
+        assert_eq!(result.project_id(), "project-id");
+        assert_eq!(result.items().len(), 1);
+        assert_eq!(result.items()[0].dependencies().len(), 1);
+        assert_eq!(
+            result.items()[0].dependencies()[0].dependency_type(),
+            "required"
+        );
+        assert_eq!(result.items()[0].artifacts()[0].file_name(), "example.jar");
+        assert_eq!(result.items()[0].artifacts()[0].size(), 123);
+        assert_eq!(result.items()[0].artifacts()[0].sha512().len(), 128);
+        assert_eq!(
+            result.items()[0].compatibility(),
+            ExtensionCompatibility::Compatible
+        );
+    }
+
+    #[test]
+    fn rejects_an_artifact_without_a_secure_strong_hash() {
+        let result = super::parse_modrinth_versions(
+            &json!([{
+                "id": "version-id",
+                "version_number": "1.0.0",
+                "game_versions": [],
+                "loaders": [],
+                "downloads": 1,
+                "dependencies": [],
+                "files": [{
+                    "filename": "example.jar",
+                    "url": "http://example.invalid/example.jar",
+                    "size": 1,
+                    "hashes": { "sha1": "bad" }
+                }]
+            }]),
+            "project-id",
+            None,
+            None,
         );
 
         assert!(result.is_err());

@@ -298,6 +298,41 @@ export interface ExtensionSearchResult {
   offset: number;
 }
 
+export interface ExtensionDependency {
+  projectId: string | null;
+  versionId: string | null;
+  fileName: string | null;
+  dependencyType: string;
+}
+
+export interface ExtensionArtifact {
+  fileName: string;
+  downloadUrl: string;
+  size: number;
+  sha1: string | null;
+  sha512: string;
+  primary: boolean;
+}
+
+export interface ExtensionVersion {
+  id: string;
+  projectId: string;
+  name: string;
+  versionNumber: string;
+  gameVersions: string[];
+  loaders: string[];
+  dependencies: ExtensionDependency[];
+  artifacts: ExtensionArtifact[];
+  downloads: number;
+  compatibility: ExtensionCompatibility;
+}
+
+export interface ExtensionVersionResult {
+  source: string;
+  projectId: string;
+  items: ExtensionVersion[];
+}
+
 export interface InstanceExtensionScan {
   templateId: string;
   kind: ExtensionKind;
@@ -520,6 +555,12 @@ export interface PanelApiClient {
     limit?: number,
     offset?: number,
   ): Promise<ExtensionSearchResult>;
+  getExtensionProjectVersions(
+    source: string,
+    projectId: string,
+    minecraftVersion?: string,
+    loader?: string,
+  ): Promise<ExtensionVersionResult>;
   listManagedRuntimes(coreId: string): Promise<ManagedRuntimePage>;
   resolveProvisionPlan(coreId: string, plan: ProvisionPlan): Promise<ProvisionResolution>;
   executeProvision(coreId: string, plan: ProvisionPlan, planHash: string): Promise<ProvisionOperation>;
@@ -803,6 +844,19 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
       }
       return request<ExtensionSearchResult>(
         `/api/v1/extension-catalog/search?${params.toString()}`,
+      );
+    },
+    getExtensionProjectVersions(source, projectId, minecraftVersion, loader) {
+      const params = new URLSearchParams();
+      if (minecraftVersion !== undefined) {
+        params.set('minecraftVersion', minecraftVersion);
+      }
+      if (loader !== undefined) {
+        params.set('loader', loader);
+      }
+      const query = params.toString();
+      return request<ExtensionVersionResult>(
+        `/api/v1/extension-catalog/projects/${encodeURIComponent(source)}/${encodeURIComponent(projectId)}${query ? `?${query}` : ''}`,
       );
     },
     listManagedRuntimes(coreId) {

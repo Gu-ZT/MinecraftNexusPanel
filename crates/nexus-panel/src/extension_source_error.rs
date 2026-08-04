@@ -6,6 +6,8 @@ pub enum ExtensionSourceError {
     Client(#[source] reqwest::Error),
     #[error("extension source response is invalid")]
     InvalidResponse,
+    #[error("extension source request parameters are invalid")]
+    InvalidRequest,
     #[error("extension source request failed")]
     Request(#[source] reqwest::Error),
     #[error("extension source response exceeds {maximum_bytes} bytes")]

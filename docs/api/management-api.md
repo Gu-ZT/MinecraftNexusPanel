@@ -219,10 +219,10 @@ API、授权和下载限制，禁止绕过需要授权的下载流程。
 搜索参数至少包括 `query`、`type`、`source`、`minecraftVersion`、`loader` 和分页。安装记录保存来源、项目 ID、文件
 ID、版本、SHA-256、依赖和本地相对路径。
 
-当前 Panel 已提供只读来源搜索和实例扫描接口。`GET /extension-catalog/search` 当前接入 Modrinth，要求 `query`、`type=PLUGIN|MOD`，可选 `source=modrinth`、`minecraftVersion`、`loader`、`limit` 和 `offset`；返回项目支持版本、加载器及基于请求过滤条件的来源兼容性提示，该提示不等同于安装验证。实例扫描调用时必须传入 `templateId` 和 `kind=PLUGIN|MOD`；Panel 校验模板与实例类型一致后，按
+当前 Panel 已提供只读来源搜索、项目版本详情和实例扫描接口。`GET /extension-catalog/search` 当前接入 Modrinth，要求 `query`、`type=PLUGIN|MOD`，可选 `source=modrinth`、`minecraftVersion`、`loader`、`limit` 和 `offset`；返回项目支持版本、加载器及基于请求过滤条件的来源兼容性提示。`GET /extension-catalog/projects/{source}/{projectId}` 当前读取 Modrinth 版本、依赖记录和带 SHA-512 的 HTTPS 归档摘要；这些数据用于后续安装计划，不等同于依赖求解或安装验证。实例扫描调用时必须传入 `templateId` 和 `kind=PLUGIN|MOD`；Panel 校验模板与实例类型一致后，按
 `InstallTemplateExtensionLayout` 声明的目录分别读取 Core 文件页。混合端的插件和模组不会合并，模板声明多个目录时也会分别返回；不存在的目录返回空页。
 同一路径的 `DELETE` 操作要求额外传入 `path`、`confirmation=DELETE` 和合法的 `Idempotency-Key`，只允许删除所选模板和扩展类型声明目录下的单个文件，并返回 Core 异步文件任务。
-同一路径的 `PUT` 操作接收不超过 1 MiB 的 `application/octet-stream`，要求传入 `path` 和合法的 `Idempotency-Key`，可用 `If-Match` 校验已有文件 SHA-256，通过 Core 原子写入把已准备产物放到声明目录内，并持久化 `LOCAL` 来源、SHA-256、路径和安装时间。删除操作接受任务后清理对应记录；依赖解析、来源授权下载、完整安装/更新流程和安装级兼容性校验仍未提供。
+同一路径的 `PUT` 操作接收不超过 1 MiB 的 `application/octet-stream`，要求传入 `path` 和合法的 `Idempotency-Key`，可用 `If-Match` 校验已有文件 SHA-256，通过 Core 原子写入把已准备产物放到声明目录内，并持久化 `LOCAL` 来源、SHA-256、路径和安装时间。删除操作接受任务后清理对应记录；跨项目依赖求解、来源授权下载、完整安装/更新流程和安装级兼容性校验仍未提供。
 
 更新前生成 plan，标记 Minecraft/加载器不兼容、依赖缺失、冲突和需要停服的变更。批量更新是单个可回滚任务，替换前保留文件备份。
 

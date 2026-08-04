@@ -45,6 +45,10 @@ pub(crate) fn extension_routes() -> Router<PanelState> {
             get(search_extension_catalog),
         )
         .route(
+            "/api/v1/extension-catalog/projects/{source}/{project_id}",
+            get(get_extension_project_versions),
+        )
+        .route(
             "/api/v1/cores/{core_id}/instances/{instance_id}/extensions",
             get(list_instance_extensions)
                 .put(write_instance_extension)
@@ -143,8 +147,54 @@ fn optional_search_parameter(
         .transpose()
 }
 
+async fn get_extension_project_versions(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((source, project_id)): Path<(String, String)>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, false, request_id).await {
+        return response;
+    }
+    if source != "modrinth" {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "EXTENSION_SOURCE_UNSUPPORTED",
+            "The requested extension source is not supported",
+            request_id,
+        );
+    }
+    let minecraft_version = match optional_search_parameter(&query, "minecraftVersion", 64) {
+        Ok(value) => value,
+        Err(()) => return validation_error(request_id),
+    };
+    let loader = match optional_search_parameter(&query, "loader", 64) {
+        Ok(value) => value,
+        Err(()) => return validation_error(request_id),
+    };
+
+    match state
+        .extension_sources()
+        .list_versions(&project_id, minecraft_version.as_deref(), loader.as_deref())
+        .await
+    {
+        Ok(result) => Json(result).into_response(),
+        Err(error) => extension_source_error_response(error, request_id),
+    }
+}
+
 fn extension_source_error_response(error: ExtensionSourceError, request_id: RequestId) -> Response {
     tracing::warn!(%error, %request_id, "Extension source lookup failed");
+
+    if matches!(error, ExtensionSourceError::InvalidRequest) {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "VALIDATION_FAILED",
+            "Extension project ID is invalid",
+            request_id,
+        );
+    }
 
     error_response(
         StatusCode::BAD_GATEWAY,

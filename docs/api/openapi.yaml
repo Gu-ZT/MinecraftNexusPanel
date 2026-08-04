@@ -152,6 +152,57 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /extension-catalog/projects/{source}/{projectId}:
+    get:
+      tags: [ Extensions ]
+      operationId: getExtensionProjectVersions
+      summary: Read extension project versions and dependency metadata
+      description: |
+        Read Modrinth project versions, dependency records, and HTTPS files
+        with SHA-512 metadata. This endpoint prepares installation input but
+        does not resolve a dependency graph or download an artifact.
+      parameters:
+        - name: source
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [ modrinth ]
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9_-]{1,64}$'
+        - name: minecraftVersion
+          in: query
+          schema:
+            type: string
+            maxLength: 64
+        - name: loader
+          in: query
+          schema:
+            type: string
+            maxLength: 64
+      responses:
+        '200':
+          description: Extension project versions and dependency metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionVersionResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          description: The extension source could not be queried or parsed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /health/live:
     get:
       tags: [ System ]
@@ -2674,6 +2725,101 @@ components:
         offset:
           type: integer
           minimum: 0
+    ExtensionDependency:
+      type: object
+      required: [ projectId, versionId, fileName, dependencyType ]
+      properties:
+        projectId:
+          type: [ string, 'null' ]
+        versionId:
+          type: [ string, 'null' ]
+        fileName:
+          type: [ string, 'null' ]
+        dependencyType:
+          type: string
+          minLength: 1
+    ExtensionArtifact:
+      type: object
+      required: [ fileName, downloadUrl, size, sha1, sha512, primary ]
+      properties:
+        fileName:
+          type: string
+          minLength: 1
+        downloadUrl:
+          type: string
+          format: uri
+        size:
+          type: integer
+          minimum: 0
+        sha1:
+          type: [ string, 'null' ]
+          pattern: '^[A-Fa-f0-9]{40}$'
+        sha512:
+          type: string
+          pattern: '^[A-Fa-f0-9]{128}$'
+        primary:
+          type: boolean
+    ExtensionVersion:
+      type: object
+      required:
+        - id
+        - projectId
+        - name
+        - versionNumber
+        - gameVersions
+        - loaders
+        - dependencies
+        - artifacts
+        - downloads
+        - compatibility
+      properties:
+        id:
+          type: string
+          minLength: 1
+        projectId:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        versionNumber:
+          type: string
+          minLength: 1
+        gameVersions:
+          type: array
+          items:
+            type: string
+        loaders:
+          type: array
+          items:
+            type: string
+        dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtensionDependency'
+        artifacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtensionArtifact'
+        downloads:
+          type: integer
+          minimum: 0
+        compatibility:
+          $ref: '#/components/schemas/ExtensionCompatibility'
+    ExtensionVersionResult:
+      type: object
+      required: [ source, projectId, items ]
+      properties:
+        source:
+          type: string
+          minLength: 1
+        projectId:
+          type: string
+          minLength: 1
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtensionVersion'
     InstallTemplateExtensionLayout:
       type: object
       required: [ kind, directories ]
