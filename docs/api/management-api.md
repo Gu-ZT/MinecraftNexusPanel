@@ -222,7 +222,7 @@ ID、版本、SHA-256、依赖和本地相对路径。
 当前 Panel 已提供只读扫描接口。调用时必须传入 `templateId` 和 `kind=PLUGIN|MOD`；Panel 校验模板与实例类型一致后，按
 `InstallTemplateExtensionLayout` 声明的目录分别读取 Core 文件页。混合端的插件和模组不会合并，模板声明多个目录时也会分别返回；不存在的目录返回空页。
 同一路径的 `DELETE` 操作要求额外传入 `path`、`confirmation=DELETE` 和合法的 `Idempotency-Key`，只允许删除所选模板和扩展类型声明目录下的单个文件，并返回 Core 异步文件任务。
-同一路径的 `PUT` 操作接收不超过 1 MiB 的 `application/octet-stream`，要求传入 `path` 和合法的 `Idempotency-Key`，通过 Core 原子写入把已准备产物放到声明目录内。写入和删除操作都不维护扩展安装记录；扩展来源搜索、依赖解析、兼容性校验和完整安装/更新流程仍未提供。
+同一路径的 `PUT` 操作接收不超过 1 MiB 的 `application/octet-stream`，要求传入 `path` 和合法的 `Idempotency-Key`，通过 Core 原子写入把已准备产物放到声明目录内，并持久化 `LOCAL` 来源、SHA-256、路径和安装时间。删除操作接受任务后清理对应记录；扩展来源搜索、依赖解析、兼容性校验和完整安装/更新流程仍未提供。
 
 更新前生成 plan，标记 Minecraft/加载器不兼容、依赖缺失、冲突和需要停服的变更。批量更新是单个可回滚任务，替换前保留文件备份。
 

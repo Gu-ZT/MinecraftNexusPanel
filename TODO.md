@@ -117,7 +117,8 @@
   - [x] Panel 在模板声明目录边界内通过 Core 原子写入已准备的单个扩展文件，限制 1 MiB 并要求幂等键。
   - [x] Panel 在模板声明目录边界内委托 Core 异步删除单个扩展文件，并要求类型、路径、DELETE 确认和幂等键校验。
   - [x] 共享 TypeScript Client 已暴露扩展扫描、写入、删除和 Bedrock 扩展目录字段；全量 OpenAPI 生成仍属于 M5。
-  - [ ] 建立扩展安装记录，并完成扩展安装、更新和兼容性提示。
+  - [x] 为本地产物持久化扩展安装记录，记录类型、路径、SHA-256、来源和安装时间，并在删除接受后清理记录。
+  - [ ] 接入来源项目、依赖解析、版本兼容性提示和完整扩展安装/更新流程。
   - [x] `BedrockManagementProfile` 为 PocketMine-MP、Nukkit 和 Cloudburst Nukkit 暴露 `plugins/`，BDS/Geyser 保持无插件目录。
   - [ ] 为不同基岩端提供插件/扩展目录、配置和版本兼容性策略。
 - [ ] 代理端与基岩端专门运维：子服务器连通性、Bedrock/RakNet 监听、端口冲突、健康检查、升级和备份恢复。

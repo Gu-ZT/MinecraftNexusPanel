@@ -2868,9 +2868,34 @@ components:
           minLength: 1
         page:
           $ref: '#/components/schemas/FilePage'
+    ExtensionInstall:
+      type: object
+      required: [ id, kind, path, sha256, source, projectId, version, installedAt ]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        kind:
+          $ref: '#/components/schemas/ExtensionKind'
+        path:
+          type: string
+          minLength: 1
+        sha256:
+          type: string
+          pattern: '^[A-Fa-f0-9]{64}$'
+        source:
+          type: string
+          minLength: 1
+        projectId:
+          type: [ string, 'null' ]
+        version:
+          type: [ string, 'null' ]
+        installedAt:
+          type: string
+          format: date-time
     InstanceExtensionScan:
       type: object
-      required: [ templateId, kind, directories ]
+      required: [ templateId, kind, directories, installations ]
       properties:
         templateId:
           type: string
@@ -2881,6 +2906,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ExtensionDirectoryPage'
+        installations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtensionInstall'
     ProxySubserver:
       type: object
       required: [ id, name, targetInstanceId, host, port, enabled ]
