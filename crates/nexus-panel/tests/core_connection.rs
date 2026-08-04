@@ -79,6 +79,11 @@ async fn connects_to_a_core_and_reads_its_system_info() {
     assert!(received_at.ends_with('Z'));
     assert!(connection.capabilities().contains(&"events".to_owned()));
     assert!(connection.capabilities().contains(&"instances".to_owned()));
+    assert!(
+        connection
+            .capabilities()
+            .contains(&"proxy-orchestration".to_owned())
+    );
     assert!(connection.capabilities().contains(&"metrics".to_owned()));
     assert!(
         connection
@@ -566,6 +571,81 @@ async fn controls_an_instance_process_through_the_panel_client() {
     let _ = server_task.await;
 }
 
+#[tokio::test]
+async fn orchestrates_a_proxy_and_its_enabled_backends() {
+    let data_directory = tempdir().expect("temporary Core data directory is created");
+    let config = CoreConfig::new(
+        "127.0.0.1:0".to_owned(),
+        data_directory.path().to_path_buf(),
+        Some(TEST_PSK.to_owned()),
+    )
+    .expect("test Core configuration is valid");
+    let server = CoreServer::bind(&config)
+        .await
+        .expect("Core listener binds");
+    let listen_address = server.listen_address();
+    let server_task = spawn(server.serve());
+    let pre_shared_key = PresharedKey::from_base64url(TEST_PSK).expect("test PSK is valid");
+    let mut connection = CoreConnection::connect(
+        listen_address,
+        &pre_shared_key,
+        "test-panel-id",
+        "test-panel",
+    )
+    .await
+    .expect("Panel connects to Core");
+    let proxy = safe_process_create_with_kind("velocity", InstanceKind::Velocity);
+    let backend = safe_process_create_with_kind("backend", InstanceKind::Paper);
+    connection
+        .create_instance(&proxy)
+        .await
+        .expect("Core creates the proxy instance");
+    connection
+        .create_instance(&backend)
+        .await
+        .expect("Core creates the backend instance");
+    let subserver = ProxySubserver::new(
+        "default".to_owned(),
+        "Default".to_owned(),
+        backend.id().clone(),
+        "127.0.0.1".to_owned(),
+        25565,
+        true,
+    )
+    .expect("proxy subserver is valid");
+    connection
+        .upsert_proxy_subserver(proxy.id(), &subserver, "proxy-upsert")
+        .await
+        .expect("Core stores the backend relationship");
+
+    let started = connection
+        .start_proxy(proxy.id(), true, "proxy-start")
+        .await
+        .expect("Core starts the backend before the proxy");
+    assert_eq!(started["state"], "SUCCEEDED");
+    assert_eq!(started["steps"][0]["instanceId"], "backend");
+    assert_eq!(started["steps"][0]["state"], "STARTED");
+    assert_eq!(started["steps"][1]["instanceId"], "velocity");
+    assert_eq!(started["steps"][1]["state"], "STARTED");
+    wait_for_state(&mut connection, backend.id(), InstanceState::Running).await;
+    wait_for_state(&mut connection, proxy.id(), InstanceState::Running).await;
+
+    let stopped = connection
+        .stop_proxy(proxy.id(), true, Some(5), "proxy-stop")
+        .await
+        .expect("Core stops the proxy before its backend");
+    assert_eq!(stopped["state"], "SUCCEEDED");
+    assert_eq!(stopped["steps"][0]["instanceId"], "velocity");
+    assert_eq!(stopped["steps"][0]["state"], "STOPPED");
+    assert_eq!(stopped["steps"][1]["instanceId"], "backend");
+    assert_eq!(stopped["steps"][1]["state"], "STOPPED");
+    wait_for_state(&mut connection, proxy.id(), InstanceState::Stopped).await;
+    wait_for_state(&mut connection, backend.id(), InstanceState::Stopped).await;
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
 async fn wait_for_state(
     connection: &mut CoreConnection,
     instance_id: &InstanceId,
@@ -654,10 +734,14 @@ fn instance_create_with_kind(identifier: &str, kind: InstanceKind) -> InstanceCr
 }
 
 fn safe_process_create(identifier: &str) -> InstanceCreate {
+    safe_process_create_with_kind(identifier, InstanceKind::Paper)
+}
+
+fn safe_process_create_with_kind(identifier: &str, kind: InstanceKind) -> InstanceCreate {
     InstanceCreate::new(
         InstanceId::new(identifier.to_owned()).expect("test identifier is valid"),
         identifier.to_owned(),
-        InstanceKind::Paper,
+        kind,
         format!("instances/{identifier}"),
         safe_process_launch_config(),
     )

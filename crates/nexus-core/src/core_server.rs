@@ -81,12 +81,13 @@ use crate::file_manager::MAXIMUM_FILE_ARCHIVE_PATHS;
 use crate::file_manager::MAXIMUM_FILE_BATCH_OPERATIONS;
 use crate::file_manager::MAXIMUM_FILE_READ_BYTES;
 
-const CORE_CAPABILITIES: [&str; 10] = [
+const CORE_CAPABILITIES: [&str; 11] = [
     "config",
     "events",
     "files",
     "instances",
     "metrics",
+    "proxy-orchestration",
     "proxy-subservers",
     "provision",
     "runtimes",
@@ -479,6 +480,12 @@ async fn request_response(
                 state.proxy_subservers(),
             )
             .await
+        }
+        "proxy.start" => {
+            proxy_orchestration_response(request_id, params, idempotency_key, state, true).await
+        }
+        "proxy.stop" => {
+            proxy_orchestration_response(request_id, params, idempotency_key, state, false).await
         }
         "instance.command" => {
             instance_command_response(request_id, params, state.processes()).await
@@ -1264,6 +1271,301 @@ async fn proxy_subserver_check_response(
             error,
         )),
     )
+}
+
+async fn proxy_orchestration_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    state: &CoreRequestState,
+    start: bool,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let proxy = match find_proxy_instance(request_id, params, state.instances()) {
+        Ok(proxy) => proxy,
+        Err(response) => return *response,
+    };
+    let include_backends = match params.get("includeBackends") {
+        Some(Value::Bool(value)) => *value,
+        Some(_) => {
+            return error_response(
+                request_id,
+                "BAD_REQUEST",
+                "proxy orchestration includeBackends must be a boolean",
+            );
+        }
+        None => true,
+    };
+    let timeout_seconds = if start {
+        None
+    } else {
+        match optional_timeout_seconds(params) {
+            Ok(timeout_seconds) => timeout_seconds,
+            Err(()) => {
+                return error_response(
+                    request_id,
+                    "BAD_REQUEST",
+                    "proxy.stop timeoutSeconds must be between 1 and 300",
+                );
+            }
+        }
+    };
+    let subservers = match state.proxy_subservers().list(&proxy) {
+        Ok(subservers) => subservers,
+        Err(error) => return proxy_subserver_repository_failure_response(request_id, &error),
+    };
+    let action = if start { "START" } else { "STOP" };
+    let mut steps = Vec::new();
+    let mut failed = false;
+
+    if start {
+        if include_backends {
+            let mut target_ids = BTreeSet::new();
+            for subserver in subservers.iter().filter(|subserver| subserver.enabled()) {
+                if target_ids.insert(subserver.target_instance_id().clone()) {
+                    let (step, step_failed) = proxy_instance_action_step(
+                        subserver.target_instance_id(),
+                        "BACKEND",
+                        action,
+                        timeout_seconds,
+                        state,
+                        true,
+                    )
+                    .await;
+                    steps.push(step);
+                    failed |= step_failed;
+                }
+            }
+        }
+
+        if failed {
+            steps.push(orchestration_step(
+                proxy.id(),
+                "PROXY",
+                action,
+                "BLOCKED_BACKEND_FAILURE",
+                None,
+                Some("PROXY_BACKEND_FAILED"),
+                None,
+            ));
+        } else {
+            let (step, step_failed) = proxy_instance_action_step(
+                proxy.id(),
+                "PROXY",
+                action,
+                timeout_seconds,
+                state,
+                true,
+            )
+            .await;
+            steps.push(step);
+            failed |= step_failed;
+        }
+    } else {
+        let (step, step_failed) =
+            proxy_instance_action_step(proxy.id(), "PROXY", action, timeout_seconds, state, false)
+                .await;
+        steps.push(step);
+        failed |= step_failed;
+
+        if !failed && include_backends {
+            let mut target_ids = BTreeSet::new();
+            for subserver in subservers.iter().filter(|subserver| subserver.enabled()) {
+                if target_ids.insert(subserver.target_instance_id().clone()) {
+                    let (step, step_failed) = proxy_instance_action_step(
+                        subserver.target_instance_id(),
+                        "BACKEND",
+                        action,
+                        timeout_seconds,
+                        state,
+                        false,
+                    )
+                    .await;
+                    steps.push(step);
+                    failed |= step_failed;
+                }
+            }
+        }
+    }
+
+    success_response(
+        request_id,
+        json!({
+            "proxyInstanceId": proxy.id(),
+            "operation": action,
+            "includeBackends": include_backends,
+            "state": if failed { "PARTIAL" } else { "SUCCEEDED" },
+            "steps": steps,
+            "completedAt": current_timestamp(),
+        }),
+    )
+}
+
+async fn proxy_instance_action_step(
+    instance_id: &InstanceId,
+    role: &str,
+    action: &str,
+    timeout_seconds: Option<u16>,
+    state: &CoreRequestState,
+    start: bool,
+) -> (Value, bool) {
+    let instance = match state.instances().get(instance_id) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            return (
+                orchestration_step(
+                    instance_id,
+                    role,
+                    action,
+                    "FAILED",
+                    None,
+                    Some("INSTANCE_NOT_FOUND"),
+                    None,
+                ),
+                true,
+            );
+        }
+        Err(error) => {
+            tracing::error!(%error, %instance_id, "Proxy orchestration could not read an instance");
+            return (
+                orchestration_step(
+                    instance_id,
+                    role,
+                    action,
+                    "FAILED",
+                    None,
+                    Some("INSTANCE_REPOSITORY_UNAVAILABLE"),
+                    None,
+                ),
+                true,
+            );
+        }
+    };
+    let current_state = instance.runtime().state();
+    let already_in_target_state = if start {
+        current_state == InstanceState::Running
+    } else {
+        matches!(
+            current_state,
+            InstanceState::Created | InstanceState::Stopped | InstanceState::Failed
+        )
+    };
+    if already_in_target_state {
+        return (
+            orchestration_step(
+                instance_id,
+                role,
+                action,
+                if start {
+                    "ALREADY_RUNNING"
+                } else {
+                    "ALREADY_STOPPED"
+                },
+                None,
+                None,
+                Some(current_state),
+            ),
+            false,
+        );
+    }
+    if (!start && current_state != InstanceState::Running)
+        || (start
+            && !matches!(
+                current_state,
+                InstanceState::Created | InstanceState::Stopped | InstanceState::Failed
+            ))
+    {
+        return (
+            orchestration_step(
+                instance_id,
+                role,
+                action,
+                "FAILED",
+                None,
+                Some("INSTANCE_STATE_CONFLICT"),
+                Some(current_state),
+            ),
+            true,
+        );
+    }
+
+    let result = if start {
+        state.processes().start(instance_id).await
+    } else {
+        state.processes().stop(instance_id, timeout_seconds).await
+    };
+    match result {
+        Ok(task_id) => (
+            orchestration_step(
+                instance_id,
+                role,
+                action,
+                if start { "STARTED" } else { "STOPPED" },
+                Some(task_id),
+                None,
+                Some(current_state),
+            ),
+            false,
+        ),
+        Err(error) => {
+            let (error_code, state) = orchestration_process_error(&error);
+            (
+                orchestration_step(
+                    instance_id,
+                    role,
+                    action,
+                    "FAILED",
+                    None,
+                    Some(error_code),
+                    state,
+                ),
+                true,
+            )
+        }
+    }
+}
+
+fn orchestration_step(
+    instance_id: &InstanceId,
+    role: &str,
+    action: &str,
+    state: &str,
+    task_id: Option<TaskId>,
+    error_code: Option<&str>,
+    instance_state: Option<InstanceState>,
+) -> Value {
+    let mut step = json!({
+        "instanceId": instance_id,
+        "role": role,
+        "action": action,
+        "state": state,
+    });
+    if let Some(task_id) = task_id {
+        step["taskId"] = json!(task_id);
+    }
+    if let Some(error_code) = error_code {
+        step["errorCode"] = json!(error_code);
+    }
+    if let Some(instance_state) = instance_state {
+        step["instanceState"] = json!(instance_state);
+    }
+    step
+}
+
+fn orchestration_process_error(
+    error: &InstanceProcessError,
+) -> (&'static str, Option<InstanceState>) {
+    match error {
+        InstanceProcessError::Repository(InstanceRepositoryError::NotFound { .. }) => {
+            ("INSTANCE_NOT_FOUND", None)
+        }
+        InstanceProcessError::Repository(InstanceRepositoryError::StateConflict {
+            state, ..
+        }) => ("INSTANCE_STATE_CONFLICT", Some(*state)),
+        _ => ("INSTANCE_PROCESS_FAILED", None),
+    }
 }
 
 async fn minecraft_status_probe(subserver: &ProxySubserver) -> Result<(), &'static str> {

@@ -40,12 +40,13 @@ use tokio::net::TcpStream;
 use crate::CoreConnectionError;
 use crate::CoreEndpoint;
 
-const PANEL_CAPABILITIES: [&str; 10] = [
+const PANEL_CAPABILITIES: [&str; 11] = [
     "config",
     "events",
     "files",
     "instances",
     "metrics",
+    "proxy-orchestration",
     "proxy-subservers",
     "provision",
     "runtimes",
@@ -417,6 +418,39 @@ impl CoreConnection {
         from_value(result).map_err(|_| CoreConnectionError::InvalidResponse {
             field: "proxySubserverHealth",
         })
+    }
+
+    pub async fn start_proxy(
+        &mut self,
+        proxy_instance_id: &InstanceId,
+        include_backends: bool,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreConnectionError> {
+        self.proxy_orchestration_request(
+            "proxy.start",
+            proxy_instance_id,
+            include_backends,
+            None,
+            idempotency_key,
+        )
+        .await
+    }
+
+    pub async fn stop_proxy(
+        &mut self,
+        proxy_instance_id: &InstanceId,
+        include_backends: bool,
+        timeout_seconds: Option<u16>,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreConnectionError> {
+        self.proxy_orchestration_request(
+            "proxy.stop",
+            proxy_instance_id,
+            include_backends,
+            timeout_seconds,
+            idempotency_key,
+        )
+        .await
     }
 
     pub async fn create_instance(
@@ -1046,6 +1080,25 @@ impl CoreConnection {
         let task_id = response_field(&result, "taskId")?;
 
         from_value(task_id).map_err(|_| CoreConnectionError::InvalidResponse { field: "taskId" })
+    }
+
+    async fn proxy_orchestration_request(
+        &mut self,
+        method: &str,
+        proxy_instance_id: &InstanceId,
+        include_backends: bool,
+        timeout_seconds: Option<u16>,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreConnectionError> {
+        let mut params = json!({
+            "proxyInstanceId": proxy_instance_id,
+            "includeBackends": include_backends,
+        });
+        if let Some(timeout_seconds) = timeout_seconds {
+            params["timeoutSeconds"] = json!(timeout_seconds);
+        }
+        self.request_with_idempotency(method, params, Some(idempotency_key))
+            .await
     }
 }
 

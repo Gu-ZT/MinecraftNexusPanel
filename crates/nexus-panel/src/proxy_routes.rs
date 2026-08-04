@@ -16,6 +16,7 @@ use nexus_domain::ProxySubserver;
 use nexus_domain::RequestId;
 
 use crate::PanelState;
+use crate::ProxyOrchestrationRequest;
 use crate::auth_routes::error_response;
 use crate::auth_routes::header_text;
 use crate::core_routes::authorize;
@@ -36,6 +37,14 @@ pub(crate) fn proxy_routes() -> Router<PanelState> {
         .route(
             "/api/v1/cores/{core_id}/instances/{proxy_instance_id}/proxy-subservers/{subserver_id}/actions/check",
             post(check_proxy_subserver),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/instances/{proxy_instance_id}/proxy-subservers/actions/start",
+            post(start_proxy),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/instances/{proxy_instance_id}/proxy-subservers/actions/stop",
+            post(stop_proxy),
         )
 }
 
@@ -156,6 +165,87 @@ async fn check_proxy_subserver(
         .await
     {
         Ok(health) => Json(health).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn start_proxy(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, proxy_instance_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    payload: Result<Option<Json<ProxyOrchestrationRequest>>, JsonRejection>,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Some(idempotency_key) = idempotency_key(&headers) else {
+        return precondition_required_response(request_id);
+    };
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return invalid_core_id_response(request_id);
+    };
+    let Some(proxy_instance_id) = parse_instance_id(&proxy_instance_id) else {
+        return validation_error(request_id);
+    };
+    let request = match payload {
+        Ok(Some(Json(request))) if request.validate().is_ok() => request,
+        Ok(None) => ProxyOrchestrationRequest::default(),
+        Ok(Some(_)) | Err(_) => return validation_error(request_id),
+    };
+
+    match state
+        .cores()
+        .start_proxy(
+            core_id,
+            &proxy_instance_id,
+            request.include_backends(),
+            idempotency_key,
+        )
+        .await
+    {
+        Ok(result) => Json(result).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn stop_proxy(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, proxy_instance_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    payload: Result<Option<Json<ProxyOrchestrationRequest>>, JsonRejection>,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Some(idempotency_key) = idempotency_key(&headers) else {
+        return precondition_required_response(request_id);
+    };
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return invalid_core_id_response(request_id);
+    };
+    let Some(proxy_instance_id) = parse_instance_id(&proxy_instance_id) else {
+        return validation_error(request_id);
+    };
+    let request = match payload {
+        Ok(Some(Json(request))) if request.validate().is_ok() => request,
+        Ok(None) => ProxyOrchestrationRequest::default(),
+        Ok(Some(_)) | Err(_) => return validation_error(request_id),
+    };
+
+    match state
+        .cores()
+        .stop_proxy(
+            core_id,
+            &proxy_instance_id,
+            request.include_backends(),
+            request.timeout_seconds(),
+            idempotency_key,
+        )
+        .await
+    {
+        Ok(result) => Json(result).into_response(),
         Err(error) => registry_error_response(error, request_id),
     }
 }

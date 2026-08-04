@@ -466,6 +466,48 @@ impl CoreRegistry {
         Ok(json!(health))
     }
 
+    pub async fn start_proxy(
+        &self,
+        core_id: CoreId,
+        proxy_instance_id: &InstanceId,
+        include_backends: bool,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .start_proxy(proxy_instance_id, include_backends, idempotency_key)
+            .await?)
+    }
+
+    pub async fn stop_proxy(
+        &self,
+        core_id: CoreId,
+        proxy_instance_id: &InstanceId,
+        include_backends: bool,
+        timeout_seconds: Option<u16>,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .stop_proxy(
+                proxy_instance_id,
+                include_backends,
+                timeout_seconds,
+                idempotency_key,
+            )
+            .await?)
+    }
+
     pub async fn upsert_extension_install(
         &self,
         core_id: CoreId,
