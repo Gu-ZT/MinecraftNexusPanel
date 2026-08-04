@@ -347,7 +347,7 @@ Core 将压缩包解压到受管 runtime 目录的临时目录，完成可执行
 Core 只允许 `VELOCITY`、`WATERFALL`、`BUNGEECORD`、`LIGHTFALL` 和 `GEYSER` 实例使用这些方法。
 一对多代理可以维护多个目标；Geyser 的一对一拓扑最多维护一个目标。每个目标必须指向已存在的非代理实例，
 变更请求必须带 `idempotencyKey`。
-`proxy.subserver.check` 从 Core 节点对启用的目标执行最多 3 秒 TCP 探测；连接失败作为 `UNREACHABLE` 健康结果返回，禁用目标返回 `DISABLED`，不会伪装成 Core 注册错误。
+`proxy.subserver.check` 从 Core 节点对启用的目标执行最多 3 秒 TCP 探测和 Minecraft Java Status 请求。`status` 表示 TCP 网络可达性，`protocolStatus` 表示协议状态：完成握手并收到合法状态 JSON 时为 `RESPONDED`，连接成功但响应非法时为 `INVALID_RESPONSE`，网络未连通时为 `UNAVAILABLE`；禁用目标两者均为 `DISABLED`。连接失败或协议失败都作为健康结果返回，不会伪装成 Core 注册错误。
 
 ### 5.5.2 基岩端运维画像
 
