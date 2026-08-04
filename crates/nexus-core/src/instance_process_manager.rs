@@ -47,6 +47,10 @@ const EVENT_CHANNEL_CAPACITY: usize = 256;
 const MAXIMUM_COMMAND_BYTES: usize = 8 * 1024;
 const PROCESS_COMMAND_CAPACITY: usize = 4;
 
+/// 管理实例子进程的生命周期、输入输出、日志和运行指标。
+///
+/// 管理器以实例 ID 保证同一实例最多关联一个受管进程，并通过仓储更新
+/// 生命周期状态；工作目录始终限制在 Core 数据目录内。
 #[derive(Clone)]
 pub struct InstanceProcessManager {
     data_directory: Arc<PathBuf>,
