@@ -218,6 +218,38 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
             .is_some_and(Vec::is_empty)
     );
 
+    let install_idempotency_key = RequestId::new().to_string();
+    let install_extension = send_raw_request(
+        panel_address,
+        "PUT",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/hybrid-backend/extensions?templateId=mohist&kind=PLUGIN&path=plugins/installed.jar"
+        ),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", install_idempotency_key.as_str()),
+        ],
+        b"installed plugin",
+    )
+    .await;
+    assert_eq!(install_extension.status, 200);
+
+    let plugin_scan_after_install = send_json_request(
+        panel_address,
+        "GET",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/hybrid-backend/extensions?templateId=mohist&kind=PLUGIN"
+        ),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(plugin_scan_after_install.status, 200);
+    assert_eq!(
+        plugin_scan_after_install.body["directories"][0]["page"]["items"][0]["path"],
+        "plugins/installed.jar"
+    );
+
     let invalid_extension_path = send_json_request(
         panel_address,
         "DELETE",
