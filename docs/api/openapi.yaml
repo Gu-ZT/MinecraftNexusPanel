@@ -689,7 +689,8 @@ paths:
       description: |
         Write a prepared local extension artifact through the Core atomic file
         API. The path must be below a directory declared for the selected
-        template and extension kind. This operation does not resolve a source,
+        template and extension kind. If-Match can protect an existing artifact
+        during an update. This operation does not resolve a source,
         dependencies, compatibility, or an extension installation record.
       security:
         - cookieAuth: [ ]
@@ -714,6 +715,7 @@ paths:
             type: string
             minLength: 1
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
       requestBody:
         required: true
         content:
