@@ -979,8 +979,10 @@ paths:
       description: |
         Delete one extension file through the Core file task API. The path
         must be below a directory declared for the selected template and
-        extension kind. This operation does not create or update an extension
-        installation record.
+        extension kind. The matching installation record is removed only after
+        the Core deletion task succeeds; failed or timed-out tasks retain the
+        record, and a newer installation at the same path is protected from an
+        older deletion task.
       security:
         - cookieAuth: [ ]
           csrfToken: [ ]
