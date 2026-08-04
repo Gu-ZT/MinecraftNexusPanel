@@ -47,14 +47,23 @@ use crate::config_document::summary;
 use crate::file_download::FileDownload;
 use crate::file_upload::FileUpload;
 
+/// 单次文件读取的最大字节数。
 pub const MAXIMUM_FILE_READ_BYTES: usize = 32 * 1024;
+/// 单次文件写入的最大字节数。
 pub const MAXIMUM_FILE_WRITE_BYTES: usize = 1024 * 1024;
+/// 批量文件操作的最大操作数。
 pub const MAXIMUM_FILE_BATCH_OPERATIONS: usize = 64;
+/// 单个归档任务允许选择的最大路径数。
 pub const MAXIMUM_FILE_ARCHIVE_PATHS: usize = 128;
+/// 文件上传/下载的单个传输块大小。
 pub const FILE_TRANSFER_CHUNK_BYTES: usize = 1024 * 1024;
+/// 单个文件传输允许的最大总字节数。
 pub const MAXIMUM_FILE_TRANSFER_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+/// 归档允许包含的最大条目数。
 pub const MAXIMUM_FILE_ARCHIVE_ENTRIES: usize = 16 * 1024;
+/// 归档允许读取的最大源字节数。
 pub const MAXIMUM_FILE_ARCHIVE_BYTES: u64 = MAXIMUM_FILE_TRANSFER_BYTES;
+/// 配置文档读取和写入的最大字节数。
 pub const MAXIMUM_CONFIG_BYTES: usize = MAXIMUM_FILE_WRITE_BYTES;
 const MAXIMUM_ACTIVE_FILE_TRANSFERS: usize = 16;
 const DEFAULT_FILE_LIST_LIMIT: usize = 50;
@@ -62,6 +71,10 @@ const MAXIMUM_FILE_LIST_LIMIT: usize = 200;
 const MAXIMUM_CONFIG_DOCUMENTS: usize = 512;
 const MAXIMUM_CONFIG_SCAN_DEPTH: usize = 32;
 
+/// 在实例工作目录沙箱内执行文件和配置文档操作的管理器。
+///
+/// 所有公开路径都相对于实例目录，管理器会拒绝父目录跳转、符号链接越界和
+/// 超出大小上限的内容；异步任务状态只保存在当前 Core 进程内。
 #[derive(Clone)]
 pub struct FileManager {
     data_directory: Arc<PathBuf>,
@@ -71,6 +84,7 @@ pub struct FileManager {
 }
 
 impl FileManager {
+    /// 创建文件管理器，不会立即创建实例目录或数据文件。
     #[must_use]
     pub fn new(data_directory: &Path) -> Self {
         Self {
@@ -81,6 +95,10 @@ impl FileManager {
         }
     }
 
+    /// 分页列出实例目录下的安全文件条目。
+    ///
+    /// 返回条目按相对路径排序，`cursor` 是上一页返回的路径游标；目录不能被
+    /// 当作普通文件读取，符号链接会经过额外安全检查。
     pub fn list(
         &self,
         instance: &Instance,
@@ -142,6 +160,10 @@ impl FileManager {
         Ok(FilePage::new(page, next_cursor))
     }
 
+    /// 从实例工作目录中的普通文件读取一个 Base64 内容分块。
+    ///
+    /// `offset` 以字节计，读取大小受 `MAXIMUM_FILE_READ_BYTES` 限制；返回的
+    /// SHA-256 是整个文件摘要，而不是当前分块摘要。
     pub fn read(
         &self,
         instance: &Instance,
@@ -247,6 +269,10 @@ impl FileManager {
         document(&relative_path, &updated).map_err(|error| config_document_error(path, error))
     }
 
+    /// 原子写入实例目录中的普通文件，并可按旧摘要执行乐观并发校验。
+    ///
+    /// 写入先落到同目录临时文件并同步，再替换目标；目标父目录和所有路径组件
+    /// 必须位于实例根目录内。
     pub fn write(
         &self,
         instance: &Instance,
@@ -328,6 +354,7 @@ impl FileManager {
         ))
     }
 
+    /// 创建实例目录，可选择递归创建缺失的父目录。
     pub fn mkdir(
         &self,
         instance: &Instance,
@@ -381,6 +408,10 @@ impl FileManager {
         relative_file_entry(&root, &target)
     }
 
+    /// 在实例目录内移动文件或目录。
+    ///
+    /// 默认拒绝覆盖；即使允许覆盖，也只允许同类型且目标目录为空，并拒绝符号
+    /// 链接和把目录移动到自身子目录的操作。
     pub fn move_entry(
         &self,
         instance: &Instance,
@@ -511,6 +542,9 @@ impl FileManager {
         relative_file_entry(&root, &target)
     }
 
+    /// 启动删除文件或目录的异步任务，并返回任务标识。
+    ///
+    /// 非递归删除不会删除非空目录；任务进度可通过 [`Self::task`] 查询。
     pub fn start_delete(
         &self,
         instance: &Instance,
@@ -1087,6 +1121,7 @@ impl FileManager {
             .ok_or(FileManagerError::TransferNotFound { transfer_id })
     }
 
+    /// 查询文件异步任务的当前状态快照。
     pub fn task(&self, task_id: TaskId) -> Result<Option<Value>, FileManagerError> {
         let tasks = self
             .tasks

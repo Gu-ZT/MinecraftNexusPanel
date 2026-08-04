@@ -1,3 +1,8 @@
+//! Minecraft 配置文档的识别、结构化摘要和受控补丁工具。
+//!
+//! 支持 `.properties`、JSON、YAML 和 TOML；文档摘要同时提供值、schema、UI schema
+//! 和内容修订号，补丁默认拒绝可能丢失注释或布局的有损重写。
+
 use std::path::Path;
 
 use serde_json::Map;
@@ -15,16 +20,22 @@ use toml::Value as TomlValue;
 use toml::from_str as toml_from_str;
 use toml::to_string_pretty as toml_to_string_pretty;
 
+/// 配置文档解析或补丁错误。
 #[derive(Debug, Error)]
 pub(crate) enum ConfigDocumentError {
+    /// 文件不是有效 UTF-8。
     #[error("configuration file is not valid UTF-8")]
     InvalidUtf8,
+    /// 文件扩展名不在支持列表中。
     #[error("configuration file format is not supported")]
     UnsupportedFormat,
+    /// 文档内容无法解析为支持的结构。
     #[error("configuration document is invalid: {0}")]
     InvalidDocument(String),
+    /// 补丁内容不符合目标格式。
     #[error("configuration patch is invalid: {0}")]
     InvalidPatch(String),
+    /// 补丁可能丢失原始格式，尚未获得显式确认。
     #[error("configuration patch requires explicit lossy confirmation")]
     LossyPatch,
 }
@@ -45,6 +56,7 @@ struct PropertyLine {
     value_end: usize,
 }
 
+/// 判断路径扩展名是否属于支持的配置文档格式。
 pub(crate) fn is_supported_path(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
@@ -57,10 +69,12 @@ pub(crate) fn is_supported_path(path: &Path) -> bool {
         })
 }
 
+/// 根据相对路径生成稳定的配置文档标识。
 pub(crate) fn document_id(path: &str) -> String {
     sha256_hex(path.as_bytes())
 }
 
+/// 解析配置文件并生成带 schema、值和修订号的文档对象。
 pub(crate) fn document(path: &str, content: &[u8]) -> Result<Value, ConfigDocumentError> {
     match config_format(path) {
         Some(ConfigFormat::Properties) => properties_document(path, content),
@@ -275,6 +289,7 @@ fn structured_document(
     }))
 }
 
+/// 提取适合列表展示的配置文档摘要。
 pub(crate) fn summary(document: &Value) -> Value {
     json!({
         "documentId": document.get("documentId"),
@@ -286,6 +301,7 @@ pub(crate) fn summary(document: &Value) -> Value {
     })
 }
 
+/// 将 Merge Patch 应用到配置文档，并按格式序列化回文件内容。
 pub(crate) fn patch(
     path: &str,
     content: &[u8],
