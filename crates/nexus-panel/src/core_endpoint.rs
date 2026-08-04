@@ -7,6 +7,10 @@ use crate::CoreEndpointError;
 
 const DEFAULT_CORE_PORT: u16 = 25_580;
 
+/// 解析后的 Core 网络端点和 TLS 证书校验策略。
+///
+/// 域名地址默认验证证书；IP、localhost 和显式跳过校验的地址会关闭系统证书验证，
+/// 连接层仍会比较握手欢迎消息中的证书指纹。
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CoreEndpoint {
     host: String,
@@ -15,6 +19,7 @@ pub struct CoreEndpoint {
 }
 
 impl CoreEndpoint {
+    /// 解析 Socket 地址或 `tls`/`https`/`mcnp` URL。
     pub fn parse(
         address: &str,
         skip_certificate_verification: bool,
@@ -67,6 +72,7 @@ impl CoreEndpoint {
         })
     }
 
+    /// 从 Socket 地址创建端点；该形式默认不做域名证书校验。
     #[must_use]
     pub fn from_socket_address(address: SocketAddr) -> Self {
         Self {
@@ -76,16 +82,19 @@ impl CoreEndpoint {
         }
     }
 
+    /// 返回主机名或 IP 文本。
     #[must_use]
     pub fn host(&self) -> &str {
         &self.host
     }
 
+    /// 返回 TCP 端口。
     #[must_use]
     pub const fn port(&self) -> u16 {
         self.port
     }
 
+    /// 返回是否启用系统 TLS 证书校验。
     #[must_use]
     pub const fn verify_certificate(&self) -> bool {
         self.verify_certificate

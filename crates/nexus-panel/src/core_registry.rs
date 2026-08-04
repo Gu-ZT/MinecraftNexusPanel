@@ -1,3 +1,8 @@
+//! Panel 端 Core 注册、持久化和自动重连服务。
+//!
+//! 注册信息保存加密后的预共享秘密，内存中的连接由后台监视器维护；所有领域请求
+//! 都先取得对应 Core 的连接锁，连接不可用时返回明确错误而不会伪造成功结果。
+
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -59,6 +64,7 @@ use crate::SecretCipher;
 const INITIAL_RECONNECT_DELAY_SECONDS: u64 = 1;
 const MAXIMUM_RECONNECT_DELAY_SECONDS: u64 = 30;
 
+/// 管理已注册 Core、连接状态和跨请求重连任务的服务。
 #[derive(Clone)]
 pub struct CoreRegistry {
     store: SqliteStore,
@@ -69,6 +75,7 @@ pub struct CoreRegistry {
 }
 
 impl CoreRegistry {
+    /// 从 SQLite 注册记录恢复 Core 并启动连接监视器。
     pub fn new(
         store: SqliteStore,
         cipher: SecretCipher,
@@ -119,6 +126,7 @@ impl CoreRegistry {
         Ok(registry)
     }
 
+    /// 校验请求、建立连接并持久化新的 Core 注册。
     pub async fn register(&self, request: &CoreCreate) -> Result<Value, CoreRegistryError> {
         if let Some(field) = request.invalid_field() {
             return Err(CoreRegistryError::InvalidRequest { field });
@@ -164,6 +172,7 @@ impl CoreRegistry {
         core_json(&core).await
     }
 
+    /// 确保配置指定的本地 Core 已注册且身份匹配。
     pub async fn ensure_local_core(
         &self,
         config: &LocalCoreConfig,
@@ -214,6 +223,7 @@ impl CoreRegistry {
         Ok(())
     }
 
+    /// 列出所有已注册 Core 及其运行时状态。
     pub async fn list(&self) -> Result<Value, CoreRegistryError> {
         let mut cores: Vec<_> = self.entries.read().await.values().cloned().collect();
         cores.sort_by(|left, right| left.registration.id().cmp(right.registration.id()));
@@ -228,11 +238,13 @@ impl CoreRegistry {
         }))
     }
 
+    /// 获取指定 Core 的注册和运行时状态。
     pub async fn get(&self, core_id: CoreId) -> Result<Value, CoreRegistryError> {
         let core = self.find(core_id).await?;
         core_json(&core).await
     }
 
+    /// 建立一次性连接并返回延迟与协议版本。
     pub async fn test_connection(&self, core_id: CoreId) -> Result<Value, CoreRegistryError> {
         let core = self.find(core_id).await?;
         let started_at = Instant::now();
@@ -252,6 +264,7 @@ impl CoreRegistry {
         }))
     }
 
+    /// 丢弃当前连接并请求后台监视器立即重连。
     pub async fn reconnect(&self, core_id: CoreId) -> Result<Value, CoreRegistryError> {
         let core = self.find(core_id).await?;
         core.connection.lock().await.take();
@@ -261,6 +274,7 @@ impl CoreRegistry {
         core_json(&core).await
     }
 
+    /// 通过已注册 Core 创建实例并持久化幂等请求结果。
     pub async fn create_instance(
         &self,
         core_id: CoreId,
@@ -279,6 +293,7 @@ impl CoreRegistry {
         Ok(instance_json(core_id, &json!(instance)))
     }
 
+    /// 获取指定 Core 上的实例。
     pub async fn get_instance(
         &self,
         core_id: CoreId,
@@ -294,6 +309,7 @@ impl CoreRegistry {
         Ok(instance_json(core_id, &json!(instance)))
     }
 
+    /// 列出指定 Core 的受管运行时。
     pub async fn list_managed_runtimes(&self, core_id: CoreId) -> Result<Value, CoreRegistryError> {
         let core = self.find(core_id).await?;
         let mut connection = core.connection.lock().await;
@@ -305,6 +321,7 @@ impl CoreRegistry {
         Ok(json!({ "items": runtimes }))
     }
 
+    /// 请求指定 Core 安装受管运行时。
     pub async fn install_runtime(
         &self,
         core_id: CoreId,
@@ -323,6 +340,7 @@ impl CoreRegistry {
             .await?)
     }
 
+    /// 请求指定 Core 验证受管运行时。
     pub async fn verify_runtime(
         &self,
         core_id: CoreId,
@@ -340,6 +358,7 @@ impl CoreRegistry {
             .await?)
     }
 
+    /// 查询指定 Core 的运行时任务。
     pub async fn get_runtime_task(
         &self,
         core_id: CoreId,
@@ -354,6 +373,7 @@ impl CoreRegistry {
         Ok(connection.get_runtime_task(task_id).await?)
     }
 
+    /// 请求指定 Core 删除受管运行时。
     pub async fn delete_runtime(
         &self,
         core_id: CoreId,
@@ -372,6 +392,7 @@ impl CoreRegistry {
         Ok(task_accepted_json(task_id))
     }
 
+    /// 解析指定 Core 的一键搭建计划。
     pub async fn resolve_provision(
         &self,
         core_id: CoreId,
@@ -386,6 +407,7 @@ impl CoreRegistry {
         Ok(connection.resolve_provision(plan).await?)
     }
 
+    /// 按已确认哈希在指定 Core 执行一键搭建。
     pub async fn execute_provision(
         &self,
         core_id: CoreId,
@@ -404,6 +426,7 @@ impl CoreRegistry {
             .await?)
     }
 
+    /// 查询指定 Core 的搭建任务。
     pub async fn get_provision_task(
         &self,
         core_id: CoreId,
@@ -418,6 +441,7 @@ impl CoreRegistry {
         Ok(connection.get_provision_task(task_id).await?)
     }
 
+    /// 获取指定 Core 上实例的基岩管理画像。
     pub async fn get_bedrock_profile(
         &self,
         core_id: CoreId,
@@ -433,6 +457,7 @@ impl CoreRegistry {
         Ok(json!(profile))
     }
 
+    /// 检查指定 Core 上基岩 UDP 端口。
     pub async fn check_bedrock_port(
         &self,
         core_id: CoreId,
@@ -448,6 +473,7 @@ impl CoreRegistry {
         Ok(json!(check))
     }
 
+    /// 检查指定 Core 上基岩 RakNet 健康状态。
     pub async fn check_bedrock_health(
         &self,
         core_id: CoreId,
@@ -463,6 +489,7 @@ impl CoreRegistry {
         Ok(json!(health))
     }
 
+    /// 检查指定 Core 上代理后端健康状态。
     pub async fn check_proxy_subserver(
         &self,
         core_id: CoreId,
@@ -481,6 +508,7 @@ impl CoreRegistry {
         Ok(json!(health))
     }
 
+    /// 启动指定 Core 上的代理及可选后端。
     pub async fn start_proxy(
         &self,
         core_id: CoreId,
@@ -499,6 +527,7 @@ impl CoreRegistry {
             .await?)
     }
 
+    /// 停止指定 Core 上的代理及可选后端。
     pub async fn stop_proxy(
         &self,
         core_id: CoreId,
@@ -523,6 +552,7 @@ impl CoreRegistry {
             .await?)
     }
 
+    /// 在 Panel 存储中写入或更新扩展安装记录。
     pub async fn upsert_extension_install(
         &self,
         core_id: CoreId,
@@ -547,6 +577,7 @@ impl CoreRegistry {
         extension_install_from_stored(stored)
     }
 
+    /// 按扩展种类列出实例安装记录。
     pub async fn list_extension_installs(
         &self,
         core_id: CoreId,
@@ -568,6 +599,7 @@ impl CoreRegistry {
             .collect()
     }
 
+    /// 删除指定路径的扩展安装记录。
     pub async fn delete_extension_install(
         &self,
         core_id: CoreId,
@@ -586,6 +618,7 @@ impl CoreRegistry {
         Ok(())
     }
 
+    /// 列出指定 Core 代理的后端关系。
     pub async fn list_proxy_subservers(
         &self,
         core_id: CoreId,
@@ -601,6 +634,7 @@ impl CoreRegistry {
         Ok(json!({ "items": items }))
     }
 
+    /// 在指定 Core 上新增或替换代理后端关系。
     pub async fn upsert_proxy_subserver(
         &self,
         core_id: CoreId,
@@ -620,6 +654,7 @@ impl CoreRegistry {
         Ok(json!(item))
     }
 
+    /// 删除指定 Core 上的代理后端关系。
     pub async fn delete_proxy_subserver(
         &self,
         core_id: CoreId,
@@ -639,6 +674,7 @@ impl CoreRegistry {
         Ok(())
     }
 
+    /// 按修订号更新指定 Core 上的实例配置。
     pub async fn update_instance(
         &self,
         core_id: CoreId,
@@ -658,6 +694,7 @@ impl CoreRegistry {
         Ok(instance_json(core_id, &json!(instance)))
     }
 
+    /// 按游标、数量和状态列出指定 Core 的实例。
     pub async fn list_instances(
         &self,
         core_id: CoreId,
@@ -677,6 +714,7 @@ impl CoreRegistry {
         Ok(instance_page_json(core_id, &json!(page)))
     }
 
+    /// 启动指定 Core 上的实例。
     pub async fn start_instance(
         &self,
         core_id: CoreId,
@@ -695,6 +733,7 @@ impl CoreRegistry {
         Ok(task_accepted_json(task_id))
     }
 
+    /// 优雅停止指定 Core 上的实例。
     pub async fn stop_instance(
         &self,
         core_id: CoreId,
@@ -714,6 +753,7 @@ impl CoreRegistry {
         Ok(task_accepted_json(task_id))
     }
 
+    /// 强制终止指定 Core 上的实例。
     pub async fn kill_instance(
         &self,
         core_id: CoreId,
@@ -732,6 +772,7 @@ impl CoreRegistry {
         Ok(task_accepted_json(task_id))
     }
 
+    /// 向指定 Core 上的实例发送命令。
     pub async fn send_instance_command(
         &self,
         core_id: CoreId,
@@ -751,6 +792,7 @@ impl CoreRegistry {
         Ok(json!({ "acceptedAt": accepted_at }))
     }
 
+    /// 读取指定 Core 上实例的控制台日志。
     pub async fn get_instance_logs(
         &self,
         core_id: CoreId,
@@ -771,6 +813,7 @@ impl CoreRegistry {
         Ok(json!(page))
     }
 
+    /// 读取指定 Core 上实例的指标序列。
     pub async fn get_instance_metrics(
         &self,
         core_id: CoreId,
@@ -790,6 +833,7 @@ impl CoreRegistry {
         Ok(json!({ "series": series }))
     }
 
+    /// 扫描指定 Core 上实例的配置文档。
     pub async fn scan_config_documents(
         &self,
         core_id: CoreId,
@@ -804,6 +848,7 @@ impl CoreRegistry {
         Ok(connection.scan_config_documents(instance_id).await?)
     }
 
+    /// 获取指定 Core 上的配置文档。
     pub async fn get_config_document(
         &self,
         core_id: CoreId,
@@ -822,6 +867,7 @@ impl CoreRegistry {
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// 按修订号修改指定 Core 上的配置文档。
     pub async fn patch_config_document(
         &self,
         core_id: CoreId,
@@ -850,6 +896,7 @@ impl CoreRegistry {
             .await?)
     }
 
+    /// 分页列出指定 Core 上实例的文件。
     pub async fn list_instance_files(
         &self,
         core_id: CoreId,
@@ -869,6 +916,7 @@ impl CoreRegistry {
             .await?)
     }
 
+    /// 读取指定 Core 上实例文件的内容分块。
     pub async fn read_instance_file(
         &self,
         core_id: CoreId,
@@ -888,6 +936,7 @@ impl CoreRegistry {
             .await?)
     }
 
+    /// 写入指定 Core 上的实例文件。
     pub async fn write_instance_file(
         &self,
         core_id: CoreId,
@@ -908,6 +957,7 @@ impl CoreRegistry {
             .await?)
     }
 
+    /// 创建指定 Core 上的实例目录。
     pub async fn create_instance_directory(
         &self,
         core_id: CoreId,
@@ -927,6 +977,7 @@ impl CoreRegistry {
             .await?)
     }
 
+    /// 移动指定 Core 上实例目录中的文件。
     pub async fn move_instance_file(
         &self,
         core_id: CoreId,
@@ -947,6 +998,7 @@ impl CoreRegistry {
             .await?)
     }
 
+    /// 启动删除指定 Core 上实例文件的任务。
     pub async fn delete_instance_file(
         &self,
         core_id: CoreId,
@@ -967,6 +1019,7 @@ impl CoreRegistry {
         Ok(task_accepted_json(task_id))
     }
 
+    /// 启动指定 Core 上的文件批处理任务。
     pub async fn batch_instance_files(
         &self,
         core_id: CoreId,
@@ -986,6 +1039,7 @@ impl CoreRegistry {
         Ok(task_accepted_json(task_id))
     }
 
+    /// 启动指定 Core 上的 ZIP 归档任务。
     pub async fn create_file_archive(
         &self,
         core_id: CoreId,
@@ -1006,6 +1060,7 @@ impl CoreRegistry {
         Ok(task_accepted_json(task_id))
     }
 
+    /// 查询指定 Core 上的文件任务。
     pub async fn get_file_task(
         &self,
         core_id: CoreId,
@@ -1021,6 +1076,7 @@ impl CoreRegistry {
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// 开始指定 Core 上的文件上传。
     pub async fn begin_file_upload_with_expected(
         &self,
         core_id: CoreId,
@@ -1049,6 +1105,7 @@ impl CoreRegistry {
             .await?)
     }
 
+    /// 开始指定 Core 上的文件下载。
     pub async fn begin_file_download(
         &self,
         core_id: CoreId,
@@ -1067,6 +1124,7 @@ impl CoreRegistry {
             .await?)
     }
 
+    /// 上传指定 Core 文件传输的一块内容。
     pub async fn upload_file_chunk(
         &self,
         core_id: CoreId,
@@ -1087,6 +1145,7 @@ impl CoreRegistry {
             .await?)
     }
 
+    /// 读取指定 Core 文件下载传输的一块内容。
     pub async fn read_file_download_chunk(
         &self,
         core_id: CoreId,
@@ -1104,6 +1163,7 @@ impl CoreRegistry {
             .await?)
     }
 
+    /// 提交指定 Core 上的文件上传。
     pub async fn commit_file_upload(
         &self,
         core_id: CoreId,
@@ -1121,6 +1181,7 @@ impl CoreRegistry {
             .await?)
     }
 
+    /// 放弃指定 Core 上的文件上传。
     pub async fn abort_file_upload(
         &self,
         core_id: CoreId,
@@ -1138,6 +1199,7 @@ impl CoreRegistry {
             .await?)
     }
 
+    /// 提交指定 Core 上的文件下载。
     pub async fn commit_file_download(
         &self,
         core_id: CoreId,
@@ -1156,6 +1218,7 @@ impl CoreRegistry {
         Ok(())
     }
 
+    /// 放弃指定 Core 上的文件下载。
     pub async fn abort_file_download(
         &self,
         core_id: CoreId,

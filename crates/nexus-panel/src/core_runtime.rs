@@ -1,5 +1,9 @@
 use crate::CoreStatus;
 
+/// Panel 维护的 Core 运行时连接快照。
+///
+/// 连接状态和心跳观测独立于持久化注册配置；证书验证结果与指纹用于诊断当前
+/// 连接，不代表注册秘密本身可被读取。
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CoreRuntime {
     pub(crate) status: CoreStatus,
@@ -13,6 +17,7 @@ pub struct CoreRuntime {
 }
 
 impl CoreRuntime {
+    /// 创建未知状态的初始快照。
     #[must_use]
     pub const fn unknown() -> Self {
         Self {
@@ -27,16 +32,19 @@ impl CoreRuntime {
         }
     }
 
+    /// 记录连接失败并更新状态。
     pub fn mark_failure(&mut self, status: CoreStatus) {
         self.status = status;
         self.latency_milliseconds = None;
     }
 
+    /// 标记正在重连，清除当前延迟观测。
     pub fn mark_reconnecting(&mut self) {
         self.status = CoreStatus::Unknown;
         self.latency_milliseconds = None;
     }
 
+    /// 记录一次成功心跳及其延迟。
     pub fn mark_ping(&mut self, latency_milliseconds: u64, last_seen_at: String) {
         self.status = CoreStatus::Online;
         self.latency_milliseconds = Some(latency_milliseconds);

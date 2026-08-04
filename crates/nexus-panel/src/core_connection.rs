@@ -1,3 +1,8 @@
+//! Panel 到 Core 的长连接客户端和领域请求适配。
+//!
+//! 连接建立时完成 TLS、Noise PSK、会话问候、协议版本和证书指纹校验；公开方法
+//! 只负责组装协议请求并解码领域响应，幂等操作必须由调用方提供稳定幂等键。
+
 use std::net::SocketAddr;
 
 use base64::Engine;
@@ -56,6 +61,7 @@ const PANEL_CAPABILITIES: [&str; 12] = [
     "transfer-v1",
 ];
 
+/// 已完成安全握手、可复用的 Core 协议连接。
 pub struct CoreConnection {
     capabilities: Vec<String>,
     core_id: CoreId,
@@ -66,6 +72,7 @@ pub struct CoreConnection {
 }
 
 impl CoreConnection {
+    /// 连接到指定 Socket 地址并完成 Core 会话握手。
     pub async fn connect(
         address: SocketAddr,
         pre_shared_key: &PresharedKey,
@@ -81,6 +88,7 @@ impl CoreConnection {
         .await
     }
 
+    /// 解析地址、建立 TCP/TLS/Noise 连接并完成会话握手。
     pub async fn connect_address(
         address: &str,
         skip_certificate_verification: bool,
@@ -93,6 +101,7 @@ impl CoreConnection {
         Self::connect_endpoint(&endpoint, pre_shared_key, panel_id, panel_name).await
     }
 
+    /// 使用已解析端点建立连接并校验 Core 欢迎消息。
     pub async fn connect_endpoint(
         endpoint: &CoreEndpoint,
         pre_shared_key: &PresharedKey,
@@ -168,31 +177,37 @@ impl CoreConnection {
         })
     }
 
+    /// 返回 Core 在握手中声明的能力列表。
     #[must_use]
     pub fn capabilities(&self) -> &[String] {
         &self.capabilities
     }
 
+    /// 返回远端 Core 标识。
     #[must_use]
     pub const fn core_id(&self) -> CoreId {
         self.core_id
     }
 
+    /// 返回 Core 建议的心跳间隔，单位为秒。
     #[must_use]
     pub const fn heartbeat_seconds(&self) -> u64 {
         self.heartbeat_seconds
     }
 
+    /// 返回协商后的协议版本。
     #[must_use]
     pub const fn protocol(&self) -> ProtocolVersion {
         self.protocol
     }
 
+    /// 返回本次连接实际收到的 TLS 证书 SHA-256 指纹。
     #[must_use]
     pub fn tls_certificate_sha256(&self) -> &str {
         &self.tls_certificate_sha256
     }
 
+    /// 发送系统 ping 并返回 Core 的接收时间。
     pub async fn ping(&mut self) -> Result<String, CoreConnectionError> {
         let result = self.request("system.ping", json!({})).await?;
 
@@ -204,10 +219,12 @@ impl CoreConnection {
             })
     }
 
+    /// 获取 Core 系统信息 JSON。
     pub async fn system_info(&mut self) -> Result<Value, CoreConnectionError> {
         self.request("system.info", json!({})).await
     }
 
+    /// 列出 Core 已发现且验证的受管运行时。
     pub async fn list_managed_runtimes(
         &mut self,
     ) -> Result<Vec<ManagedRuntime>, CoreConnectionError> {
@@ -219,6 +236,7 @@ impl CoreConnection {
         })
     }
 
+    /// 请求安装受管运行时；操作通过幂等键去重并返回任务信息。
     pub async fn install_runtime(
         &mut self,
         manifest: &RuntimeInstallManifest,
@@ -239,6 +257,7 @@ impl CoreConnection {
         .await
     }
 
+    /// 请求验证受管运行时并返回任务信息。
     pub async fn verify_runtime(
         &mut self,
         runtime_id: &str,
@@ -252,6 +271,7 @@ impl CoreConnection {
         .await
     }
 
+    /// 查询运行时安装、验证或删除任务。
     pub async fn get_runtime_task(
         &mut self,
         task_id: &TaskId,
@@ -260,6 +280,7 @@ impl CoreConnection {
             .await
     }
 
+    /// 请求删除受管运行时并返回任务标识。
     pub async fn delete_runtime(
         &mut self,
         runtime_id: &str,
@@ -277,6 +298,7 @@ impl CoreConnection {
         from_value(task_id).map_err(|_| CoreConnectionError::InvalidResponse { field: "taskId" })
     }
 
+    /// 解析一键搭建计划并取得稳定计划哈希。
     pub async fn resolve_provision(
         &mut self,
         plan: &ProvisionPlan,
@@ -287,6 +309,7 @@ impl CoreConnection {
         self.request("provision.resolve", plan).await
     }
 
+    /// 按已确认的计划哈希执行一键搭建。
     pub async fn execute_provision(
         &mut self,
         plan: &ProvisionPlan,
@@ -307,6 +330,7 @@ impl CoreConnection {
         .await
     }
 
+    /// 查询一键搭建任务。
     pub async fn get_provision_task(
         &mut self,
         task_id: &TaskId,
@@ -315,6 +339,7 @@ impl CoreConnection {
             .await
     }
 
+    /// 获取基岩服务端或 Geyser 的专用管理画像。
     pub async fn get_bedrock_profile(
         &mut self,
         instance_id: &InstanceId,
@@ -328,6 +353,7 @@ impl CoreConnection {
         })
     }
 
+    /// 检查基岩 UDP 端口绑定状态。
     pub async fn check_bedrock_port(
         &mut self,
         instance_id: &InstanceId,
@@ -341,6 +367,7 @@ impl CoreConnection {
         })
     }
 
+    /// 执行基岩 RakNet 健康检查。
     pub async fn check_bedrock_health(
         &mut self,
         instance_id: &InstanceId,
@@ -354,6 +381,7 @@ impl CoreConnection {
         })
     }
 
+    /// 列出代理实例的后端关系。
     pub async fn list_proxy_subservers(
         &mut self,
         proxy_instance_id: &InstanceId,
@@ -371,6 +399,7 @@ impl CoreConnection {
         })
     }
 
+    /// 新增或替换代理后端关系。
     pub async fn upsert_proxy_subserver(
         &mut self,
         proxy_instance_id: &InstanceId,
@@ -396,6 +425,7 @@ impl CoreConnection {
         })
     }
 
+    /// 删除代理后端关系。
     pub async fn delete_proxy_subserver(
         &mut self,
         proxy_instance_id: &InstanceId,
@@ -415,6 +445,7 @@ impl CoreConnection {
         Ok(())
     }
 
+    /// 检查代理后端的 TCP 和 Minecraft Status 健康状态。
     pub async fn check_proxy_subserver(
         &mut self,
         proxy_instance_id: &InstanceId,
@@ -435,6 +466,7 @@ impl CoreConnection {
         })
     }
 
+    /// 启动代理，可按参数同时编排其后端实例。
     pub async fn start_proxy(
         &mut self,
         proxy_instance_id: &InstanceId,
@@ -451,6 +483,7 @@ impl CoreConnection {
         .await
     }
 
+    /// 停止代理，可按参数同时编排其后端实例。
     pub async fn stop_proxy(
         &mut self,
         proxy_instance_id: &InstanceId,
@@ -468,6 +501,7 @@ impl CoreConnection {
         .await
     }
 
+    /// 创建实例；不提供幂等键时由 Core 按普通请求处理。
     pub async fn create_instance(
         &mut self,
         instance: &InstanceCreate,
@@ -475,6 +509,7 @@ impl CoreConnection {
         self.create_instance_with_idempotency(instance, None).await
     }
 
+    /// 创建实例并使用幂等键避免重试重复产生副作用。
     pub async fn create_instance_with_idempotency(
         &mut self,
         instance: &InstanceCreate,
@@ -489,6 +524,7 @@ impl CoreConnection {
         from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "instance" })
     }
 
+    /// 获取单个实例快照。
     pub async fn get_instance(
         &mut self,
         instance_id: &InstanceId,
@@ -500,6 +536,7 @@ impl CoreConnection {
         from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "instance" })
     }
 
+    /// 按期望配置修订号更新实例。
     pub async fn update_instance(
         &mut self,
         instance_id: &InstanceId,
@@ -523,10 +560,12 @@ impl CoreConnection {
         from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "instance" })
     }
 
+    /// 列出全部实例的默认分页。
     pub async fn list_instances(&mut self) -> Result<InstancePage, CoreConnectionError> {
         self.list_instances_with_filters(None, None, None).await
     }
 
+    /// 按游标、数量和生命周期状态筛选实例分页。
     pub async fn list_instances_with_filters(
         &mut self,
         cursor: Option<&InstanceId>,
@@ -550,6 +589,7 @@ impl CoreConnection {
         })
     }
 
+    /// 启动实例并返回异步任务标识。
     pub async fn start_instance(
         &mut self,
         instance_id: &InstanceId,
@@ -563,6 +603,7 @@ impl CoreConnection {
         .await
     }
 
+    /// 请求优雅停止实例，可覆盖默认停止超时。
     pub async fn stop_instance(
         &mut self,
         instance_id: &InstanceId,
@@ -578,6 +619,7 @@ impl CoreConnection {
             .await
     }
 
+    /// 经过实例 ID 确认后强制终止实例。
     pub async fn kill_instance(
         &mut self,
         instance_id: &InstanceId,
@@ -594,6 +636,7 @@ impl CoreConnection {
         .await
     }
 
+    /// 向实例发送命令，不提供幂等键。
     pub async fn send_instance_command(
         &mut self,
         instance_id: &InstanceId,
@@ -603,6 +646,7 @@ impl CoreConnection {
             .await
     }
 
+    /// 向实例发送命令并按可选幂等键去重。
     pub async fn send_instance_command_with_idempotency(
         &mut self,
         instance_id: &InstanceId,
@@ -628,6 +672,7 @@ impl CoreConnection {
             })
     }
 
+    /// 按游标读取实例控制台日志。
     pub async fn get_instance_logs(
         &mut self,
         instance_id: &InstanceId,
@@ -652,6 +697,7 @@ impl CoreConnection {
         })
     }
 
+    /// 读取实例资源指标序列。
     pub async fn get_instance_metrics(
         &mut self,
         instance_id: &InstanceId,
@@ -671,6 +717,7 @@ impl CoreConnection {
         from_value(series).map_err(|_| CoreConnectionError::InvalidResponse { field: "series" })
     }
 
+    /// 扫描实例支持的配置文档摘要。
     pub async fn scan_config_documents(
         &mut self,
         instance_id: &InstanceId,
@@ -679,6 +726,7 @@ impl CoreConnection {
             .await
     }
 
+    /// 获取单个配置文档及其 schema 和修订号。
     pub async fn get_config_document(
         &mut self,
         instance_id: &InstanceId,
@@ -694,6 +742,7 @@ impl CoreConnection {
         .await
     }
 
+    /// 按修订号应用配置 Merge Patch，可显式允许有损格式重写。
     pub async fn patch_config_document(
         &mut self,
         instance_id: &InstanceId,
@@ -717,6 +766,7 @@ impl CoreConnection {
         .await
     }
 
+    /// 分页列出实例工作目录中的文件条目。
     pub async fn list_instance_files(
         &mut self,
         instance_id: &InstanceId,
@@ -739,6 +789,7 @@ impl CoreConnection {
         from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "filePage" })
     }
 
+    /// 读取实例文件的 Base64 内容分块。
     pub async fn read_instance_file(
         &mut self,
         instance_id: &InstanceId,
@@ -763,6 +814,7 @@ impl CoreConnection {
         })
     }
 
+    /// 原子写入实例文件并可校验旧 SHA-256。
     pub async fn write_instance_file(
         &mut self,
         instance_id: &InstanceId,
@@ -786,6 +838,7 @@ impl CoreConnection {
         from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "fileEntry" })
     }
 
+    /// 创建实例目录。
     pub async fn create_instance_directory(
         &mut self,
         instance_id: &InstanceId,
@@ -808,6 +861,7 @@ impl CoreConnection {
         from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "fileEntry" })
     }
 
+    /// 移动实例目录中的文件或目录。
     pub async fn move_instance_file(
         &mut self,
         instance_id: &InstanceId,
@@ -832,6 +886,7 @@ impl CoreConnection {
         from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "fileEntry" })
     }
 
+    /// 启动删除实例文件或目录的异步任务。
     pub async fn delete_instance_file(
         &mut self,
         instance_id: &InstanceId,
@@ -856,6 +911,7 @@ impl CoreConnection {
         from_value(task_id).map_err(|_| CoreConnectionError::InvalidResponse { field: "taskId" })
     }
 
+    /// 启动一组文件批处理操作。
     pub async fn batch_instance_files(
         &mut self,
         instance_id: &InstanceId,
@@ -877,6 +933,7 @@ impl CoreConnection {
         from_value(task_id).map_err(|_| CoreConnectionError::InvalidResponse { field: "taskId" })
     }
 
+    /// 创建实例文件 ZIP 归档任务。
     pub async fn create_file_archive(
         &mut self,
         instance_id: &InstanceId,
@@ -901,11 +958,13 @@ impl CoreConnection {
         from_value(task_id).map_err(|_| CoreConnectionError::InvalidResponse { field: "taskId" })
     }
 
+    /// 查询文件操作任务。
     pub async fn get_file_task(&mut self, task_id: &TaskId) -> Result<Value, CoreConnectionError> {
         self.request("file.task.get", json!({ "taskId": task_id }))
             .await
     }
 
+    /// 开始按完整大小和 SHA-256 校验的文件上传。
     pub async fn begin_file_upload(
         &mut self,
         instance_id: &InstanceId,
@@ -925,6 +984,7 @@ impl CoreConnection {
         .await
     }
 
+    /// 开始文件上传并同时校验目标文件旧摘要。
     pub async fn begin_file_upload_with_expected(
         &mut self,
         instance_id: &InstanceId,
@@ -948,6 +1008,7 @@ impl CoreConnection {
             .await
     }
 
+    /// 开始读取实例文件的分块下载。
     pub async fn begin_file_download(
         &mut self,
         instance_id: &InstanceId,
@@ -966,6 +1027,7 @@ impl CoreConnection {
         .await
     }
 
+    /// 上传一个带连续偏移的文件块。
     pub async fn upload_file_chunk(
         &mut self,
         transfer_id: &TaskId,
@@ -986,6 +1048,7 @@ impl CoreConnection {
             .await
     }
 
+    /// 读取文件下载传输的指定偏移块。
     pub async fn read_file_download_chunk(
         &mut self,
         transfer_id: &TaskId,
@@ -1001,6 +1064,7 @@ impl CoreConnection {
         .await
     }
 
+    /// 提交完整文件上传并返回文件条目。
     pub async fn commit_file_upload(
         &mut self,
         transfer_id: &TaskId,
@@ -1017,6 +1081,7 @@ impl CoreConnection {
         from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "fileEntry" })
     }
 
+    /// 放弃文件上传并释放 Core 传输状态。
     pub async fn abort_file_upload(
         &mut self,
         transfer_id: &TaskId,
@@ -1031,6 +1096,7 @@ impl CoreConnection {
         Ok(())
     }
 
+    /// 提交文件下载传输。
     pub async fn commit_file_download(
         &mut self,
         transfer_id: &TaskId,
@@ -1045,6 +1111,7 @@ impl CoreConnection {
         Ok(())
     }
 
+    /// 放弃文件下载传输。
     pub async fn abort_file_download(
         &mut self,
         transfer_id: &TaskId,
