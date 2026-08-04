@@ -3,6 +3,7 @@ use serde::Serialize;
 
 use crate::BedrockManagementKind;
 use crate::BedrockPortCheckState;
+use crate::BedrockPortSource;
 use crate::BedrockTransport;
 use crate::InstanceId;
 
@@ -13,6 +14,7 @@ pub struct BedrockPortCheck {
     management_kind: BedrockManagementKind,
     transport: BedrockTransport,
     port: u16,
+    port_source: BedrockPortSource,
     state: BedrockPortCheckState,
     available: bool,
     checked_at: String,
@@ -27,6 +29,7 @@ impl BedrockPortCheck {
         management_kind: BedrockManagementKind,
         transport: BedrockTransport,
         port: u16,
+        port_source: BedrockPortSource,
         state: BedrockPortCheckState,
         available: bool,
         checked_at: String,
@@ -37,6 +40,7 @@ impl BedrockPortCheck {
             management_kind,
             transport,
             port,
+            port_source,
             state,
             available,
             checked_at,
@@ -62,6 +66,11 @@ impl BedrockPortCheck {
     #[must_use]
     pub const fn port(&self) -> u16 {
         self.port
+    }
+
+    #[must_use]
+    pub const fn port_source(&self) -> BedrockPortSource {
+        self.port_source
     }
 
     #[must_use]

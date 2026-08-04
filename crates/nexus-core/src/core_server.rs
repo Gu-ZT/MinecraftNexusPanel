@@ -10,8 +10,11 @@ use std::time::Instant;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use nexus_config::CoreConfig;
+use nexus_domain::BedrockManagementKind;
+use nexus_domain::BedrockManagementProfile;
 use nexus_domain::BedrockPortCheck;
 use nexus_domain::BedrockPortCheckState;
+use nexus_domain::BedrockPortSource;
 use nexus_domain::CoreId;
 use nexus_domain::Instance;
 use nexus_domain::InstanceCreate;
@@ -36,6 +39,8 @@ use nexus_protocol::WireMessage;
 use serde_json::Value;
 use serde_json::from_value;
 use serde_json::json;
+use serde_yaml::Value as YamlValue;
+use serde_yaml::from_slice as yaml_from_slice;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tokio::io::AsyncRead;
@@ -436,7 +441,7 @@ async fn request_response(
         "provision.task.get" => provision_task_response(request_id, params, state.provision()),
         "bedrock.profile" => bedrock_profile_response(request_id, params, state.instances()),
         "bedrock.port.check" => {
-            bedrock_port_check_response(request_id, params, state.instances()).await
+            bedrock_port_check_response(request_id, params, state.instances(), state.files()).await
         }
         "proxy.subserver.list" => proxy_subserver_list_response(
             request_id,
@@ -823,6 +828,7 @@ async fn bedrock_port_check_response(
     request_id: RequestId,
     params: &Value,
     instances: &InstanceRepository,
+    files: &FileManager,
 ) -> WireMessage {
     let Some(instance_id) = instance_id_parameter(params) else {
         return error_response(
@@ -846,8 +852,10 @@ async fn bedrock_port_check_response(
         );
     };
 
-    let (state, available, error) = match UdpSocket::bind(("0.0.0.0", profile.default_port())).await
-    {
+    let (port, port_source, configuration_error) =
+        configured_bedrock_port(&instance, &profile, files);
+
+    let (state, available, bind_error) = match UdpSocket::bind(("0.0.0.0", port)).await {
         Ok(_socket) => (BedrockPortCheckState::Available, true, None),
         Err(error) if error.kind() == ErrorKind::AddrInUse => {
             (BedrockPortCheckState::InUse, false, None)
@@ -858,6 +866,7 @@ async fn bedrock_port_check_response(
             Some("BIND_FAILED".to_owned()),
         ),
     };
+    let error = bind_error.or(configuration_error.map(str::to_owned));
 
     success_response(
         request_id,
@@ -865,13 +874,94 @@ async fn bedrock_port_check_response(
             instance_id,
             profile.management_kind(),
             profile.transport(),
-            profile.default_port(),
+            port,
+            port_source,
             state,
             available,
             current_timestamp(),
             error,
         )),
     )
+}
+
+fn configured_bedrock_port(
+    instance: &Instance,
+    profile: &BedrockManagementProfile,
+    files: &FileManager,
+) -> (u16, BedrockPortSource, Option<&'static str>) {
+    let default_port = profile.default_port();
+    let Some(configuration_path) = profile.configuration_files().first() else {
+        return (default_port, BedrockPortSource::Default, None);
+    };
+    let content = match files.read(instance, configuration_path, 0, MAXIMUM_FILE_READ_BYTES) {
+        Ok(content) => content,
+        Err(_) => {
+            return (
+                default_port,
+                BedrockPortSource::Default,
+                Some("CONFIGURATION_UNAVAILABLE"),
+            );
+        }
+    };
+    let bytes = match STANDARD.decode(content.data_base64()) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return (
+                default_port,
+                BedrockPortSource::Default,
+                Some("CONFIGURATION_INVALID"),
+            );
+        }
+    };
+    let port = match profile.management_kind() {
+        BedrockManagementKind::Geyser => parse_geyser_port(&bytes),
+        BedrockManagementKind::DedicatedServer
+        | BedrockManagementKind::PocketMine
+        | BedrockManagementKind::Nukkit => parse_server_properties_port(&bytes),
+    };
+    match port {
+        Ok(port) => (port, BedrockPortSource::Configured, None),
+        Err(error) => (default_port, BedrockPortSource::Default, Some(error)),
+    }
+}
+
+fn parse_server_properties_port(content: &[u8]) -> Result<u16, &'static str> {
+    let content = std::str::from_utf8(content).map_err(|_| "CONFIGURATION_INVALID")?;
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with('!') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=').or_else(|| line.split_once(':')) else {
+            continue;
+        };
+        if key.trim() != "server-port" {
+            continue;
+        }
+        let port = value
+            .trim()
+            .parse::<u16>()
+            .map_err(|_| "CONFIGURATION_PORT_INVALID")?;
+        return (port > 0)
+            .then_some(port)
+            .ok_or("CONFIGURATION_PORT_INVALID");
+    }
+    Err("CONFIGURATION_PORT_MISSING")
+}
+
+fn parse_geyser_port(content: &[u8]) -> Result<u16, &'static str> {
+    let document: YamlValue = yaml_from_slice(content).map_err(|_| "CONFIGURATION_INVALID")?;
+    let bedrock = yaml_field(&document, "bedrock").ok_or("CONFIGURATION_PORT_MISSING")?;
+    let port = yaml_field(bedrock, "port")
+        .and_then(YamlValue::as_u64)
+        .and_then(|port| u16::try_from(port).ok())
+        .filter(|port| *port > 0)
+        .ok_or("CONFIGURATION_PORT_INVALID")?;
+    Ok(port)
+}
+
+fn yaml_field<'a>(value: &'a YamlValue, key: &str) -> Option<&'a YamlValue> {
+    value.as_mapping()?.get(YamlValue::String(key.to_owned()))
 }
 
 fn proxy_subserver_list_response(
@@ -2685,5 +2775,39 @@ fn error_response_with_details(
             retryable,
             details,
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_geyser_port;
+    use super::parse_server_properties_port;
+
+    #[test]
+    fn reads_the_bedrock_port_from_server_properties() {
+        assert_eq!(
+            parse_server_properties_port(b"motd=MCNP\nserver-port=19133\n"),
+            Ok(19133)
+        );
+    }
+
+    #[test]
+    fn reads_the_bedrock_port_from_geyser_yaml() {
+        assert_eq!(
+            parse_geyser_port(b"bedrock:\n  address: 0.0.0.0\n  port: 19134\n"),
+            Ok(19134)
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_bedrock_ports() {
+        assert_eq!(
+            parse_server_properties_port(b"server-port=0\n"),
+            Err("CONFIGURATION_PORT_INVALID")
+        );
+        assert_eq!(
+            parse_geyser_port(b"bedrock:\n  port: invalid\n"),
+            Err("CONFIGURATION_PORT_INVALID")
+        );
     }
 }

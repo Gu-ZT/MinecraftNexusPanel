@@ -357,7 +357,7 @@ Core 只允许 `VELOCITY`、`WATERFALL`、`BUNGEECORD`、`LIGHTFALL` 和 `GEYSER
 | `bedrock.port.check` | instanceId | 默认 RakNet UDP 端口的可用性与冲突状态 |
 
 该方法仅对 Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit 和 Geyser 返回结果。
-`bedrock.port.check` 从 Core 节点探测画像声明的默认端口 `19132`，返回 `AVAILABLE`、`IN_USE` 或 `UNAVAILABLE`；它不复用 Java TCP 健康检查假设。
+`bedrock.port.check` 从 Core 节点探测配置端口；BDS、PocketMine-MP、Nukkit/Cloudburst Nukkit 读取 `server.properties` 的 `server-port`，Geyser 读取 `config.yml` 的 `bedrock.port`，读取失败时回退到画像默认端口 `19132` 并返回 `portSource=DEFAULT`。结果返回 `AVAILABLE`、`IN_USE` 或 `UNAVAILABLE`，不复用 Java TCP 健康检查假设。
 画像统一标记 RakNet UDP 与默认端口 `19132`，同时区分 `server.properties`、Geyser `config.yml` 和可管理插件类型。
 
 ### 5.6 配置与扩展

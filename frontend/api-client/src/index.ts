@@ -5,6 +5,7 @@ export type {
   BedrockManagementProfile,
   BedrockPortCheck,
   BedrockPortCheckState,
+  BedrockPortSource,
   BedrockTransport,
   ClientType,
   CommandAccepted,

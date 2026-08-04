@@ -826,10 +826,12 @@ paths:
       operationId: checkBedrockPort
       summary: Check the default Bedrock UDP port from Core
       description: |
-        Ask the registered Core node to probe the Bedrock profile's default
-        RakNet UDP port, currently 19132. The result distinguishes an
-        available port, a port already in use, and a bind failure; it does not
-        assume Java TCP health semantics.
+        Ask the registered Core node to probe the configured Bedrock RakNet
+        UDP port. BDS/PocketMine/Nukkit read server.properties and Geyser reads
+        config.yml; an unreadable or invalid configuration falls back to the
+        profile default, currently 19132, and reports the port source. The
+        result distinguishes an available port, a port already in use, and a
+        bind failure; it does not assume Java TCP health semantics.
       security:
         - cookieAuth: [ ]
           csrfToken: [ ]
@@ -3522,7 +3524,7 @@ components:
             type: string
     BedrockPortCheck:
       type: object
-      required: [ instanceId, managementKind, transport, port, state, available, checkedAt, error ]
+      required: [ instanceId, managementKind, transport, port, portSource, state, available, checkedAt, error ]
       properties:
         instanceId:
           type: string
@@ -3534,6 +3536,8 @@ components:
           type: integer
           minimum: 1
           maximum: 65535
+        portSource:
+          $ref: '#/components/schemas/BedrockPortSource'
         state:
           type: string
           enum: [ AVAILABLE, IN_USE, UNAVAILABLE ]
@@ -3544,6 +3548,9 @@ components:
           format: date-time
         error:
           type: [ string, 'null' ]
+    BedrockPortSource:
+      type: string
+      enum: [ CONFIGURED, DEFAULT ]
     ExtensionDirectoryPage:
       type: object
       required: [ path, page ]

@@ -391,6 +391,14 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     assert_eq!(bedrock_profile.body["configurationFiles"][0], "config.yml");
     assert!(bedrock_profile.body["extensionKind"].is_null());
 
+    let geyser_root = core_data.path().join("instances").join("geyser-proxy");
+    fs::create_dir_all(&geyser_root).expect("Geyser instance directory is created");
+    fs::write(
+        geyser_root.join("config.yml"),
+        b"bedrock:\n  address: 0.0.0.0\n  port: 19133\n",
+    )
+    .expect("Geyser configuration is written");
+
     let bedrock_port_check = send_json_request(
         panel_address,
         "POST",
@@ -404,7 +412,8 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     assert_eq!(bedrock_port_check.status, 200);
     assert_eq!(bedrock_port_check.body["managementKind"], "GEYSER");
     assert_eq!(bedrock_port_check.body["transport"], "RAKNET_UDP");
-    assert_eq!(bedrock_port_check.body["port"], 19132);
+    assert_eq!(bedrock_port_check.body["port"], 19133);
+    assert_eq!(bedrock_port_check.body["portSource"], "CONFIGURED");
     assert!(bedrock_port_check.body["state"].is_string());
     assert!(bedrock_port_check.body["available"].is_boolean());
 
