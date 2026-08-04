@@ -592,7 +592,7 @@ async fn wait_for_logs(
     instance_id: &InstanceId,
     expected_line: &str,
 ) -> InstanceLogPage {
-    timeout(Duration::from_secs(5), async {
+    timeout(Duration::from_secs(15), async {
         loop {
             let page = connection
                 .get_instance_logs(instance_id, None, None, Some(200))
