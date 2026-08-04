@@ -56,9 +56,10 @@ The first configuration provider is now available through Core TCP and the Panel
 - lossless top-level scalar Merge Patch updates for properties files that preserve comments, ordering, and line endings;
 - JSON object discovery with typed JSON Schema/UI Schema and nested top-level Merge Patch updates; normalized writes require explicit `allowLossy=true`;
 - YAML/YML and TOML object discovery with typed JSON Schema/UI Schema and normalized top-level Merge Patch updates; writes require explicit `allowLossy=true`;
+- Minecraft `server.properties` metadata for common booleans, integers, difficulty/gamemode enums, and a sensitive password widget for `rcon.password`; unknown keys remain strings;
 - raw text reads and writes with the same sandbox, ETag, If-Match, and idempotency protections as file management.
 
-Provider-specific schemas and cross-file validation remain planned M3 work.
+Cross-file validation and complex structured controls remain planned M3 work.
 
 ## Project Layout
 

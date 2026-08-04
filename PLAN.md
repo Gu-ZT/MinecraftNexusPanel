@@ -165,7 +165,7 @@ MinecraftNexusPanel/
 ### 4.7 文件管理边界
 
 - 文件路径始终相对于实例工作目录。Core 拒绝绝对路径、NUL、反斜杠、`.`/`..` 段和逃逸实例根目录的符号链接；Panel 不直接访问 Core 文件系统。
-- 配置文档 ID 由规范化相对路径派生，Core 递归扫描 `.properties`、`.json`、`.yaml`/`.yml` 和 `.toml` 文件并限制单文件 1 MiB；结构化写入按内容 SHA-256 做 revision 校验，properties 提供者只接受字符串、布尔和数字标量并保留注释、顺序和换行，JSON/YAML/TOML provider 返回类型化 Schema/UI Schema 并要求 `allowLossy=true` 才能规范化写回。provider-specific Schema 与跨文件校验仍未交付。
+- 配置文档 ID 由规范化相对路径派生，Core 递归扫描 `.properties`、`.json`、`.yaml`/`.yml` 和 `.toml` 文件并限制单文件 1 MiB；结构化写入按内容 SHA-256 做 revision 校验，properties 提供者只接受字符串、布尔和数字标量并保留注释、顺序和换行，`server.properties` provider 为常见布尔、整数、难度/模式枚举和 `rcon.password` 敏感字段提供专用 Schema/UI Schema，未知键仍保持字符串；JSON/YAML/TOML provider 返回类型化 Schema/UI Schema 并要求 `allowLossy=true` 才能规范化写回。跨文件校验和复杂结构化控件仍未交付。
 - 已交付能力包括 `file.list` 分页、`file.read` 分块读取、`file.write` 小文件原子替换、`file.mkdir`、`file.move`、`file.delete`、`file.batch`、`file.archive.create` 和 `file.task.get`。读取上限为 32 KiB，整体写入上限为 1 MiB，写入可用完整文件 SHA-256 做乐观并发校验。
 - 目录创建和同一实例内移动支持递归目录、覆盖选项和非空目录保护；删除要求显式 `DELETE` 确认，文件与目录删除通过 Core 后台任务执行，递归删除仍拒绝符号链接和实例根目录外路径。批量操作最多 64 项，按顺序执行并返回逐项状态，失败时保留部分结果且不伪造回滚。归档最多接收 128 个源路径，递归结果最多 16,384 个 ZIP 条目、未压缩源数据最多 4 GiB，包含文件、目录、空目录和实例根目录时按条目报告进度，并使用实例目录内临时文件原子落盘。大文件上传和下载通过 `transfer-v1` 使用固定 1 MiB 分片；上传按序写入临时文件并校验分片/完整摘要，下载按序读取并允许已读分片重试，二者均有 4 GiB 单文件上限、分别 16 会话配额、放弃和完成操作。传输状态暂存 Core 内存，重启不续传；跨重启续传、快照和差异比较仍需后续任务中心能力，不能把小文件 PUT 当作大文件上传协议。
 
@@ -256,7 +256,7 @@ stateDiagram-v2
 
 ### M3：日常运维能力
 
-- 配置识别和结构化表单、文件管理、分块上传/下载、实例终端；当前已完成 `server.properties` 无损 provider、JSON/YAML/TOML provider、文件沙箱列表、分块读取、小文件原子写入、目录创建、移动、批量操作、删除任务、ZIP 归档准备和活动 Core 内会话化分块上传/下载，后续补齐 provider-specific Schema、跨重启续传、快照、差异比较和统一任务中心进度。
+- 配置识别和结构化表单、文件管理、分块上传/下载、实例终端；当前已完成带 Minecraft 字段元数据的 `server.properties` provider、JSON/YAML/TOML provider、文件沙箱列表、分块读取、小文件原子写入、目录创建、移动、批量操作、删除任务、ZIP 归档准备和活动 Core 内会话化分块上传/下载，后续补齐跨文件校验、复杂结构化控件、跨重启续传、快照、差异比较和统一任务中心进度。
 - 模组/插件聚合搜索、安装、更新、删除和兼容性提示；当前已接入 Modrinth MOD/PLUGIN 搜索、项目版本详情、依赖记录、HTTPS 归档摘要、根项目 required 依赖计划解析、Minecraft 版本/加载器过滤、分页和来源兼容性提示；计划安装会重新解析并创建可查询的 Panel 异步任务，校验归档后通过 Core `transfer-v1` 分片写入声明目录、持久化安装记录，同一 Core、实例、扩展类型和操作重复使用 `Idempotency-Key` 会复用原任务，已持久化的 Modrinth 扩展可重新解析目标版本并在 Core 目标摘要保护下只更新根文件，混合端插件/模组分开处理，目录由模板布局决定。Core 侧统一任务、失败回滚、更多来源和批量更新仍待完成。
 - 代理子服务器连通性与启停编排；基岩端 RakNet 端口、配置文件、扩展目录、健康检查和升级运维。
 - Cron/事件计划任务、执行历史、任务中心、备份/恢复。
