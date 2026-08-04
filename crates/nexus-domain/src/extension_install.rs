@@ -1,8 +1,14 @@
+//! 本地产物的扩展安装记录。
+
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::ExtensionKind;
 
+/// 记录已写入实例目录的插件或模组文件及其来源摘要。
+///
+/// `kind` 和 `path` 必须保持独立，混合端即使暂时共用物理目录，也不能
+/// 因路径相同而合并插件和模组的管理记录。
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtensionInstall {
@@ -17,6 +23,7 @@ pub struct ExtensionInstall {
 }
 
 impl ExtensionInstall {
+    /// 创建一条本地扩展安装记录。
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -41,26 +48,31 @@ impl ExtensionInstall {
         }
     }
 
+    /// 返回安装记录 ID。
     #[must_use]
     pub fn id(&self) -> &str {
         &self.id
     }
 
+    /// 返回插件或模组种类。
     #[must_use]
     pub const fn kind(&self) -> ExtensionKind {
         self.kind
     }
 
+    /// 返回实例工作目录内的相对路径。
     #[must_use]
     pub fn path(&self) -> &str {
         &self.path
     }
 
+    /// 返回本地产物的 SHA-256 摘要。
     #[must_use]
     pub fn sha256(&self) -> &str {
         &self.sha256
     }
 
+    /// 返回来源标识。
     #[must_use]
     pub fn source(&self) -> &str {
         &self.source

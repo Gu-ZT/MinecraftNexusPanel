@@ -1,8 +1,11 @@
+//! 扩展项目分页搜索结果。
+
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::ExtensionProject;
 
+/// 一个来源的一页扩展项目及分页游标信息。
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtensionSearchResult {
@@ -14,6 +17,7 @@ pub struct ExtensionSearchResult {
 }
 
 impl ExtensionSearchResult {
+    /// 创建扩展项目分页结果。
     #[must_use]
     pub fn new(
         source: String,

@@ -1,9 +1,15 @@
+//! 扩展来源项目搜索结果。
+
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::ExtensionCompatibility;
 use crate::ExtensionKind;
 
+/// 聚合来源返回的一个插件或模组项目。
+///
+/// `compatibility` 只表示当前请求筛选条件下的来源元数据结论，
+/// 不能替代对具体版本、归档摘要和运行时行为的验证。
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtensionProject {
@@ -21,6 +27,7 @@ pub struct ExtensionProject {
 }
 
 impl ExtensionProject {
+    /// 创建一个来源项目摘要。
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub fn new(

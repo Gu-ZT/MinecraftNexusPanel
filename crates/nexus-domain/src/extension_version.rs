@@ -1,3 +1,5 @@
+//! 扩展来源项目的具体版本。
+
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -5,6 +7,7 @@ use crate::ExtensionArtifact;
 use crate::ExtensionCompatibility;
 use crate::ExtensionDependency;
 
+/// 描述一个可供计划解析的扩展版本、依赖和归档文件。
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtensionVersion {
@@ -21,6 +24,7 @@ pub struct ExtensionVersion {
 }
 
 impl ExtensionVersion {
+    /// 创建一个扩展版本描述。
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub fn new(

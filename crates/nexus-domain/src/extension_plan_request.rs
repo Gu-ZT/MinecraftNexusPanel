@@ -1,8 +1,11 @@
+//! 扩展安装计划解析请求。
+
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::ExtensionKind;
 
+/// 请求为一个扩展项目解析版本、依赖和目标目录计划。
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtensionPlanRequest {
@@ -16,6 +19,7 @@ pub struct ExtensionPlanRequest {
 }
 
 impl ExtensionPlanRequest {
+    /// 返回目标安装模板 ID。
     #[must_use]
     pub fn template_id(&self) -> &str {
         &self.template_id
