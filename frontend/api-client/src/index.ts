@@ -79,6 +79,7 @@ export type {
   ProxyTopology,
   ProxySubserver,
   ProxySubserverHealth,
+  ProxySubserverProtocolStatus,
   ProxySubserverHealthStatus,
   ProxySubserverPage,
   SessionTokens,

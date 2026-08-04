@@ -428,6 +428,37 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
         .local_addr()
         .expect("proxy backend listener address is available")
         .port();
+    let proxy_backend_task = spawn(async move {
+        let (mut stream, _) = proxy_backend_listener
+            .accept()
+            .await
+            .expect("proxy backend accepts the status connection");
+        let handshake_length = read_test_varint(&mut stream).await;
+        let mut handshake = vec![0; handshake_length];
+        stream
+            .read_exact(&mut handshake)
+            .await
+            .expect("status handshake is readable");
+        let request_length = read_test_varint(&mut stream).await;
+        let mut request = vec![0; request_length];
+        stream
+            .read_exact(&mut request)
+            .await
+            .expect("status request is readable");
+
+        let status_json = br#"{"version":{"name":"MCNP","protocol":767},"description":"ok"}"#;
+        let mut response_payload = Vec::new();
+        write_test_varint(0, &mut response_payload);
+        write_test_varint(status_json.len(), &mut response_payload);
+        response_payload.extend_from_slice(status_json);
+        let mut response = Vec::new();
+        write_test_varint(response_payload.len(), &mut response);
+        response.extend_from_slice(&response_payload);
+        stream
+            .write_all(&response)
+            .await
+            .expect("status response is writable");
+    });
     let first_subserver = send_json_request(
         panel_address,
         "POST",
@@ -459,9 +490,13 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     .await;
     assert_eq!(checked_subserver.status, 200);
     assert_eq!(checked_subserver.body["status"], "REACHABLE");
+    assert_eq!(checked_subserver.body["protocolStatus"], "RESPONDED");
     assert_eq!(checked_subserver.body["reachable"], true);
     assert_eq!(checked_subserver.body["port"], proxy_backend_port);
     assert!(checked_subserver.body["latencyMs"].is_number());
+    proxy_backend_task
+        .await
+        .expect("proxy backend status task completes");
 
     let listed_subservers = send_json_request(
         panel_address,
@@ -1568,6 +1603,30 @@ fn sha256_hex(content: &[u8]) -> String {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
+}
+
+async fn read_test_varint(stream: &mut TcpStream) -> usize {
+    let mut value = 0_usize;
+    for index in 0..5 {
+        let byte = stream
+            .read_u8()
+            .await
+            .expect("test status packet has a length");
+        value |= usize::from(byte & 0x7f) << (index * 7);
+        if byte & 0x80 == 0 {
+            return value;
+        }
+    }
+    panic!("test status packet length is invalid");
+}
+
+fn write_test_varint(value: usize, bytes: &mut Vec<u8>) {
+    let mut value = value;
+    while value & !0x7f != 0 {
+        bytes.push(((value & 0x7f) as u8) | 0x80);
+        value >>= 7;
+    }
+    bytes.push(value as u8);
 }
 
 fn instance_create_with_kind(identifier: &str, kind: &str) -> Value {

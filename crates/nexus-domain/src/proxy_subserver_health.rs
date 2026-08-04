@@ -3,6 +3,7 @@ use serde::Serialize;
 
 use crate::InstanceId;
 use crate::ProxySubserverHealthStatus;
+use crate::ProxySubserverProtocolStatus;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,6 +14,7 @@ pub struct ProxySubserverHealth {
     port: u16,
     enabled: bool,
     status: ProxySubserverHealthStatus,
+    protocol_status: ProxySubserverProtocolStatus,
     reachable: Option<bool>,
     latency_ms: Option<u64>,
     checked_at: String,
@@ -29,6 +31,7 @@ impl ProxySubserverHealth {
         port: u16,
         enabled: bool,
         status: ProxySubserverHealthStatus,
+        protocol_status: ProxySubserverProtocolStatus,
         reachable: Option<bool>,
         latency_ms: Option<u64>,
         checked_at: String,
@@ -41,6 +44,7 @@ impl ProxySubserverHealth {
             port,
             enabled,
             status,
+            protocol_status,
             reachable,
             latency_ms,
             checked_at,
@@ -76,6 +80,11 @@ impl ProxySubserverHealth {
     #[must_use]
     pub const fn status(&self) -> ProxySubserverHealthStatus {
         self.status
+    }
+
+    #[must_use]
+    pub const fn protocol_status(&self) -> ProxySubserverProtocolStatus {
+        self.protocol_status
     }
 
     #[must_use]

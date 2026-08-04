@@ -30,6 +30,7 @@ use nexus_domain::ProvisionPlan;
 use nexus_domain::ProxySubserver;
 use nexus_domain::ProxySubserverHealth;
 use nexus_domain::ProxySubserverHealthStatus;
+use nexus_domain::ProxySubserverProtocolStatus;
 use nexus_domain::RequestId;
 use nexus_domain::RuntimeInstallManifest;
 use nexus_domain::TaskId;
@@ -47,7 +48,9 @@ use serde_yaml::from_slice as yaml_from_slice;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tokio::io::AsyncRead;
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
@@ -98,6 +101,8 @@ const INSTANCE_LIST_MAXIMUM_LIMIT: usize = 200;
 const INSTANCE_LOG_DEFAULT_LIMIT: usize = 50;
 const INSTANCE_LOG_MAXIMUM_LIMIT: usize = 200;
 const PROXY_SUBSERVER_HEALTH_TIMEOUT: Duration = Duration::from_secs(3);
+const MINECRAFT_STATUS_PROTOCOL_VERSION: i32 = 767;
+const MAXIMUM_MINECRAFT_STATUS_PACKET_BYTES: usize = 2 * 1024 * 1024;
 
 pub struct CoreServer {
     core_id: CoreId,
@@ -1200,6 +1205,7 @@ async fn proxy_subserver_check_response(
                 subserver.port(),
                 false,
                 ProxySubserverHealthStatus::Disabled,
+                ProxySubserverProtocolStatus::Disabled,
                 None,
                 None,
                 current_timestamp(),
@@ -1211,19 +1217,32 @@ async fn proxy_subserver_check_response(
     let started_at = Instant::now();
     let result = timeout(
         PROXY_SUBSERVER_HEALTH_TIMEOUT,
-        TcpStream::connect((subserver.host(), subserver.port())),
+        minecraft_status_probe(&subserver),
     )
     .await;
     let latency_ms = Some(started_at.elapsed().as_millis() as u64);
-    let (status, reachable, error) = match result {
-        Ok(Ok(_stream)) => (ProxySubserverHealthStatus::Reachable, Some(true), None),
-        Ok(Err(error)) => (
+    let (status, protocol_status, reachable, error) = match result {
+        Ok(Ok(())) => (
+            ProxySubserverHealthStatus::Reachable,
+            ProxySubserverProtocolStatus::Responded,
+            Some(true),
+            None,
+        ),
+        Ok(Err(error)) if is_network_probe_error(error) => (
             ProxySubserverHealthStatus::Unreachable,
+            ProxySubserverProtocolStatus::Unavailable,
             Some(false),
-            Some(proxy_health_error(error.kind()).to_owned()),
+            Some(error.to_owned()),
+        ),
+        Ok(Err(error)) => (
+            ProxySubserverHealthStatus::Reachable,
+            ProxySubserverProtocolStatus::InvalidResponse,
+            Some(true),
+            Some(error.to_owned()),
         ),
         Err(_) => (
             ProxySubserverHealthStatus::Unreachable,
+            ProxySubserverProtocolStatus::Unavailable,
             Some(false),
             Some("TIMEOUT".to_owned()),
         ),
@@ -1238,11 +1257,135 @@ async fn proxy_subserver_check_response(
             subserver.port(),
             true,
             status,
+            protocol_status,
             reachable,
             latency_ms,
             current_timestamp(),
             error,
         )),
+    )
+}
+
+async fn minecraft_status_probe(subserver: &ProxySubserver) -> Result<(), &'static str> {
+    let mut stream = TcpStream::connect((subserver.host(), subserver.port()))
+        .await
+        .map_err(|error| proxy_health_error(error.kind()))?;
+    let mut handshake = Vec::new();
+    write_varint(0, &mut handshake);
+    write_varint(MINECRAFT_STATUS_PROTOCOL_VERSION, &mut handshake);
+    write_string(subserver.host(), &mut handshake);
+    handshake.extend_from_slice(&subserver.port().to_be_bytes());
+    write_varint(1, &mut handshake);
+    write_minecraft_packet(&mut stream, &handshake).await?;
+    write_minecraft_packet(&mut stream, &[0]).await?;
+    read_minecraft_status_response(&mut stream).await
+}
+
+async fn write_minecraft_packet(
+    stream: &mut TcpStream,
+    payload: &[u8],
+) -> Result<(), &'static str> {
+    let length = i32::try_from(payload.len()).map_err(|_| "PROTOCOL_PACKET_TOO_LARGE")?;
+    let mut packet = Vec::with_capacity(payload.len().saturating_add(5));
+    write_varint(length, &mut packet);
+    packet.extend_from_slice(payload);
+    stream
+        .write_all(&packet)
+        .await
+        .map_err(|_| "PROTOCOL_WRITE_FAILED")
+}
+
+async fn read_minecraft_status_response(stream: &mut TcpStream) -> Result<(), &'static str> {
+    let packet_length = read_varint(stream).await?;
+    let packet_length = usize::try_from(packet_length)
+        .ok()
+        .filter(|length| (1..=MAXIMUM_MINECRAFT_STATUS_PACKET_BYTES).contains(length))
+        .ok_or("PROTOCOL_INVALID_RESPONSE")?;
+    let mut packet = vec![0; packet_length];
+    stream
+        .read_exact(&mut packet)
+        .await
+        .map_err(|_| "PROTOCOL_READ_FAILED")?;
+    let (packet_id, offset) = read_varint_from_slice(&packet)?;
+    if packet_id != 0 {
+        return Err("PROTOCOL_INVALID_RESPONSE");
+    }
+    let (json_length, json_offset) = read_varint_from_slice(&packet[offset..])?;
+    let json_length = usize::try_from(json_length)
+        .ok()
+        .filter(|length| *length <= MAXIMUM_MINECRAFT_STATUS_PACKET_BYTES)
+        .ok_or("PROTOCOL_INVALID_RESPONSE")?;
+    let json_start = offset
+        .checked_add(json_offset)
+        .ok_or("PROTOCOL_INVALID_RESPONSE")?;
+    let json_end = json_start
+        .checked_add(json_length)
+        .ok_or("PROTOCOL_INVALID_RESPONSE")?;
+    let json_bytes = packet
+        .get(json_start..json_end)
+        .ok_or("PROTOCOL_INVALID_RESPONSE")?;
+    let value: Value =
+        serde_json::from_slice(json_bytes).map_err(|_| "PROTOCOL_INVALID_RESPONSE")?;
+    let object = value.as_object().ok_or("PROTOCOL_INVALID_RESPONSE")?;
+    if object.get("version").and_then(Value::as_object).is_none()
+        || !object.contains_key("description")
+    {
+        return Err("PROTOCOL_INVALID_RESPONSE");
+    }
+
+    Ok(())
+}
+
+async fn read_varint(stream: &mut TcpStream) -> Result<i32, &'static str> {
+    let mut value = 0_u32;
+    for index in 0..5 {
+        let byte = stream.read_u8().await.map_err(|_| "PROTOCOL_READ_FAILED")?;
+        value |= u32::from(byte & 0x7f) << (index * 7);
+        if byte & 0x80 == 0 {
+            return i32::try_from(value).map_err(|_| "PROTOCOL_INVALID_RESPONSE");
+        }
+    }
+
+    Err("PROTOCOL_INVALID_RESPONSE")
+}
+
+fn read_varint_from_slice(bytes: &[u8]) -> Result<(i32, usize), &'static str> {
+    let mut value = 0_u32;
+    for (index, byte) in bytes.iter().copied().enumerate().take(5) {
+        value |= u32::from(byte & 0x7f) << (index * 7);
+        if byte & 0x80 == 0 {
+            return Ok((
+                i32::try_from(value).map_err(|_| "PROTOCOL_INVALID_RESPONSE")?,
+                index + 1,
+            ));
+        }
+    }
+
+    Err("PROTOCOL_INVALID_RESPONSE")
+}
+
+fn write_varint(value: i32, bytes: &mut Vec<u8>) {
+    let mut value = value as u32;
+    while value & !0x7f != 0 {
+        bytes.push(((value & 0x7f) as u8) | 0x80);
+        value >>= 7;
+    }
+    bytes.push(value as u8);
+}
+
+fn write_string(value: &str, bytes: &mut Vec<u8>) {
+    write_varint(i32::try_from(value.len()).unwrap_or(i32::MAX), bytes);
+    bytes.extend_from_slice(value.as_bytes());
+}
+
+fn is_network_probe_error(error: &str) -> bool {
+    matches!(
+        error,
+        "CONNECTION_REFUSED"
+            | "CONNECTION_RESET"
+            | "ADDRESS_UNAVAILABLE"
+            | "TIMEOUT"
+            | "CONNECT_FAILED"
     )
 }
 
@@ -2871,10 +3014,74 @@ fn error_response_with_details(
 
 #[cfg(test)]
 mod tests {
+    use super::minecraft_status_probe;
     use super::parse_geyser_address;
     use super::parse_geyser_port;
     use super::parse_server_properties_address;
     use super::parse_server_properties_port;
+    use nexus_domain::InstanceId;
+    use nexus_domain::ProxySubserver;
+    use tokio::io::AsyncReadExt;
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::TcpListener;
+    use tokio::spawn;
+
+    #[tokio::test]
+    async fn rejects_a_non_minecraft_status_response() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("test status listener binds");
+        let port = listener
+            .local_addr()
+            .expect("test status listener address is available")
+            .port();
+        let server_task = spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("status connection arrives");
+            let handshake_length = super::read_varint(&mut stream)
+                .await
+                .expect("status handshake has a length");
+            let mut handshake = vec![0; handshake_length as usize];
+            stream
+                .read_exact(&mut handshake)
+                .await
+                .expect("status handshake is readable");
+            let request_length = super::read_varint(&mut stream)
+                .await
+                .expect("status request has a length");
+            let mut request = vec![0; request_length as usize];
+            stream
+                .read_exact(&mut request)
+                .await
+                .expect("status request is readable");
+            let status_json = br#"{"description":"not a Minecraft status"}"#;
+            let mut payload = Vec::new();
+            super::write_varint(0, &mut payload);
+            super::write_varint(status_json.len() as i32, &mut payload);
+            payload.extend_from_slice(status_json);
+            let mut response = Vec::new();
+            super::write_varint(payload.len() as i32, &mut response);
+            response.extend_from_slice(&payload);
+            stream
+                .write_all(&response)
+                .await
+                .expect("invalid status response is writable");
+        });
+        let subserver = ProxySubserver::new(
+            "status".to_owned(),
+            "Status".to_owned(),
+            InstanceId::new("backend".to_owned()).expect("backend ID is valid"),
+            "127.0.0.1".to_owned(),
+            port,
+            true,
+        )
+        .expect("test subserver is valid");
+
+        assert_eq!(
+            minecraft_status_probe(&subserver).await,
+            Err("PROTOCOL_INVALID_RESPONSE")
+        );
+        server_task.await.expect("invalid status server completes");
+    }
 
     #[test]
     fn reads_the_bedrock_port_from_server_properties() {

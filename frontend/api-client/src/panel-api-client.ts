@@ -537,6 +537,11 @@ export interface ProxySubserverPage {
 }
 
 export type ProxySubserverHealthStatus = 'DISABLED' | 'REACHABLE' | 'UNREACHABLE';
+export type ProxySubserverProtocolStatus =
+  | 'DISABLED'
+  | 'UNAVAILABLE'
+  | 'INVALID_RESPONSE'
+  | 'RESPONDED';
 
 export interface ProxySubserverHealth {
   subserverId: string;
@@ -545,6 +550,7 @@ export interface ProxySubserverHealth {
   port: number;
   enabled: boolean;
   status: ProxySubserverHealthStatus;
+  protocolStatus: ProxySubserverProtocolStatus;
   reachable: boolean | null;
   latencyMs: number | null;
   checkedAt: string;
