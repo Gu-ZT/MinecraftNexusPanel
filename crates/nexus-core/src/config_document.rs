@@ -72,6 +72,7 @@ pub(crate) fn document(path: &str, content: &[u8]) -> Result<Value, ConfigDocume
 fn properties_document(path: &str, content: &[u8]) -> Result<Value, ConfigDocumentError> {
     let content = std::str::from_utf8(content).map_err(|_| ConfigDocumentError::InvalidUtf8)?;
     let lines = parse_property_lines(content);
+    let server_properties = is_server_properties(path);
     let mut values = Map::new();
     let mut schema_properties = Map::new();
     let mut ui_properties = Map::new();
@@ -80,15 +81,22 @@ fn properties_document(path: &str, content: &[u8]) -> Result<Value, ConfigDocume
     for line in &lines {
         if let Some(key) = &line.key {
             let value = &line.body[line.value_start..line.value_end];
-            values.insert(key.clone(), Value::String(value.to_owned()));
-            schema_properties.insert(
-                key.clone(),
-                json!({
-                    "type": "string",
-                    "title": key,
-                }),
-            );
-            ui_properties.insert(key.clone(), json!({ "widget": "text" }));
+            let schema = server_properties
+                .then(|| server_property_schema(key))
+                .flatten()
+                .unwrap_or_else(|| json!({ "type": "string", "title": key }));
+            let ui_schema = server_properties
+                .then(|| server_property_ui_schema(key))
+                .flatten()
+                .unwrap_or_else(|| json!({ "widget": "text" }));
+            let value = if server_properties {
+                server_property_value(key, value)
+            } else {
+                Value::String(value.to_owned())
+            };
+            values.insert(key.clone(), value);
+            schema_properties.insert(key.clone(), schema);
+            ui_properties.insert(key.clone(), ui_schema);
         } else if !line.body.trim().is_empty() {
             unmapped.push(line.body.clone());
         }
@@ -115,6 +123,117 @@ fn properties_document(path: &str, content: &[u8]) -> Result<Value, ConfigDocume
         "unmapped": unmapped,
         "lossy": false,
     }))
+}
+
+fn is_server_properties(path: &str) -> bool {
+    Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("server.properties"))
+}
+
+fn server_property_schema(key: &str) -> Option<Value> {
+    if is_server_boolean_property(key) {
+        Some(json!({ "type": "boolean", "title": key }))
+    } else if is_server_integer_property(key) {
+        Some(json!({ "type": "integer", "title": key }))
+    } else if let Some(options) = server_property_options(key) {
+        Some(json!({ "type": "string", "title": key, "enum": options }))
+    } else if key == "rcon.password" {
+        Some(json!({
+            "type": "string",
+            "title": key,
+            "writeOnly": true
+        }))
+    } else {
+        None
+    }
+}
+
+fn server_property_ui_schema(key: &str) -> Option<Value> {
+    if is_server_boolean_property(key) {
+        Some(json!({ "widget": "checkbox" }))
+    } else if is_server_integer_property(key) {
+        Some(json!({ "widget": "number" }))
+    } else if let Some(options) = server_property_options(key) {
+        Some(json!({ "widget": "select", "options": options }))
+    } else if key == "rcon.password" {
+        Some(json!({ "widget": "password", "sensitive": true }))
+    } else {
+        None
+    }
+}
+
+fn server_property_value(key: &str, value: &str) -> Value {
+    if is_server_boolean_property(key) {
+        value
+            .parse::<bool>()
+            .map(Value::Bool)
+            .unwrap_or_else(|_| Value::String(value.to_owned()))
+    } else if is_server_integer_property(key) {
+        value
+            .parse::<i64>()
+            .map(|value| json!(value))
+            .unwrap_or_else(|_| Value::String(value.to_owned()))
+    } else {
+        Value::String(value.to_owned())
+    }
+}
+
+fn is_server_boolean_property(key: &str) -> bool {
+    matches!(
+        key,
+        "allow-flight"
+            | "allow-nether"
+            | "broadcast-console-to-ops"
+            | "broadcast-rcon-to-ops"
+            | "enable-command-block"
+            | "enable-jmx-monitoring"
+            | "enable-query"
+            | "enable-rcon"
+            | "enable-status"
+            | "enforce-secure-profile"
+            | "enforce-whitelist"
+            | "force-gamemode"
+            | "hardcore"
+            | "hide-online-players"
+            | "online-mode"
+            | "pvp"
+            | "spawn-animals"
+            | "spawn-monsters"
+            | "spawn-npcs"
+            | "sync-chunk-writes"
+            | "use-native-transport"
+            | "white-list"
+    )
+}
+
+fn is_server_integer_property(key: &str) -> bool {
+    matches!(
+        key,
+        "entity-broadcast-range-percentage"
+            | "function-permission-level"
+            | "max-players"
+            | "max-tick-time"
+            | "network-compression-threshold"
+            | "op-permission-level"
+            | "player-idle-timeout"
+            | "query.port"
+            | "rate-limit"
+            | "rcon.port"
+            | "server-port"
+            | "simulation-distance"
+            | "spawn-protection"
+            | "view-distance"
+    )
+}
+
+fn server_property_options(key: &str) -> Option<&'static [&'static str]> {
+    match key {
+        "difficulty" => Some(&["peaceful", "easy", "normal", "hard"]),
+        "gamemode" => Some(&["survival", "creative", "adventure", "spectator"]),
+        _ => None,
+    }
 }
 
 fn structured_document(
@@ -587,8 +706,36 @@ mod tests {
 
         assert_eq!(document["format"], "PROPERTIES");
         assert_eq!(document["values"]["motd"], "Welcome");
-        assert_eq!(document["values"]["online-mode"], "true");
+        assert_eq!(document["values"]["online-mode"], true);
         assert_eq!(document["unmapped"], json!(["# keep this"]));
+    }
+
+    #[test]
+    fn applies_server_properties_types_enums_and_sensitive_ui_metadata() {
+        let document = document(
+            "server.properties",
+            b"online-mode=true\nserver-port=25565\ndifficulty=hard\nrcon.password=secret\n",
+        )
+        .expect("server.properties is parsed");
+
+        assert_eq!(document["values"]["online-mode"], true);
+        assert_eq!(document["values"]["server-port"], 25565);
+        assert_eq!(
+            document["schema"]["properties"]["server-port"]["type"],
+            "integer"
+        );
+        assert_eq!(
+            document["schema"]["properties"]["difficulty"]["enum"],
+            json!(["peaceful", "easy", "normal", "hard"])
+        );
+        assert_eq!(
+            document["uiSchema"]["properties"]["difficulty"]["widget"],
+            "select"
+        );
+        assert_eq!(
+            document["uiSchema"]["properties"]["rcon.password"]["sensitive"],
+            true
+        );
     }
 
     #[test]
