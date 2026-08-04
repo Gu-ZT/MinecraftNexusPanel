@@ -2,12 +2,17 @@ use crate::MAX_PLAINTEXT_JSON_BYTES;
 use crate::MessageError;
 use crate::WireMessage;
 
+/// 将明文 JSON 负载反序列化为线协议消息。
+///
+/// 函数只负责 JSON 语法和消息外形解析；调用方仍需在业务层校验方法名、参数
+/// 和权限，并且输入长度会先经过协议上限检查。
 pub fn deserialize_message(payload: &[u8]) -> Result<WireMessage, MessageError> {
     validate_message_length(payload.len())?;
 
     serde_json::from_slice(payload).map_err(MessageError::InvalidJson)
 }
 
+/// 将线协议消息序列化为受长度限制的 JSON 负载。
 pub fn serialize_message(message: &WireMessage) -> Result<Vec<u8>, MessageError> {
     let payload = serde_json::to_vec(message).map_err(MessageError::InvalidJson)?;
     validate_message_length(payload.len())?;

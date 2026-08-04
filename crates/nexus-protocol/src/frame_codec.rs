@@ -2,6 +2,10 @@ use crate::Frame;
 use crate::FrameError;
 use crate::MAX_CIPHERTEXT_FRAME_BYTES;
 
+/// 处理四字节大端长度前缀帧的编解码器。
+///
+/// 解码器在输入不足时返回 `Ok(None)`，适合 TCP 读取缓冲区；它不会自行保存
+/// 未完成的数据。长度上限同时约束编码和解码，避免对不可信长度进行大规模分配。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FrameCodec {
     maximum_frame_bytes: usize,
@@ -14,6 +18,7 @@ impl Default for FrameCodec {
 }
 
 impl FrameCodec {
+    /// 创建指定最大负载长度的编解码器。
     #[must_use]
     pub const fn new(maximum_frame_bytes: usize) -> Self {
         Self {
@@ -21,6 +26,10 @@ impl FrameCodec {
         }
     }
 
+    /// 尝试从输入开头解码一个帧。
+    ///
+    /// 输入不足以形成完整帧时返回 `Ok(None)`；输入已包含完整帧时会忽略其后
+    /// 的字节，并通过 [`Frame::consumed`] 告知调用方应移除的长度。
     pub fn decode<'a>(&self, input: &'a [u8]) -> Result<Option<Frame<'a>>, FrameError> {
         if input.len() < u32::BITS as usize / 8 {
             return Ok(None);
@@ -37,6 +46,10 @@ impl FrameCodec {
         Ok(Some(Frame::new(&input[4..consumed], consumed)))
     }
 
+    /// 解码必须占满整个输入的单个帧。
+    ///
+    /// 与 [`Self::decode`] 不同，完整解码会拒绝尾随字节，适合处理已经按消息
+    /// 边界分割好的缓冲区。
     pub fn decode_complete<'a>(&self, input: &'a [u8]) -> Result<Frame<'a>, FrameError> {
         let Some(frame) = self.decode(input)? else {
             let expected = input
@@ -60,6 +73,7 @@ impl FrameCodec {
         Ok(frame)
     }
 
+    /// 为负载添加四字节大端长度头。
     pub fn encode(&self, payload: &[u8]) -> Result<Vec<u8>, FrameError> {
         self.validate_payload_length(payload.len())?;
 
@@ -75,6 +89,7 @@ impl FrameCodec {
         Ok(frame)
     }
 
+    /// 校验负载长度是否符合非空和上限约束。
     pub fn validate_payload_length(&self, length: usize) -> Result<(), FrameError> {
         if length == 0 {
             return Err(FrameError::EmptyFrame);
