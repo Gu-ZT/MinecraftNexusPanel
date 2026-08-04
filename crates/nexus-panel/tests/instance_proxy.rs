@@ -249,6 +249,70 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
         plugin_scan_after_install.body["directories"][0]["page"]["items"][0]["path"],
         "plugins/installed.jar"
     );
+    assert_eq!(
+        plugin_scan_after_install.body["installations"][0]["kind"],
+        "PLUGIN"
+    );
+    assert_eq!(
+        plugin_scan_after_install.body["installations"][0]["path"],
+        "plugins/installed.jar"
+    );
+    assert_eq!(
+        plugin_scan_after_install.body["installations"][0]["source"],
+        "LOCAL"
+    );
+    assert_eq!(
+        plugin_scan_after_install.body["installations"][0]["sha256"]
+            .as_str()
+            .map(str::len),
+        Some(64)
+    );
+
+    let delete_installed_idempotency_key = RequestId::new().to_string();
+    let delete_installed_extension = send_json_request(
+        panel_address,
+        "DELETE",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/hybrid-backend/extensions?templateId=mohist&kind=PLUGIN&path=plugins/installed.jar&confirmation=DELETE"
+        ),
+        &[
+            ("Authorization", authorization.as_str()),
+            (
+                "Idempotency-Key",
+                delete_installed_idempotency_key.as_str(),
+            ),
+        ],
+        None,
+    )
+    .await;
+    assert_eq!(delete_installed_extension.status, 202);
+    let delete_installed_task = wait_for_file_task(
+        panel_address,
+        authorization.as_str(),
+        &core_id,
+        delete_installed_extension.body["taskId"]
+            .as_str()
+            .expect("installed extension delete task id is returned"),
+    )
+    .await;
+    assert_eq!(delete_installed_task["state"], "SUCCEEDED");
+
+    let plugin_scan_after_record_delete = send_json_request(
+        panel_address,
+        "GET",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/hybrid-backend/extensions?templateId=mohist&kind=PLUGIN"
+        ),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(plugin_scan_after_record_delete.status, 200);
+    assert!(
+        plugin_scan_after_record_delete.body["installations"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+    );
 
     let invalid_extension_path = send_json_request(
         panel_address,

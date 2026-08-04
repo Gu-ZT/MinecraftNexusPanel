@@ -12,6 +12,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::response::Response;
 use axum::routing::get;
+use nexus_domain::ExtensionInstall;
 use nexus_domain::ExtensionKind;
 use nexus_domain::FilePage;
 use nexus_domain::Instance;
@@ -19,6 +20,8 @@ use nexus_domain::InstanceId;
 use nexus_domain::RequestId;
 use serde_json::from_value;
 use serde_json::json;
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 
 use crate::CoreConnectionError;
 use crate::CoreRegistryError;
@@ -125,11 +128,20 @@ async fn list_instance_extensions(
             "page": page,
         }));
     }
+    let installations = match state
+        .cores()
+        .list_extension_installs(core_id, &instance_id, kind)
+        .await
+    {
+        Ok(installations) => installations,
+        Err(error) => return registry_error_response(error, request_id),
+    };
 
     Json(json!({
         "templateId": template.id(),
         "kind": kind,
         "directories": directory_pages,
+        "installations": installations,
     }))
     .into_response()
 }
@@ -227,12 +239,38 @@ async fn write_instance_extension(
         );
     }
 
-    match state
+    let entry = match state
         .cores()
         .write_instance_file(core_id, &instance_id, path, &body, None, idempotency_key)
         .await
     {
-        Ok(entry) => Json(entry).into_response(),
+        Ok(entry) => entry,
+        Err(error) => return registry_error_response(error, request_id),
+    };
+    let Some(sha256) = entry.sha256() else {
+        return error_response(
+            StatusCode::BAD_GATEWAY,
+            "INTERNAL_ERROR",
+            "Core did not return an extension file hash",
+            request_id,
+        );
+    };
+    let install = ExtensionInstall::new(
+        RequestId::new().to_string(),
+        kind,
+        path.to_owned(),
+        sha256.to_owned(),
+        "LOCAL".to_owned(),
+        None,
+        None,
+        current_timestamp(),
+    );
+    match state
+        .cores()
+        .upsert_extension_install(core_id, &instance_id, &install)
+        .await
+    {
+        Ok(_) => Json(entry).into_response(),
         Err(error) => registry_error_response(error, request_id),
     }
 }
@@ -329,7 +367,16 @@ async fn delete_instance_extension(
         .delete_instance_file(core_id, &instance_id, path, false, idempotency_key)
         .await
     {
-        Ok(task) => (StatusCode::ACCEPTED, Json(task)).into_response(),
+        Ok(task) => {
+            if let Err(error) = state
+                .cores()
+                .delete_extension_install(core_id, &instance_id, path)
+                .await
+            {
+                tracing::error!(%error, %path, "Failed to remove extension installation record");
+            }
+            (StatusCode::ACCEPTED, Json(task)).into_response()
+        }
         Err(error) => registry_error_response(error, request_id),
     }
 }
@@ -363,4 +410,10 @@ fn validation_error(request_id: RequestId) -> Response {
         "Extension scan parameters are invalid",
         request_id,
     )
+}
+
+fn current_timestamp() -> String {
+    OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_owned())
 }

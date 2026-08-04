@@ -24,6 +24,8 @@ pub enum CoreRegistryError {
     InvalidRequest { field: &'static str },
     #[error("stored Core registration is invalid: {core_id}")]
     InvalidStoredCore { core_id: String },
+    #[error("stored extension installation is invalid: {path}")]
+    InvalidStoredExtension { path: String },
     #[error("Core secret must be valid unpadded Base64URL containing at least 32 bytes")]
     InvalidSecret(#[source] PresharedKeyError),
     #[error("loopback Core returned unexpected identity: expected {expected}, got {actual}")]

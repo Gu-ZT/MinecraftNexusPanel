@@ -6,6 +6,8 @@ use std::time::Instant;
 
 use nexus_config::LocalCoreConfig;
 use nexus_domain::CoreId;
+use nexus_domain::ExtensionInstall;
+use nexus_domain::ExtensionKind;
 use nexus_domain::FileContent;
 use nexus_domain::FileEntry;
 use nexus_domain::FilePage;
@@ -23,8 +25,10 @@ use nexus_protocol::PresharedKey;
 use nexus_protocol::ProtocolVersion;
 use nexus_protocol::SessionError;
 use nexus_storage::NewCore;
+use nexus_storage::NewExtensionInstall;
 use nexus_storage::SqliteStore;
 use nexus_storage::StoredCore;
+use nexus_storage::StoredExtensionInstall;
 use serde_json::Value;
 use serde_json::from_str;
 use serde_json::json;
@@ -427,6 +431,69 @@ impl CoreRegistry {
         let profile = connection.get_bedrock_profile(instance_id).await?;
 
         Ok(json!(profile))
+    }
+
+    pub async fn upsert_extension_install(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        install: &ExtensionInstall,
+    ) -> Result<ExtensionInstall, CoreRegistryError> {
+        let new_install = NewExtensionInstall {
+            id: install.id().to_owned(),
+            core_id: core_id.to_string(),
+            instance_id: instance_id.to_string(),
+            kind: extension_kind_text(install.kind()).to_owned(),
+            path: install.path().to_owned(),
+            sha256: install.sha256().to_owned(),
+            source: install.source().to_owned(),
+            project_id: install.project_id().map(str::to_owned),
+            version: install.version().map(str::to_owned),
+            installed_at: install.installed_at().to_owned(),
+        };
+        let store = self.store.clone();
+        let stored = spawn_blocking(move || store.upsert_extension_install(&new_install)).await??;
+
+        extension_install_from_stored(stored)
+    }
+
+    pub async fn list_extension_installs(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        kind: ExtensionKind,
+    ) -> Result<Vec<ExtensionInstall>, CoreRegistryError> {
+        let core_id_text = core_id.to_string();
+        let instance_id_text = instance_id.to_string();
+        let kind_text = extension_kind_text(kind).to_owned();
+        let store = self.store.clone();
+        let stored = spawn_blocking(move || {
+            store.list_extension_installs(&core_id_text, &instance_id_text, &kind_text)
+        })
+        .await??;
+
+        stored
+            .into_iter()
+            .map(extension_install_from_stored)
+            .collect()
+    }
+
+    pub async fn delete_extension_install(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        path: &str,
+    ) -> Result<(), CoreRegistryError> {
+        let core_id_text = core_id.to_string();
+        let instance_id_text = instance_id.to_string();
+        let path = path.to_owned();
+        let store = self.store.clone();
+        spawn_blocking(move || {
+            store.delete_extension_install(&core_id_text, &instance_id_text, &path)
+        })
+        .await??;
+
+        Ok(())
     }
 
     pub async fn list_proxy_subservers(
@@ -1031,6 +1098,38 @@ fn task_accepted_json(task_id: TaskId) -> Value {
         "taskId": task_id,
         "acceptedAt": current_timestamp(),
     })
+}
+
+fn extension_kind_text(kind: ExtensionKind) -> &'static str {
+    match kind {
+        ExtensionKind::Plugin => "PLUGIN",
+        ExtensionKind::Mod => "MOD",
+    }
+}
+
+fn extension_install_from_stored(
+    stored: StoredExtensionInstall,
+) -> Result<ExtensionInstall, CoreRegistryError> {
+    let kind = match stored.kind() {
+        "PLUGIN" => ExtensionKind::Plugin,
+        "MOD" => ExtensionKind::Mod,
+        _ => {
+            return Err(CoreRegistryError::InvalidStoredExtension {
+                path: stored.path().to_owned(),
+            });
+        }
+    };
+
+    Ok(ExtensionInstall::new(
+        stored.id().to_owned(),
+        kind,
+        stored.path().to_owned(),
+        stored.sha256().to_owned(),
+        stored.source().to_owned(),
+        stored.project_id().map(str::to_owned),
+        stored.version().map(str::to_owned),
+        stored.installed_at().to_owned(),
+    ))
 }
 
 fn instance_page_json(core_id: CoreId, page: &Value) -> Value {
