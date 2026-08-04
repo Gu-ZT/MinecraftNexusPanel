@@ -351,22 +351,10 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     .await;
     assert_eq!(delete_installed_task["state"], "SUCCEEDED");
 
-    let plugin_scan_after_record_delete = send_json_request(
-        panel_address,
-        "GET",
-        &format!(
-            "/api/v1/cores/{core_id}/instances/hybrid-backend/extensions?templateId=mohist&kind=PLUGIN"
-        ),
-        &[("Authorization", authorization.as_str())],
-        None,
-    )
-    .await;
-    assert_eq!(plugin_scan_after_record_delete.status, 200);
-    assert!(
-        plugin_scan_after_record_delete.body["installations"]
-            .as_array()
-            .is_some_and(Vec::is_empty)
-    );
+    let plugin_scan_after_record_delete =
+        wait_for_empty_extension_installations(panel_address, authorization.as_str(), &core_id)
+            .await;
+    assert_eq!(plugin_scan_after_record_delete["installations"], json!([]));
 
     let invalid_extension_path = send_json_request(
         panel_address,
@@ -1399,6 +1387,37 @@ async fn wait_for_file_task(
     })
     .await
     .expect("file task finishes before the timeout")
+}
+
+async fn wait_for_empty_extension_installations(
+    address: SocketAddr,
+    authorization: &str,
+    core_id: &str,
+) -> Value {
+    timeout(Duration::from_secs(5), async {
+        loop {
+            let response = send_json_request(
+                address,
+                "GET",
+                &format!(
+                    "/api/v1/cores/{core_id}/instances/hybrid-backend/extensions?templateId=mohist&kind=PLUGIN"
+                ),
+                &[("Authorization", authorization)],
+                None,
+            )
+            .await;
+            assert_eq!(response.status, 200);
+            if response.body["installations"]
+                .as_array()
+                .is_some_and(Vec::is_empty)
+            {
+                return response.body;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("extension installation record is removed after file deletion")
 }
 
 async fn stop_panel(server_task: JoinHandle<Result<(), PanelError>>) {

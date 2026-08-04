@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path as FilePath;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use axum::Extension;
 use axum::Json;
@@ -44,6 +45,7 @@ use tokio::fs::remove_file;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::spawn;
+use tokio::time::sleep;
 
 use crate::CoreConnectionError;
 use crate::CoreRegistryError;
@@ -1463,23 +1465,112 @@ async fn delete_instance_extension(
         );
     }
 
+    let expected_install_id = match state
+        .cores()
+        .list_extension_installs(core_id, &instance_id, kind)
+        .await
+    {
+        Ok(installations) => installations
+            .into_iter()
+            .find(|installation| installation.path() == path)
+            .map(|installation| installation.id().to_owned()),
+        Err(error) => return registry_error_response(error, request_id),
+    };
+
     match state
         .cores()
         .delete_instance_file(core_id, &instance_id, path, false, idempotency_key)
         .await
     {
         Ok(task) => {
-            if let Err(error) = state
-                .cores()
-                .delete_extension_install(core_id, &instance_id, path)
-                .await
-            {
-                tracing::error!(%error, %path, "Failed to remove extension installation record");
-            }
+            let Some(task_id) = task
+                .get("taskId")
+                .and_then(Value::as_str)
+                .and_then(|value| value.parse::<TaskId>().ok())
+            else {
+                return invalid_core_response(request_id);
+            };
+            let task_state = state.clone();
+            let task_instance_id = instance_id.clone();
+            let task_path = path.to_owned();
+            spawn(async move {
+                finalize_extension_delete_task(
+                    task_state,
+                    core_id,
+                    task_instance_id,
+                    task_path,
+                    kind,
+                    expected_install_id,
+                    task_id,
+                )
+                .await;
+            });
             (StatusCode::ACCEPTED, Json(task)).into_response()
         }
         Err(error) => registry_error_response(error, request_id),
     }
+}
+
+async fn finalize_extension_delete_task(
+    state: PanelState,
+    core_id: CoreId,
+    instance_id: InstanceId,
+    path: String,
+    kind: ExtensionKind,
+    expected_install_id: Option<String>,
+    task_id: TaskId,
+) {
+    let Some(expected_install_id) = expected_install_id else {
+        return;
+    };
+    for _ in 0..600 {
+        match state.cores().get_file_task(core_id, &task_id).await {
+            Ok(task) => match task.get("state").and_then(Value::as_str) {
+                Some("SUCCEEDED") => {
+                    match state
+                        .cores()
+                        .list_extension_installs(core_id, &instance_id, kind)
+                        .await
+                    {
+                        Ok(installations) => {
+                            let current_install = installations
+                                .into_iter()
+                                .find(|installation| installation.path() == path);
+                            if current_install.as_ref().is_some_and(|installation| {
+                                installation.id() == expected_install_id
+                            }) {
+                                if let Err(error) = state
+                                    .cores()
+                                    .delete_extension_install(core_id, &instance_id, &path)
+                                    .await
+                                {
+                                    tracing::error!(
+                                        %error,
+                                        %path,
+                                        "Failed to remove extension installation record"
+                                    );
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            tracing::warn!(%error, %path, "Failed to verify extension record after deletion");
+                        }
+                    }
+                    return;
+                }
+                Some("FAILED") => {
+                    tracing::warn!(%task_id, %path, "Extension file deletion failed; installation record retained");
+                    return;
+                }
+                _ => {}
+            },
+            Err(error) => {
+                tracing::debug!(%error, %task_id, "Extension deletion task is not yet readable");
+            }
+        }
+        sleep(Duration::from_secs(1)).await;
+    }
+    tracing::warn!(%task_id, %path, "Extension deletion task did not finish; installation record retained");
 }
 
 fn is_extension_path(path: &str, directory: &str) -> bool {

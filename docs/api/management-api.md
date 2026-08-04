@@ -224,7 +224,7 @@ ID、版本、SHA-256、依赖和本地相对路径。
 实例扫描调用时必须传入 `templateId` 和 `kind=PLUGIN|MOD`；Panel 校验模板与实例类型一致后，按
 `InstallTemplateExtensionLayout` 声明的目录分别读取 Core 文件页。混合端的插件和模组不会合并，模板声明多个目录时也会分别返回；不存在的目录返回空页。
 同一路径的 `DELETE` 操作要求额外传入 `path`、`confirmation=DELETE` 和合法的 `Idempotency-Key`，只允许删除所选模板和扩展类型声明目录下的单个文件，并返回 Core 异步文件任务。
-同一路径的 `PUT` 操作接收不超过 1 MiB 的 `application/octet-stream`，要求传入 `path` 和合法的 `Idempotency-Key`，可用 `If-Match` 校验已有文件 SHA-256，通过 Core 原子写入把已准备产物放到声明目录内，并持久化 `LOCAL` 来源、SHA-256、路径和安装时间。删除操作接受任务后清理对应记录；聚合 Core 安装任务、失败回滚、完整更新流程和安装级兼容性校验仍未提供。
+同一路径的 `PUT` 操作接收不超过 1 MiB 的 `application/octet-stream`，要求传入 `path` 和合法的 `Idempotency-Key`，可用 `If-Match` 校验已有文件 SHA-256，通过 Core 原子写入把已准备产物放到声明目录内，并持久化 `LOCAL` 来源、SHA-256、路径和安装时间。删除操作仅在 Core 删除任务成功后清理对应记录；任务失败、超时或记录已被新的同路径安装替换时保留记录，避免把未删除或新安装的文件误记为已删除。聚合 Core 安装任务、失败回滚、完整更新流程和安装级兼容性校验仍未提供。
 
 更新前生成 plan，标记 Minecraft/加载器不兼容、依赖缺失、冲突和需要停服的变更。当前单个来源扩展更新只替换根文件并使用记录摘要保护并发；批量更新仍应实现为单个可回滚任务，替换前保留文件备份。
 
