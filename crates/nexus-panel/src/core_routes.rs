@@ -1,3 +1,8 @@
+//! Core 注册、连接测试和重连 HTTP 路由。
+//!
+//! 路由将领域错误映射为稳定 HTTP 错误码，并为带修订号的资源返回 ETag；所有
+//! 管理写操作都要求管理员认证和浏览器 CSRF 校验。
+
 use std::str::FromStr;
 
 use axum::Extension;

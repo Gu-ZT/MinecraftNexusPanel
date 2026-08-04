@@ -1,3 +1,8 @@
+//! 登录、刷新、登出和当前用户 HTTP 路由。
+//!
+//! 浏览器请求使用 HttpOnly 会话 Cookie 与 CSRF 头，原生请求使用访问令牌；写操作
+//! 的鉴权和错误响应在路由边界统一处理。
+
 use std::net::SocketAddr;
 
 use axum::Extension;

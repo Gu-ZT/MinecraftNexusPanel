@@ -1,3 +1,8 @@
+//! WebSocket 票据签发、连接升级和 Core/实例事件订阅路由。
+//!
+//! 客户端先通过 HTTP 鉴权获取一次性票据，再使用票据升级连接；订阅主题限制为
+//! Core 状态、实例控制台和任务快照，控制台订阅通过游标避免重复读取。
+
 use std::collections::HashMap;
 
 use axum::Error;

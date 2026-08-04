@@ -14,12 +14,16 @@ use crate::WebSocketTicket;
 const TICKET_BYTES: usize = 32;
 const TICKET_LIFETIME_SECONDS: i64 = 30;
 
+/// 线程安全的短期 WebSocket 票据存储。
+///
+/// `consume` 会清理过期票据并保证同一个票据只能成功消费一次。
 #[derive(Clone, Default)]
 pub(crate) struct WebSocketTicketStore {
     tickets: Arc<Mutex<HashMap<String, WebSocketTicket>>>,
 }
 
 impl WebSocketTicketStore {
+    /// 为认证凭据签发短期随机票据。
     pub fn issue(
         &self,
         credential: RequestCredential,
@@ -36,6 +40,7 @@ impl WebSocketTicketStore {
         Ok((ticket, expires_at))
     }
 
+    /// 消费票据；过期、未知或重复消费返回 `None`。
     pub fn consume(&self, ticket: &str) -> Result<Option<WebSocketTicket>, AuthError> {
         let now = OffsetDateTime::now_utc();
         let mut tickets = self.tickets.lock().map_err(|_| AuthError::RateLimitLock)?;
