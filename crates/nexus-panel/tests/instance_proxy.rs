@@ -1376,9 +1376,7 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     let audit = send_json_request(
         panel_address,
         "GET",
-        &format!(
-            "/api/v1/cores/{core_id}/instances/panel-process/audit?limit=20"
-        ),
+        &format!("/api/v1/cores/{core_id}/instances/panel-process/audit?limit=20"),
         &[("Authorization", authorization.as_str())],
         None,
     )

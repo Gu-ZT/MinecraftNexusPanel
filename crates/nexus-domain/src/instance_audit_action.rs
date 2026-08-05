@@ -24,7 +24,7 @@ mod tests {
     #[test]
     fn serializes_actions_as_stable_protocol_values() {
         assert_eq!(
-            to_value(InstanceAuditAction::ProcessExit).unwrap(),
+            to_value(InstanceAuditAction::ProcessExit).expect("audit action serializes"),
             "PROCESS_EXIT"
         );
     }
