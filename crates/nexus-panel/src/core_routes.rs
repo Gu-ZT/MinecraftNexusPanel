@@ -17,11 +17,13 @@ use axum::http::StatusCode;
 use axum::http::header::ETAG;
 use axum::response::IntoResponse;
 use axum::response::Response;
+use axum::routing::delete;
 use axum::routing::get;
 use axum::routing::post;
 use nexus_domain::CoreId;
 use nexus_domain::CpuPolicy;
 use nexus_domain::RequestId;
+use nexus_domain::TaskId;
 use serde_json::Value;
 use tracing::error;
 
@@ -29,6 +31,7 @@ use crate::AuthError;
 use crate::CoreConnectionError;
 use crate::CoreCreate;
 use crate::CoreRegistryError;
+use crate::CpuReservationRequest;
 use crate::PanelState;
 use crate::auth_routes::RequestCredential;
 use crate::auth_routes::auth_error_response;
@@ -57,6 +60,14 @@ pub(crate) fn core_routes() -> Router<PanelState> {
         .route(
             "/api/v1/cores/{core_id}/cpu-policies:resolve",
             post(resolve_cpu_policy),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/cpu-reservations",
+            get(list_cpu_reservations).post(reserve_cpu),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/cpu-reservations/{reservation_id}",
+            delete(release_cpu),
         )
 }
 
@@ -202,6 +213,85 @@ async fn resolve_cpu_policy(
 
     match state.cores().resolve_cpu_policy(core_id, &policy).await {
         Ok(result) => Json(result).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn list_cpu_reservations(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path(core_id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, false, request_id).await {
+        return response;
+    }
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return invalid_core_id_response(request_id);
+    };
+
+    match state.cores().list_cpu_reservations(core_id).await {
+        Ok(reservations) => Json(reservations).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn reserve_cpu(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path(core_id): Path<String>,
+    headers: HeaderMap,
+    payload: Result<Json<CpuReservationRequest>, JsonRejection>,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Some(idempotency_key) = idempotency_key(&headers) else {
+        return precondition_required_response(request_id);
+    };
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return invalid_core_id_response(request_id);
+    };
+    let request = match payload {
+        Ok(Json(request)) if request.validate().is_ok() => request,
+        Ok(_) | Err(_) => return validation_error(request_id),
+    };
+
+    match state
+        .cores()
+        .reserve_cpu(core_id, &request, idempotency_key)
+        .await
+    {
+        Ok(reservation) => (StatusCode::CREATED, Json(reservation)).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn release_cpu(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, reservation_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Some(idempotency_key) = idempotency_key(&headers) else {
+        return precondition_required_response(request_id);
+    };
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return invalid_core_id_response(request_id);
+    };
+    let Ok(reservation_id) = reservation_id.parse::<TaskId>() else {
+        return validation_error(request_id);
+    };
+
+    match state
+        .cores()
+        .release_cpu(core_id, &reservation_id, idempotency_key)
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => registry_error_response(error, request_id),
     }
 }
@@ -602,6 +692,62 @@ pub(crate) fn registry_error_response(error: CoreRegistryError, request_id: Requ
             )
         }
         CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "INSTANCE_REVISION_CONFLICT" =>
+        {
+            error_response(
+                StatusCode::PRECONDITION_FAILED,
+                "INSTANCE_REVISION_CONFLICT",
+                "Instance revision does not match",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if matches!(
+                code.as_str(),
+                "CPU_POLICY_INVALID" | "CPU_RESERVATION_REQUIRES_EXCLUSIVE"
+            ) =>
+        {
+            error_response(
+                StatusCode::BAD_REQUEST,
+                code.as_str(),
+                "CPU reservation request is invalid",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if matches!(
+                code.as_str(),
+                "CPU_CAPACITY_UNAVAILABLE" | "CPU_RESERVATION_CONFLICT"
+            ) =>
+        {
+            error_response(
+                StatusCode::CONFLICT,
+                code.as_str(),
+                "CPU reservation conflicts with available capacity",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "CPU_RESERVATION_NOT_FOUND" =>
+        {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "CPU_RESERVATION_NOT_FOUND",
+                "CPU reservation does not exist",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
+            if code == "CPU_RESERVATION_FAILED" =>
+        {
+            error_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "CPU_RESERVATION_FAILED",
+                "CPU reservation operation failed",
+                request_id,
+            )
+        }
+        CoreRegistryError::Connection(CoreConnectionError::Rejected { code })
             if code == "BAD_REQUEST" =>
         {
             error_response(
@@ -655,4 +801,26 @@ pub(crate) fn registry_error_response(error: CoreRegistryError, request_id: Requ
             )
         }
     }
+}
+
+fn idempotency_key(headers: &HeaderMap) -> Option<&str> {
+    header_text(headers, "idempotency-key").filter(|value| value.parse::<RequestId>().is_ok())
+}
+
+fn precondition_required_response(request_id: RequestId) -> Response {
+    error_response(
+        StatusCode::PRECONDITION_REQUIRED,
+        "PRECONDITION_REQUIRED",
+        "Idempotency-Key is required",
+        request_id,
+    )
+}
+
+fn validation_error(request_id: RequestId) -> Response {
+    error_response(
+        StatusCode::BAD_REQUEST,
+        "VALIDATION_FAILED",
+        "Request validation failed",
+        request_id,
+    )
 }

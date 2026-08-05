@@ -237,7 +237,7 @@ async fn accepts_an_encrypted_session_hello() {
                 },
             }),
             deadline: None,
-            idempotency_key: None,
+            idempotency_key: Some(RequestId::new().to_string()),
         })
         .await
         .expect("CPU reservation request is sent");
@@ -309,7 +309,7 @@ async fn accepts_an_encrypted_session_hello() {
             method: "cpu.release".to_owned(),
             params: json!({ "reservationId": reservation_id }),
             deadline: None,
-            idempotency_key: None,
+            idempotency_key: Some(RequestId::new().to_string()),
         })
         .await
         .expect("CPU reservation release request is sent");

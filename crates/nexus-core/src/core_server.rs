@@ -489,8 +489,8 @@ async fn request_response(
         "cpu.topology" => success_response(request_id, json!(state.cpu_topology())),
         "cpu.policy.resolve" => cpu_policy_resolve_response(request_id, params, state),
         "cpu.reservation.list" => cpu_reservation_list_response(request_id, state),
-        "cpu.reserve" => cpu_reserve_response(request_id, params, state),
-        "cpu.release" => cpu_release_response(request_id, params, state),
+        "cpu.reserve" => cpu_reserve_response(request_id, params, idempotency_key, state),
+        "cpu.release" => cpu_release_response(request_id, params, idempotency_key, state),
         "runtime.list" => environment_list_response(request_id, state.runtimes()).await,
         "runtime.install" => {
             runtime_install_response(request_id, params, idempotency_key, state.runtimes())
@@ -633,8 +633,12 @@ fn cpu_reservation_list_response(request_id: RequestId, state: &CoreRequestState
 fn cpu_reserve_response(
     request_id: RequestId,
     params: &Value,
+    idempotency_key: Option<&str>,
     state: &CoreRequestState,
 ) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
     let Some(instance_id) = instance_id_parameter(params) else {
         return error_response(
             request_id,
@@ -743,8 +747,12 @@ fn cpu_reserve_response(
 fn cpu_release_response(
     request_id: RequestId,
     params: &Value,
+    idempotency_key: Option<&str>,
     state: &CoreRequestState,
 ) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
     let Some(reservation_id) = params
         .get("reservationId")
         .and_then(Value::as_str)

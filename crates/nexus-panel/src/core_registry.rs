@@ -60,6 +60,7 @@ use crate::CoreEndpoint;
 use crate::CoreRegistryError;
 use crate::CoreRuntime;
 use crate::CoreStatus;
+use crate::CpuReservationRequest;
 use crate::ManagedCore;
 use crate::SecretCipher;
 
@@ -290,6 +291,60 @@ impl CoreRegistry {
             .ok_or(CoreRegistryError::ConnectionUnavailable)?;
 
         Ok(connection.resolve_cpu_policy(policy).await?)
+    }
+
+    /// 列出指定 Core 当前登记的 CPU 独占预留。
+    pub async fn list_cpu_reservations(&self, core_id: CoreId) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let reservations = connection.list_cpu_reservations().await?;
+
+        Ok(json!({ "items": reservations }))
+    }
+
+    /// 通过指定 Core 登记实例的 CPU 独占预留。
+    pub async fn reserve_cpu(
+        &self,
+        core_id: CoreId,
+        request: &CpuReservationRequest,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection
+            .reserve_cpu(
+                request.instance_id(),
+                request.revision(),
+                request.policy(),
+                idempotency_key,
+            )
+            .await?)
+    }
+
+    /// 通过指定 Core 释放 CPU 独占预留。
+    pub async fn release_cpu(
+        &self,
+        core_id: CoreId,
+        reservation_id: &TaskId,
+        idempotency_key: &str,
+    ) -> Result<(), CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        connection
+            .release_cpu(reservation_id, idempotency_key)
+            .await?;
+        Ok(())
     }
 
     /// 丢弃当前连接并请求后台监视器立即重连。

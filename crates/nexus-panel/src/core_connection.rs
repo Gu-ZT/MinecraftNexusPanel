@@ -12,6 +12,7 @@ use nexus_domain::BedrockManagementProfile;
 use nexus_domain::BedrockPortCheck;
 use nexus_domain::CoreId;
 use nexus_domain::CpuPolicy;
+use nexus_domain::CpuReservation;
 use nexus_domain::CpuTopology;
 use nexus_domain::FileContent;
 use nexus_domain::FileEntry;
@@ -48,11 +49,12 @@ use tokio::net::TcpStream;
 use crate::CoreConnectionError;
 use crate::CoreEndpoint;
 
-const PANEL_CAPABILITIES: [&str; 14] = [
+const PANEL_CAPABILITIES: [&str; 15] = [
     "bedrock-health",
     "config",
     "cpu-topology",
     "cpu-policy",
+    "cpu-reservations",
     "events",
     "files",
     "instances",
@@ -245,6 +247,59 @@ impl CoreConnection {
         let policy = to_value(policy)
             .map_err(|_| CoreConnectionError::InvalidResponse { field: "cpuPolicy" })?;
         self.request("cpu.policy.resolve", policy).await
+    }
+
+    /// 列出 Core 当前登记的 CPU 独占预留。
+    pub async fn list_cpu_reservations(
+        &mut self,
+    ) -> Result<Vec<CpuReservation>, CoreConnectionError> {
+        let result = self.request("cpu.reservation.list", json!({})).await?;
+        let items = response_field(&result, "items")?;
+
+        from_value(items).map_err(|_| CoreConnectionError::InvalidResponse {
+            field: "cpuReservations",
+        })
+    }
+
+    /// 请求 Core 为实例登记 CPU 独占预留。
+    ///
+    /// Core 返回预留记录和实际选中的 policy；该结果只代表登记成功，不能
+    /// 推断宿主机 affinity 已经应用。
+    pub async fn reserve_cpu(
+        &mut self,
+        instance_id: &InstanceId,
+        revision: u64,
+        policy: &CpuPolicy,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreConnectionError> {
+        let policy = to_value(policy)
+            .map_err(|_| CoreConnectionError::InvalidResponse { field: "cpuPolicy" })?;
+        self.request_with_idempotency(
+            "cpu.reserve",
+            json!({
+                "instanceId": instance_id,
+                "revision": revision,
+                "policy": policy,
+            }),
+            Some(idempotency_key),
+        )
+        .await
+    }
+
+    /// 请求 Core 释放指定 CPU 独占预留。
+    pub async fn release_cpu(
+        &mut self,
+        reservation_id: &TaskId,
+        idempotency_key: &str,
+    ) -> Result<(), CoreConnectionError> {
+        self.request_with_idempotency(
+            "cpu.release",
+            json!({ "reservationId": reservation_id }),
+            Some(idempotency_key),
+        )
+        .await?;
+
+        Ok(())
     }
 
     /// 列出 Core 已发现且验证的受管运行时。

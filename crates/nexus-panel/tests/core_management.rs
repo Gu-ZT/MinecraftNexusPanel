@@ -131,6 +131,135 @@ async fn registers_encrypts_restores_and_reconnects_a_core() {
     assert_eq!(policy.status, 200);
     assert!(policy.body["candidateCpuIds"].as_array().is_some());
 
+    let instance = send_json_request(
+        panel_address,
+        "POST",
+        &format!("/api/v1/cores/{core_id}/instances"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", RequestId::new().to_string().as_str()),
+        ],
+        Some(json!({
+            "id": "cpu-reserved",
+            "name": "CPU Reserved",
+            "kind": "PAPER",
+            "directory": "instances/cpu-reserved",
+            "launch": {
+                "executable": "java",
+                "args": ["-jar", "server.jar"],
+                "environment": {},
+                "stopCommand": "stop",
+                "stopTimeoutSeconds": 30,
+            },
+        })),
+    )
+    .await;
+    assert_eq!(instance.status, 201);
+    assert_eq!(instance.body["revision"], 1);
+
+    let reservation_without_key = send_json_request(
+        panel_address,
+        "POST",
+        &format!("/api/v1/cores/{core_id}/cpu-reservations"),
+        &[("Authorization", authorization.as_str())],
+        Some(json!({
+            "instanceId": "cpu-reserved",
+            "revision": 1,
+            "policy": {
+                "mode": "AUTO",
+                "requestedCpuIds": [],
+                "minCpus": 1,
+                "maxCpus": null,
+                "preferPhysicalCores": true,
+                "numaNode": null,
+                "shareMode": "EXCLUSIVE",
+                "strict": false,
+            },
+        })),
+    )
+    .await;
+    assert_eq!(reservation_without_key.status, 428);
+
+    let reservation = send_json_request(
+        panel_address,
+        "POST",
+        &format!("/api/v1/cores/{core_id}/cpu-reservations"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", RequestId::new().to_string().as_str()),
+        ],
+        Some(json!({
+            "instanceId": "cpu-reserved",
+            "revision": 1,
+            "policy": {
+                "mode": "AUTO",
+                "requestedCpuIds": [],
+                "minCpus": 1,
+                "maxCpus": null,
+                "preferPhysicalCores": true,
+                "numaNode": null,
+                "shareMode": "EXCLUSIVE",
+                "strict": false,
+            },
+        })),
+    )
+    .await;
+    assert_eq!(reservation.status, 201);
+    assert_eq!(
+        reservation.body["reservation"]["instanceId"],
+        "cpu-reserved"
+    );
+    assert!(
+        reservation.body["appliedPolicy"]["selectedCpuIds"]
+            .as_array()
+            .is_some_and(|ids| !ids.is_empty())
+    );
+    let reservation_id = reservation.body["reservation"]["reservationId"]
+        .as_str()
+        .expect("Panel returns a CPU reservation ID")
+        .to_owned();
+
+    let listed_reservations = send_json_request(
+        panel_address,
+        "GET",
+        &format!("/api/v1/cores/{core_id}/cpu-reservations"),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(listed_reservations.status, 200);
+    assert_eq!(
+        listed_reservations.body["items"].as_array().map(Vec::len),
+        Some(1)
+    );
+
+    let released = send_json_request(
+        panel_address,
+        "DELETE",
+        &format!("/api/v1/cores/{core_id}/cpu-reservations/{reservation_id}"),
+        &[
+            ("Authorization", authorization.as_str()),
+            ("Idempotency-Key", RequestId::new().to_string().as_str()),
+        ],
+        None,
+    )
+    .await;
+    assert_eq!(released.status, 204);
+
+    let listed_after_release = send_json_request(
+        panel_address,
+        "GET",
+        &format!("/api/v1/cores/{core_id}/cpu-reservations"),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(listed_after_release.status, 200);
+    assert_eq!(
+        listed_after_release.body["items"].as_array().map(Vec::len),
+        Some(0)
+    );
+
     stop_panel(panel_task).await;
     let (restored_address, restored_task) = start_panel(&panel_data).await;
     let restored_token = login(restored_address).await;
