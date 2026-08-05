@@ -46,7 +46,7 @@ async fn accepts_an_encrypted_session_hello() {
             "panelId": RequestId::new(),
             "panelName": "test-panel",
             "clientVersion": "0.1.0",
-            "capabilities": ["events", "instances"],
+            "capabilities": ["cpu-topology", "events", "instances"],
         }),
         deadline: None,
         idempotency_key: None,
@@ -76,9 +76,52 @@ async fn accepts_an_encrypted_session_hello() {
     assert!(ok);
     assert!(error.is_none());
     assert_eq!(result["protocol"], json!(CURRENT_PROTOCOL_VERSION));
-    assert_eq!(result["capabilities"], json!(["events", "instances"]));
+    assert_eq!(
+        result["capabilities"],
+        json!(["cpu-topology", "events", "instances"])
+    );
     assert!(result["coreId"].as_str().is_some());
     assert_eq!(result["tlsCertificateSha256"], certificate_sha256);
+
+    let topology_request_id = RequestId::new();
+    transport
+        .write_message(&WireMessage::Request {
+            request_id: topology_request_id,
+            method: "cpu.topology".to_owned(),
+            params: json!({}),
+            deadline: None,
+            idempotency_key: None,
+        })
+        .await
+        .expect("CPU topology request is sent");
+    let topology_response = transport
+        .read_message()
+        .await
+        .expect("CPU topology response is received");
+    let WireMessage::Response {
+        request_id: response_id,
+        ok,
+        result,
+        error,
+    } = topology_response
+    else {
+        panic!("Core returned a non-response message for CPU topology");
+    };
+    let topology = result.expect("successful CPU topology response includes a result");
+    assert_eq!(response_id, topology_request_id);
+    assert!(ok);
+    assert!(error.is_none());
+    assert!(
+        topology["logicalCpus"]
+            .as_array()
+            .is_some_and(|cpus| !cpus.is_empty())
+    );
+    assert_eq!(topology["detection"]["confidence"], "LOW");
+    assert!(
+        topology["available"]["performanceCpuIds"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+    );
 
     let invalid_request_id = RequestId::new();
     transport

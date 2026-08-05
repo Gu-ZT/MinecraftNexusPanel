@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use nexus_domain::CoreId;
+use nexus_domain::CpuTopology;
 use nexus_domain::RequestId;
 
 use crate::FileManager;
@@ -15,6 +16,7 @@ use crate::RuntimeManager;
 /// 管理器本身通过内部共享句柄跨请求复用；该值只保存当前连接的订阅游标和主题过滤器。
 pub(crate) struct CoreRequestState {
     core_id: CoreId,
+    cpu_topology: CpuTopology,
     event_subscription: Option<RequestId>,
     event_topics: BTreeSet<String>,
     instances: InstanceRepository,
@@ -27,8 +29,10 @@ pub(crate) struct CoreRequestState {
 
 impl CoreRequestState {
     /// 创建未订阅事件的请求状态。
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         core_id: CoreId,
+        cpu_topology: CpuTopology,
         instances: InstanceRepository,
         processes: InstanceProcessManager,
         proxy_subservers: ProxySubserverRepository,
@@ -38,6 +42,7 @@ impl CoreRequestState {
     ) -> Self {
         Self {
             core_id,
+            cpu_topology,
             event_subscription: None,
             event_topics: BTreeSet::new(),
             instances,
@@ -52,6 +57,11 @@ impl CoreRequestState {
     /// 返回当前 Core 标识。
     pub(crate) const fn core_id(&self) -> CoreId {
         self.core_id
+    }
+
+    /// 返回 Core 启动时缓存的 CPU 拓扑快照。
+    pub(crate) const fn cpu_topology(&self) -> &CpuTopology {
+        &self.cpu_topology
     }
 
     /// 返回事件订阅请求标识。

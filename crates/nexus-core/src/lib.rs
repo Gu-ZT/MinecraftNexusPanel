@@ -10,6 +10,7 @@ mod core_request_state;
 mod core_server;
 mod core_tls_identity;
 mod core_tls_identity_error;
+mod cpu_topology_discovery;
 mod download_error;
 mod download_manager;
 mod download_task;

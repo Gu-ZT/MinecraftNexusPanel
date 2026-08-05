@@ -27,6 +27,7 @@ use nexus_domain::BedrockPortCheck;
 use nexus_domain::BedrockPortCheckState;
 use nexus_domain::BedrockPortSource;
 use nexus_domain::CoreId;
+use nexus_domain::CpuTopology;
 use nexus_domain::Instance;
 use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
@@ -84,14 +85,16 @@ use crate::ProxySubserverRepository;
 use crate::ProxySubserverRepositoryError;
 use crate::RuntimeManager;
 use crate::RuntimeManagerError;
+use crate::cpu_topology_discovery::detect_cpu_topology;
 use crate::file_manager::FILE_TRANSFER_CHUNK_BYTES;
 use crate::file_manager::MAXIMUM_FILE_ARCHIVE_PATHS;
 use crate::file_manager::MAXIMUM_FILE_BATCH_OPERATIONS;
 use crate::file_manager::MAXIMUM_FILE_READ_BYTES;
 
-const CORE_CAPABILITIES: [&str; 12] = [
+const CORE_CAPABILITIES: [&str; 13] = [
     "bedrock-health",
     "config",
+    "cpu-topology",
     "events",
     "files",
     "instances",
@@ -128,6 +131,7 @@ const RAKNET_MAGIC: [u8; 16] = [
 pub struct CoreServer {
     core_id: CoreId,
     certificate_sha256: Arc<str>,
+    cpu_topology: CpuTopology,
     listen_address: SocketAddr,
     listener: TcpListener,
     pre_shared_key: PresharedKey,
@@ -142,6 +146,7 @@ pub struct CoreServer {
 
 #[derive(Clone)]
 struct CoreResources {
+    cpu_topology: CpuTopology,
     instances: InstanceRepository,
     processes: InstanceProcessManager,
     proxy_subservers: ProxySubserverRepository,
@@ -179,10 +184,12 @@ impl CoreServer {
             RuntimeManager::new(config.data_directory()).map_err(CoreError::RuntimeManager)?;
         let provision = ProvisionManager::new(config.data_directory(), runtimes.clone())?;
         let files = FileManager::new(config.data_directory());
+        let cpu_topology = detect_cpu_topology();
 
         Ok(Self {
             core_id,
             certificate_sha256: Arc::from(tls_identity.certificate_sha256()),
+            cpu_topology,
             listen_address,
             listener,
             pre_shared_key,
@@ -234,6 +241,7 @@ impl CoreServer {
             let certificate_sha256 = self.certificate_sha256.clone();
             let pre_shared_key = self.pre_shared_key.clone();
             let resources = CoreResources {
+                cpu_topology: self.cpu_topology.clone(),
                 instances: self.instances.clone(),
                 processes: self.processes.clone(),
                 proxy_subservers: self.proxy_subservers.clone(),
@@ -298,6 +306,7 @@ where
 
     let mut request_state = CoreRequestState::new(
         core_id,
+        resources.cpu_topology,
         resources.instances,
         resources.processes,
         resources.proxy_subservers,
@@ -463,6 +472,7 @@ async fn request_response(
             }),
         ),
         "system.ping" => success_response(request_id, json!({ "receivedAt": current_timestamp() })),
+        "cpu.topology" => success_response(request_id, json!(state.cpu_topology())),
         "runtime.list" => environment_list_response(request_id, state.runtimes()).await,
         "runtime.install" => {
             runtime_install_response(request_id, params, idempotency_key, state.runtimes())
