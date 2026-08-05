@@ -143,6 +143,7 @@ pub(crate) fn is_valid_launch(launch: &LaunchConfig) -> bool {
         && launch.stop_command().len() <= 8192
         && !launch.stop_command().contains('\0')
         && (1..=300).contains(&launch.stop_timeout_seconds())
+        && launch.is_valid_execution()
 }
 
 fn is_valid_command(command: &str) -> bool {
