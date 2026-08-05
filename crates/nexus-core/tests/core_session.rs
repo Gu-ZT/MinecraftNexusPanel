@@ -46,7 +46,13 @@ async fn accepts_an_encrypted_session_hello() {
             "panelId": RequestId::new(),
             "panelName": "test-panel",
             "clientVersion": "0.1.0",
-            "capabilities": ["cpu-topology", "events", "instances"],
+            "capabilities": [
+                "cpu-topology",
+                "cpu-policy",
+                "cpu-reservations",
+                "events",
+                "instances"
+            ],
         }),
         deadline: None,
         idempotency_key: None,
@@ -78,7 +84,13 @@ async fn accepts_an_encrypted_session_hello() {
     assert_eq!(result["protocol"], json!(CURRENT_PROTOCOL_VERSION));
     assert_eq!(
         result["capabilities"],
-        json!(["cpu-topology", "events", "instances"])
+        json!([
+            "cpu-topology",
+            "cpu-policy",
+            "cpu-reservations",
+            "events",
+            "instances"
+        ])
     );
     assert!(result["coreId"].as_str().is_some());
     assert_eq!(result["tlsCertificateSha256"], certificate_sha256);
@@ -162,6 +174,162 @@ async fn accepts_an_encrypted_session_hello() {
     assert!(error.is_none());
     assert!(policy["candidateCpuIds"].as_array().is_some());
     assert!(policy["selectedCpuIds"].as_array().is_some());
+
+    let first_instance_id = RequestId::new();
+    transport
+        .write_message(&WireMessage::Request {
+            request_id: first_instance_id,
+            method: "instance.create".to_owned(),
+            params: json!({
+                "id": "reserved-first",
+                "name": "Reserved First",
+                "kind": "PAPER",
+                "directory": "instances/reserved-first",
+                "launch": {
+                    "executable": "java",
+                    "args": ["-jar", "server.jar"],
+                    "environment": {},
+                    "stopCommand": "stop",
+                    "stopTimeoutSeconds": 30,
+                },
+            }),
+            deadline: None,
+            idempotency_key: None,
+        })
+        .await
+        .expect("first reservation instance request is sent");
+    let first_instance_response = transport
+        .read_message()
+        .await
+        .expect("first reservation instance response is received");
+    let WireMessage::Response {
+        request_id: response_id,
+        ok,
+        result,
+        error,
+    } = first_instance_response
+    else {
+        panic!("Core returned a non-response for the first reservation instance");
+    };
+    let first_instance = result.expect("first reservation instance includes a result");
+    assert_eq!(response_id, first_instance_id);
+    assert!(ok);
+    assert!(error.is_none());
+    assert_eq!(first_instance["revision"], 1);
+
+    let reserve_request_id = RequestId::new();
+    transport
+        .write_message(&WireMessage::Request {
+            request_id: reserve_request_id,
+            method: "cpu.reserve".to_owned(),
+            params: json!({
+                "instanceId": "reserved-first",
+                "revision": 1,
+                "policy": {
+                    "mode": "AUTO",
+                    "requestedCpuIds": [],
+                    "minCpus": 1,
+                    "maxCpus": null,
+                    "preferPhysicalCores": true,
+                    "numaNode": null,
+                    "shareMode": "EXCLUSIVE",
+                    "strict": false,
+                },
+            }),
+            deadline: None,
+            idempotency_key: None,
+        })
+        .await
+        .expect("CPU reservation request is sent");
+    let reserve_response = transport
+        .read_message()
+        .await
+        .expect("CPU reservation response is received");
+    let WireMessage::Response {
+        request_id: response_id,
+        ok,
+        result,
+        error,
+    } = reserve_response
+    else {
+        panic!("Core returned a non-response for CPU reservation");
+    };
+    let reservation_result = result.expect("successful reservation includes a result");
+    assert_eq!(response_id, reserve_request_id);
+    assert!(ok);
+    assert!(error.is_none());
+    let reservation_id = reservation_result["reservation"]["reservationId"]
+        .as_str()
+        .expect("reservation ID is returned")
+        .to_owned();
+    assert_eq!(
+        reservation_result["reservation"]["instanceId"],
+        "reserved-first"
+    );
+    assert!(
+        reservation_result["appliedPolicy"]["selectedCpuIds"]
+            .as_array()
+            .is_some_and(|ids| !ids.is_empty())
+    );
+
+    let list_request_id = RequestId::new();
+    transport
+        .write_message(&WireMessage::Request {
+            request_id: list_request_id,
+            method: "cpu.reservation.list".to_owned(),
+            params: json!({}),
+            deadline: None,
+            idempotency_key: None,
+        })
+        .await
+        .expect("CPU reservation list request is sent");
+    let list_response = transport
+        .read_message()
+        .await
+        .expect("CPU reservation list response is received");
+    let WireMessage::Response {
+        request_id: response_id,
+        ok,
+        result,
+        error,
+    } = list_response
+    else {
+        panic!("Core returned a non-response for CPU reservation list");
+    };
+    let reservations = result.expect("reservation list includes a result");
+    assert_eq!(response_id, list_request_id);
+    assert!(ok);
+    assert!(error.is_none());
+    assert_eq!(reservations["items"].as_array().map(Vec::len), Some(1));
+
+    let release_request_id = RequestId::new();
+    transport
+        .write_message(&WireMessage::Request {
+            request_id: release_request_id,
+            method: "cpu.release".to_owned(),
+            params: json!({ "reservationId": reservation_id }),
+            deadline: None,
+            idempotency_key: None,
+        })
+        .await
+        .expect("CPU reservation release request is sent");
+    let release_response = transport
+        .read_message()
+        .await
+        .expect("CPU reservation release response is received");
+    let WireMessage::Response {
+        request_id: response_id,
+        ok,
+        result,
+        error,
+    } = release_response
+    else {
+        panic!("Core returned a non-response for CPU reservation release");
+    };
+    assert_eq!(response_id, release_request_id);
+    assert!(ok);
+    assert_eq!(result, Some(json!({})));
+    assert!(error.is_none());
 
     let invalid_request_id = RequestId::new();
     transport

@@ -10,6 +10,7 @@ use crate::InstanceRepository;
 use crate::ProvisionManager;
 use crate::ProxySubserverRepository;
 use crate::RuntimeManager;
+use crate::cpu_reservation_repository::CpuReservationRepository;
 
 /// 单个安全协议会话持有的 Core 资源视图和事件订阅状态。
 ///
@@ -17,6 +18,7 @@ use crate::RuntimeManager;
 pub(crate) struct CoreRequestState {
     core_id: CoreId,
     cpu_topology: CpuTopology,
+    cpu_reservations: CpuReservationRepository,
     event_subscription: Option<RequestId>,
     event_topics: BTreeSet<String>,
     instances: InstanceRepository,
@@ -33,6 +35,7 @@ impl CoreRequestState {
     pub(crate) fn new(
         core_id: CoreId,
         cpu_topology: CpuTopology,
+        cpu_reservations: CpuReservationRepository,
         instances: InstanceRepository,
         processes: InstanceProcessManager,
         proxy_subservers: ProxySubserverRepository,
@@ -43,6 +46,7 @@ impl CoreRequestState {
         Self {
             core_id,
             cpu_topology,
+            cpu_reservations,
             event_subscription: None,
             event_topics: BTreeSet::new(),
             instances,
@@ -62,6 +66,11 @@ impl CoreRequestState {
     /// 返回 Core 启动时缓存的 CPU 拓扑快照。
     pub(crate) const fn cpu_topology(&self) -> &CpuTopology {
         &self.cpu_topology
+    }
+
+    /// 返回当前 Core 的 CPU 独占预留仓储。
+    pub(crate) const fn cpu_reservations(&self) -> &CpuReservationRepository {
+        &self.cpu_reservations
     }
 
     /// 返回事件订阅请求标识。

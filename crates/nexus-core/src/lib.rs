@@ -11,6 +11,7 @@ mod core_server;
 mod core_tls_identity;
 mod core_tls_identity_error;
 mod cpu_policy_resolver;
+mod cpu_reservation_repository;
 mod cpu_topology_discovery;
 mod download_error;
 mod download_manager;

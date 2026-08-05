@@ -28,6 +28,7 @@ use nexus_domain::BedrockPortCheckState;
 use nexus_domain::BedrockPortSource;
 use nexus_domain::CoreId;
 use nexus_domain::CpuPolicy;
+use nexus_domain::CpuShareMode;
 use nexus_domain::CpuTopology;
 use nexus_domain::Instance;
 use nexus_domain::InstanceCreate;
@@ -88,17 +89,20 @@ use crate::RuntimeManager;
 use crate::RuntimeManagerError;
 use crate::cpu_policy_resolver::CpuPolicyResolveError;
 use crate::cpu_policy_resolver::resolve_cpu_policy;
+use crate::cpu_reservation_repository::CpuReservationRepository;
+use crate::cpu_reservation_repository::CpuReservationRepositoryError;
 use crate::cpu_topology_discovery::detect_cpu_topology;
 use crate::file_manager::FILE_TRANSFER_CHUNK_BYTES;
 use crate::file_manager::MAXIMUM_FILE_ARCHIVE_PATHS;
 use crate::file_manager::MAXIMUM_FILE_BATCH_OPERATIONS;
 use crate::file_manager::MAXIMUM_FILE_READ_BYTES;
 
-const CORE_CAPABILITIES: [&str; 14] = [
+const CORE_CAPABILITIES: [&str; 15] = [
     "bedrock-health",
     "config",
     "cpu-topology",
     "cpu-policy",
+    "cpu-reservations",
     "events",
     "files",
     "instances",
@@ -136,6 +140,7 @@ pub struct CoreServer {
     core_id: CoreId,
     certificate_sha256: Arc<str>,
     cpu_topology: CpuTopology,
+    cpu_reservations: CpuReservationRepository,
     listen_address: SocketAddr,
     listener: TcpListener,
     pre_shared_key: PresharedKey,
@@ -151,6 +156,7 @@ pub struct CoreServer {
 #[derive(Clone)]
 struct CoreResources {
     cpu_topology: CpuTopology,
+    cpu_reservations: CpuReservationRepository,
     instances: InstanceRepository,
     processes: InstanceProcessManager,
     proxy_subservers: ProxySubserverRepository,
@@ -189,11 +195,13 @@ impl CoreServer {
         let provision = ProvisionManager::new(config.data_directory(), runtimes.clone())?;
         let files = FileManager::new(config.data_directory());
         let cpu_topology = detect_cpu_topology();
+        let cpu_reservations = CpuReservationRepository::default();
 
         Ok(Self {
             core_id,
             certificate_sha256: Arc::from(tls_identity.certificate_sha256()),
             cpu_topology,
+            cpu_reservations,
             listen_address,
             listener,
             pre_shared_key,
@@ -246,6 +254,7 @@ impl CoreServer {
             let pre_shared_key = self.pre_shared_key.clone();
             let resources = CoreResources {
                 cpu_topology: self.cpu_topology.clone(),
+                cpu_reservations: self.cpu_reservations.clone(),
                 instances: self.instances.clone(),
                 processes: self.processes.clone(),
                 proxy_subservers: self.proxy_subservers.clone(),
@@ -311,6 +320,7 @@ where
     let mut request_state = CoreRequestState::new(
         core_id,
         resources.cpu_topology,
+        resources.cpu_reservations,
         resources.instances,
         resources.processes,
         resources.proxy_subservers,
@@ -478,6 +488,9 @@ async fn request_response(
         "system.ping" => success_response(request_id, json!({ "receivedAt": current_timestamp() })),
         "cpu.topology" => success_response(request_id, json!(state.cpu_topology())),
         "cpu.policy.resolve" => cpu_policy_resolve_response(request_id, params, state),
+        "cpu.reservation.list" => cpu_reservation_list_response(request_id, state),
+        "cpu.reserve" => cpu_reserve_response(request_id, params, state),
+        "cpu.release" => cpu_release_response(request_id, params, state),
         "runtime.list" => environment_list_response(request_id, state.runtimes()).await,
         "runtime.install" => {
             runtime_install_response(request_id, params, idempotency_key, state.runtimes())
@@ -607,6 +620,176 @@ fn cpu_policy_resolve_response(
             false,
             Some(json!({ "reason": reason })),
         ),
+    }
+}
+
+fn cpu_reservation_list_response(request_id: RequestId, state: &CoreRequestState) -> WireMessage {
+    match state.cpu_reservations().list() {
+        Ok(reservations) => success_response(request_id, json!({ "items": reservations })),
+        Err(error) => cpu_reservation_error_response(request_id, error),
+    }
+}
+
+fn cpu_reserve_response(
+    request_id: RequestId,
+    params: &Value,
+    state: &CoreRequestState,
+) -> WireMessage {
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "cpu.reserve requires an instanceId",
+        );
+    };
+    let instance = match state.instances().get(&instance_id) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            return error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist");
+        }
+        Err(error) => return repository_failure_response(request_id, &error),
+    };
+    let Some(revision) = params.get("revision").and_then(Value::as_u64) else {
+        return error_response(request_id, "BAD_REQUEST", "cpu.reserve requires a revision");
+    };
+    if instance.revision() != revision {
+        return error_response(
+            request_id,
+            "INSTANCE_REVISION_CONFLICT",
+            "Instance revision does not match",
+        );
+    }
+    let Some(policy) = params
+        .get("policy")
+        .cloned()
+        .and_then(|value| from_value::<CpuPolicy>(value).ok())
+    else {
+        return error_response(
+            request_id,
+            "CPU_POLICY_INVALID",
+            "cpu.reserve requires a valid policy",
+        );
+    };
+    if policy.share_mode() != CpuShareMode::Exclusive {
+        return error_response(
+            request_id,
+            "CPU_RESERVATION_REQUIRES_EXCLUSIVE",
+            "cpu.reserve requires shareMode=EXCLUSIVE",
+        );
+    }
+
+    let candidate_policy = CpuPolicy::new(
+        policy.mode(),
+        policy.requested_cpu_ids().to_vec(),
+        policy.min_cpus(),
+        policy.max_cpus(),
+        policy.prefer_physical_cores(),
+        policy.numa_node(),
+        CpuShareMode::Shared,
+        policy.strict(),
+    );
+    let resolution = match resolve_cpu_policy(&candidate_policy, state.cpu_topology()) {
+        Ok(resolution) => resolution,
+        Err(CpuPolicyResolveError::Invalid(_)) => {
+            return error_response(
+                request_id,
+                "CPU_POLICY_INVALID",
+                "CPU policy fields are invalid",
+            );
+        }
+        Err(CpuPolicyResolveError::CapacityUnavailable(reason)) => {
+            return error_response_with_details(
+                request_id,
+                "CPU_CAPACITY_UNAVAILABLE",
+                "CPU reservation cannot be satisfied by the current topology",
+                false,
+                Some(json!({ "reason": reason })),
+            );
+        }
+    };
+    let Some(cpu_ids) = resolution
+        .get("selectedCpuIds")
+        .and_then(Value::as_array)
+        .map(|ids| {
+            ids.iter()
+                .filter_map(Value::as_u64)
+                .filter_map(|id| u32::try_from(id).ok())
+                .collect::<Vec<_>>()
+        })
+        .filter(|ids| !ids.is_empty())
+    else {
+        return error_response(
+            request_id,
+            "CPU_CAPACITY_UNAVAILABLE",
+            "CPU reservation selected no CPUs",
+        );
+    };
+    let created_at = current_timestamp();
+    match state
+        .cpu_reservations()
+        .reserve(instance_id, cpu_ids, created_at)
+    {
+        Ok(reservation) => success_response(
+            request_id,
+            json!({
+                "reservation": reservation,
+                "appliedPolicy": resolution,
+            }),
+        ),
+        Err(error) => cpu_reservation_error_response(request_id, error),
+    }
+}
+
+fn cpu_release_response(
+    request_id: RequestId,
+    params: &Value,
+    state: &CoreRequestState,
+) -> WireMessage {
+    let Some(reservation_id) = params
+        .get("reservationId")
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse::<TaskId>().ok())
+    else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "cpu.release requires a valid reservationId",
+        );
+    };
+    match state.cpu_reservations().release(reservation_id) {
+        Ok(_) => success_response(request_id, json!({})),
+        Err(error) => cpu_reservation_error_response(request_id, error),
+    }
+}
+
+fn cpu_reservation_error_response(
+    request_id: RequestId,
+    error: CpuReservationRepositoryError,
+) -> WireMessage {
+    match error {
+        CpuReservationRepositoryError::Conflict {
+            cpu_id,
+            reservation_id,
+        } => error_response_with_details(
+            request_id,
+            "CPU_RESERVATION_CONFLICT",
+            "Requested CPU is already reserved",
+            false,
+            Some(json!({ "cpuId": cpu_id, "reservationId": reservation_id })),
+        ),
+        CpuReservationRepositoryError::NotFound { .. } => error_response(
+            request_id,
+            "CPU_RESERVATION_NOT_FOUND",
+            "CPU reservation does not exist",
+        ),
+        CpuReservationRepositoryError::StorePoisoned => {
+            tracing::error!(%error, "CPU reservation operation failed");
+            error_response(
+                request_id,
+                "CPU_RESERVATION_FAILED",
+                "CPU reservation operation failed",
+            )
+        }
     }
 }
 
