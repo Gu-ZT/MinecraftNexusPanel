@@ -192,7 +192,7 @@ impl CoreServer {
         })?;
 
         let instances = InstanceRepository::new();
-        let audits = InstanceAuditRepository::default();
+        let audits = InstanceAuditRepository::open(config.data_directory())?;
         let processes = InstanceProcessManager::new(
             config.data_directory().to_path_buf(),
             instances.clone(),

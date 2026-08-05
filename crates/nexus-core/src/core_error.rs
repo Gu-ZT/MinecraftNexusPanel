@@ -61,6 +61,9 @@ pub enum CoreError {
     /// 一键搭建管理器初始化或执行失败。
     #[error(transparent)]
     ProvisionManager(#[from] crate::ProvisionManagerError),
+    /// 实例生命周期审计仓储初始化或持久化失败。
+    #[error(transparent)]
+    InstanceAuditRepository(#[from] crate::InstanceAuditRepositoryError),
     /// 写入 Core 标识文件失败。
     #[error("failed to write the Core identity file {path}")]
     WriteCoreIdentity {

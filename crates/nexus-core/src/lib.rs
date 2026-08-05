@@ -54,7 +54,7 @@ pub(crate) use file_batch_operation::FileBatchOperation;
 pub use file_manager::FileManager;
 pub use file_manager_error::FileManagerError;
 use instance_audit_repository::InstanceAuditRepository;
-use instance_audit_repository::InstanceAuditRepositoryError;
+pub use instance_audit_repository::InstanceAuditRepositoryError;
 use instance_log_store::InstanceLogStore;
 pub use instance_log_store_error::InstanceLogStoreError;
 use instance_process::InstanceProcess;
