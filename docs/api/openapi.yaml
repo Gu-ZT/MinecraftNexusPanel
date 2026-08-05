@@ -650,6 +650,105 @@ paths:
           $ref: '#/components/responses/CoreFailure'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/cpu-reservations:
+    get:
+      tags: [ Cores ]
+      operationId: listCpuReservations
+      summary: List CPU exclusive reservations registered by a Core
+      description: |
+        Return the Core-local reservation records. A reservation proves only
+        that the Core selected a non-overlapping CPU set for the instance; it
+        does not prove that host affinity or Docker cpuset has been applied,
+        and the current in-memory records are not restored after a Core restart.
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+      responses:
+        '200':
+          description: Core-local CPU reservation records
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CpuReservationPage'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/CoreFailure'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      tags: [ Cores ]
+      operationId: reserveCpu
+      summary: Register an exclusive CPU reservation on a Core
+      description: |
+        Validate the instance revision, resolve an EXCLUSIVE CPU policy, and
+        atomically register the selected CPU IDs. The operation requires an
+        idempotency key, but the current Core reservation store is in-memory;
+        retry behavior and persistence beyond the Core process are not yet a
+        durable task guarantee.
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CpuReservationRequest'
+      responses:
+        '201':
+          description: CPU reservation registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CpuReservationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '502':
+          $ref: '#/components/responses/CoreFailure'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/cpu-reservations/{reservationId}:
+    delete:
+      tags: [ Cores ]
+      operationId: releaseCpu
+      summary: Release a Core-local CPU exclusive reservation
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/CpuReservationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: CPU reservation released
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '502':
+          $ref: '#/components/responses/CoreFailure'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/environments:
     get:
       tags: [ Environments ]
@@ -2671,6 +2770,13 @@ components:
       required: true
       schema:
         type: string
+    CpuReservationId:
+      name: reservationId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
     FilePath:
       name: path
       in: query
@@ -2785,6 +2891,12 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     RevisionMismatch:
       description: If-Match does not match current revision
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PreconditionFailed:
+      description: The supplied resource revision is no longer current
       content:
         application/json:
           schema:
@@ -3194,6 +3306,53 @@ components:
           type: [ string, 'null' ]
         reservationId:
           type: [ string, 'null' ]
+    CpuReservation:
+      type: object
+      required: [ reservationId, instanceId, cpuIds, createdAt ]
+      properties:
+        reservationId:
+          type: string
+          minLength: 1
+        instanceId:
+          type: string
+          minLength: 1
+        cpuIds:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+    CpuReservationPage:
+      type: object
+      required: [ items ]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CpuReservation'
+    CpuReservationRequest:
+      type: object
+      required: [ instanceId, revision, policy ]
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          minLength: 1
+        revision:
+          type: integer
+          minimum: 1
+        policy:
+          $ref: '#/components/schemas/CpuPolicy'
+    CpuReservationResult:
+      type: object
+      required: [ reservation, appliedPolicy ]
+      properties:
+        reservation:
+          $ref: '#/components/schemas/CpuReservation'
+        appliedPolicy:
+          $ref: '#/components/schemas/CpuPolicyResolution'
     RuntimeKind:
       type: string
       enum: [ JAVA, NODE_JS, PYTHON ]

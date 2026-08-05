@@ -267,7 +267,7 @@ stateDiagram-v2
 
 - 镜像拉取、更新、删除、构建和实时构建日志。
 - 实例容器化启动、端口、网络、挂载、环境变量、CPU/内存限制和 cpuset。
-- Core/实例大核调度：自动性能核、手动核集合、独占预留、NUMA 绑定和降级状态；当前已交付 Linux sysfs/进程 cpuset CPU 拓扑快照、ARM capacity/NUMA/隔离信息探测，以及只读 CPU policy 候选解析，性能类别未知时不允许按编号猜测。
+- Core/实例大核调度：自动性能核、手动核集合、独占预留、NUMA 绑定和降级状态；当前已交付 Linux sysfs/进程 cpuset CPU 拓扑快照、ARM capacity/NUMA/隔离信息探测、只读 CPU policy 候选解析，以及 Core/Panel 内存态 `CpuReservation` 的实例 revision 校验、冲突检查、列表和释放接口。预留登记不代表宿主机 affinity 或 Docker cpuset 已应用，也不跨 Core 重启持久化；性能类别未知时不允许按编号猜测。
 - 容器安全策略、磁盘配额、镜像垃圾回收和凭据管理。
 - 验收：同一实例可在停机状态下从 HOST 切换到 CONTAINER，并在容器/宿主机上应用同一 CPU policy；配置经校验且不会产生越界挂载。
 
