@@ -11,16 +11,19 @@ use rusqlite::Result as SqliteResult;
 use rusqlite::Row;
 use rusqlite::TransactionBehavior;
 
+use crate::NewAuditEvent;
 use crate::NewCore;
 use crate::NewExtensionInstall;
 use crate::NewSession;
 use crate::StorageError;
+use crate::StoredAuditEvent;
 use crate::StoredCore;
 use crate::StoredExtensionInstall;
 use crate::StoredSession;
 use crate::StoredUser;
 
 const DATABASE_FILE_NAME: &str = "panel.db";
+const MAXIMUM_AUDIT_EVENTS: i64 = 10_000;
 
 /// 线程安全共享的 Panel SQLite 数据库访问器。
 ///
@@ -417,6 +420,68 @@ impl SqliteStore {
         &self.database_path
     }
 
+    /// 追加一条 Panel 用户级审计事件，并删除超出保留上限的最旧记录。
+    ///
+    /// 审计写入与裁剪使用同一个立即事务，避免并发请求看到半完成的保留策略。
+    pub fn append_audit_event(&self, event: &NewAuditEvent) -> Result<(), StorageError> {
+        let mut connection = self.lock_connection()?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(StorageError::Query)?;
+        transaction
+            .execute(
+                "INSERT INTO panel_audit_events (
+                    id, occurred_at, user_id, request_id, source_ip,
+                    method, path, status_code, permission_result
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                (
+                    event.id.as_str(),
+                    event.occurred_at.as_str(),
+                    event.user_id.as_deref(),
+                    event.request_id.as_str(),
+                    event.source_ip.as_deref(),
+                    event.method.as_str(),
+                    event.path.as_str(),
+                    event.status_code,
+                    event.permission_result.as_str(),
+                ),
+            )
+            .map_err(StorageError::Query)?;
+        transaction
+            .execute(
+                "DELETE FROM panel_audit_events
+                 WHERE id IN (
+                    SELECT id FROM panel_audit_events
+                    ORDER BY occurred_at DESC, id DESC
+                    LIMIT -1 OFFSET ?1
+                 )",
+                [MAXIMUM_AUDIT_EVENTS],
+            )
+            .map_err(StorageError::Query)?;
+        transaction.commit().map_err(StorageError::Query)
+    }
+
+    /// 按最新优先读取 Panel 用户级审计事件。
+    pub fn list_audit_events(&self, limit: usize) -> Result<Vec<StoredAuditEvent>, StorageError> {
+        let connection = self.lock_connection()?;
+        let limit = i64::try_from(limit).unwrap_or(MAXIMUM_AUDIT_EVENTS);
+        let mut statement = connection
+            .prepare(
+                "SELECT id, occurred_at, user_id, request_id, source_ip,
+                        method, path, status_code, permission_result
+                 FROM panel_audit_events
+                 ORDER BY occurred_at DESC, id DESC
+                 LIMIT ?1",
+            )
+            .map_err(StorageError::Query)?;
+        let rows = statement
+            .query_map([limit], map_audit_event)
+            .map_err(StorageError::Query)?;
+
+        rows.collect::<SqliteResult<Vec<_>>>()
+            .map_err(StorageError::Query)
+    }
+
     /// 判断数据库中是否已经存在用户。
     pub fn has_users(&self) -> Result<bool, StorageError> {
         let connection = self.lock_connection()?;
@@ -549,7 +614,24 @@ fn migrate(connection: &mut Connection) -> Result<(), StorageError> {
             CREATE INDEX IF NOT EXISTS extension_installs_instance_kind_idx
                 ON extension_installs(core_id, instance_id, kind);
 
-            PRAGMA user_version = 3;
+            CREATE TABLE IF NOT EXISTS panel_audit_events (
+                id TEXT PRIMARY KEY NOT NULL,
+                occurred_at TEXT NOT NULL,
+                user_id TEXT,
+                request_id TEXT NOT NULL,
+                source_ip TEXT,
+                method TEXT NOT NULL,
+                path TEXT NOT NULL,
+                status_code INTEGER NOT NULL CHECK (status_code BETWEEN 100 AND 599),
+                permission_result TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS panel_audit_events_occurred_at_idx
+                ON panel_audit_events(occurred_at DESC, id DESC);
+            CREATE INDEX IF NOT EXISTS panel_audit_events_user_id_idx
+                ON panel_audit_events(user_id, occurred_at DESC);
+
+            PRAGMA user_version = 4;
             ",
         )
         .map_err(StorageError::Migrate)
@@ -609,6 +691,20 @@ fn map_extension_install(row: &Row<'_>) -> SqliteResult<StoredExtensionInstall> 
     })
 }
 
+fn map_audit_event(row: &Row<'_>) -> SqliteResult<StoredAuditEvent> {
+    Ok(StoredAuditEvent {
+        id: row.get(0)?,
+        occurred_at: row.get(1)?,
+        user_id: row.get(2)?,
+        request_id: row.get(3)?,
+        source_ip: row.get(4)?,
+        method: row.get(5)?,
+        path: row.get(6)?,
+        status_code: row.get(7)?,
+        permission_result: row.get(8)?,
+    })
+}
+
 fn map_session(row: &Row<'_>) -> SqliteResult<StoredSession> {
     Ok(StoredSession::new(
         row.get(0)?,
@@ -630,6 +726,7 @@ mod tests {
 
     use super::DATABASE_FILE_NAME;
     use super::SqliteStore;
+    use crate::NewAuditEvent;
     use crate::NewCore;
     use tempfile::tempdir;
 
@@ -771,5 +868,36 @@ mod tests {
                 .expect("extension installs are listed after deletion")
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn persists_and_lists_panel_audit_events() {
+        let data_directory = tempdir().expect("temporary Panel data directory is created");
+        let store = SqliteStore::open(data_directory.path()).expect("Panel database opens");
+        let event = NewAuditEvent {
+            id: "audit-1".to_owned(),
+            occurred_at: "2026-08-06T00:00:00Z".to_owned(),
+            user_id: Some("user-1".to_owned()),
+            request_id: "request-1".to_owned(),
+            source_ip: Some("127.0.0.1".to_owned()),
+            method: "POST".to_owned(),
+            path: "/api/v1/cores/core/instances/survival/actions/start".to_owned(),
+            status_code: 202,
+            permission_result: "ALLOWED".to_owned(),
+        };
+
+        store
+            .append_audit_event(&event)
+            .expect("Panel audit event is persisted");
+        let events = store
+            .list_audit_events(10)
+            .expect("Panel audit events are listed");
+        let stored = events.first().expect("stored audit event is returned");
+
+        assert_eq!(stored.id(), "audit-1");
+        assert_eq!(stored.user_id(), Some("user-1"));
+        assert_eq!(stored.request_id(), "request-1");
+        assert_eq!(stored.source_ip(), Some("127.0.0.1"));
+        assert_eq!(stored.permission_result(), "ALLOWED");
     }
 }

@@ -3,6 +3,7 @@
 //! Panel 负责面向用户的鉴权、持久化和 HTTP 路由，并通过 `CoreConnection` 调用
 //! Core；宿主机文件、进程和服务端实际操作仍由 Core 执行。
 
+mod audit_routes;
 mod auth_error;
 mod auth_routes;
 mod auth_service;

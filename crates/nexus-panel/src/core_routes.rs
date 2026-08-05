@@ -24,6 +24,7 @@ use nexus_domain::CoreId;
 use nexus_domain::CpuPolicy;
 use nexus_domain::RequestId;
 use nexus_domain::TaskId;
+use nexus_storage::StoredSession;
 use serde_json::Value;
 use tracing::error;
 
@@ -301,7 +302,7 @@ pub(crate) async fn authorize(
     headers: &HeaderMap,
     write: bool,
     request_id: RequestId,
-) -> Result<(), Response> {
+) -> Result<StoredSession, Response> {
     let credential = request_credential(headers)
         .ok_or_else(|| auth_error_response(AuthError::InvalidSession, request_id))?;
     let browser_session = matches!(&credential, RequestCredential::Browser(_));
@@ -330,7 +331,7 @@ pub(crate) async fn authorize(
         ));
     }
 
-    Ok(())
+    Ok(session)
 }
 
 pub(crate) fn parse_core_id(value: &str) -> Option<CoreId> {

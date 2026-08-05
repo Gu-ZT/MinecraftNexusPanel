@@ -328,9 +328,12 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 | GET/PATCH/DELETE | `/groups/{groupId}`              | `user.read/manage` | 用户组管理         |
 | PUT              | `/groups/{groupId}/members`      | `user.manage`      | 设置用户组成员     |
 | PUT              | `/groups/{groupId}/grants`       | `user.manage`      | 设置权限和实例范围 |
-| GET              | `/audit-events`                  | `audit.read`       | 只读审计事件       |
+| GET              | `/audit-events`                  | 管理员             | 只读 Panel 请求审计事件 |
 
-审计事件不允许通过 API 修改或删除。筛选支持 `actorId`、`action`、`coreId`、`instanceId`、`from`、`to`。
+`GET /audit-events` 当前接受可选 `limit`（1-200，默认 100），按最新优先返回 Panel 请求元数据。
+事件最多保留 10,000 条，且不允许通过 API 修改或删除。记录包含用户 ID、请求 ID、来源 IP、HTTP 方法、
+不含查询参数的路径、状态码和权限判定；请求体、查询参数、Cookie、Token 与密码不会写入审计库。
+细粒度 `audit.read` RBAC、资源范围筛选和审计导出仍属于后续 TODO。
 
 ## 6. 资源示例
 

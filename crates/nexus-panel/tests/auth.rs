@@ -176,6 +176,57 @@ async fn browser_session_requires_csrf_for_logout() {
 }
 
 #[tokio::test]
+async fn persists_authenticated_request_audit_with_connection_context() {
+    let data_directory = tempdir().expect("temporary Panel data directory is created");
+    let (listen_address, server_task) = start_panel(&data_directory, "admin", ADMIN_PASSWORD).await;
+
+    let login_response = login(listen_address, "admin", ADMIN_PASSWORD).await;
+    assert_eq!(login_response.status, 200);
+    let access_token = login_response.body["session"]["accessToken"]
+        .as_str()
+        .expect("native access token is returned")
+        .to_owned();
+    let user_id = login_response.body["user"]["id"]
+        .as_str()
+        .expect("user ID is returned")
+        .to_owned();
+
+    let current_user = send_json_request(
+        listen_address,
+        "GET",
+        "/api/v1/auth/me",
+        &[("Authorization", &format!("Bearer {access_token}"))],
+        None,
+    )
+    .await;
+    assert_eq!(current_user.status, 200);
+
+    let audit = send_json_request(
+        listen_address,
+        "GET",
+        "/api/v1/audit-events?limit=50",
+        &[("Authorization", &format!("Bearer {access_token}"))],
+        None,
+    )
+    .await;
+    assert_eq!(audit.status, 200);
+    let current_user_event = audit.body["items"]
+        .as_array()
+        .expect("audit items are returned")
+        .iter()
+        .find(|event| event["path"] == "/api/v1/auth/me")
+        .expect("authenticated user request is audited");
+    assert_eq!(current_user_event["userId"], user_id);
+    assert!(current_user_event["requestId"].is_string());
+    assert_eq!(current_user_event["sourceIp"], "127.0.0.1");
+    assert_eq!(current_user_event["method"], "GET");
+    assert_eq!(current_user_event["statusCode"], 200);
+    assert_eq!(current_user_event["permissionResult"], "ALLOWED");
+
+    stop_panel(server_task).await;
+}
+
+#[tokio::test]
 async fn initial_administrator_is_not_replaced_on_restart() {
     let data_directory = tempdir().expect("temporary Panel data directory is created");
     let (first_address, first_task) =

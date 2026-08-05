@@ -4,12 +4,14 @@ use crate::VersionMetadataClient;
 use crate::WebSocketTicketStore;
 use crate::extension_source_client::ExtensionSourceClient;
 use crate::extension_task_store::ExtensionTaskStore;
+use nexus_storage::SqliteStore;
 
 /// 注入所有 Panel 路由共享服务的只读状态句柄集合。
 #[derive(Clone)]
 pub struct PanelState {
     auth: AuthService,
     cores: CoreRegistry,
+    store: SqliteStore,
     extension_sources: ExtensionSourceClient,
     extension_tasks: ExtensionTaskStore,
     version_metadata: VersionMetadataClient,
@@ -22,12 +24,14 @@ impl PanelState {
     pub fn new(
         auth: AuthService,
         cores: CoreRegistry,
+        store: SqliteStore,
         extension_sources: ExtensionSourceClient,
         version_metadata: VersionMetadataClient,
     ) -> Self {
         Self {
             auth,
             cores,
+            store,
             extension_sources,
             extension_tasks: ExtensionTaskStore::default(),
             version_metadata,
@@ -45,6 +49,12 @@ impl PanelState {
     #[must_use]
     pub const fn cores(&self) -> &CoreRegistry {
         &self.cores
+    }
+
+    /// 返回用于持久化 Panel 审计事件和其他 Panel 数据的 SQLite 访问器。
+    #[must_use]
+    pub const fn store(&self) -> &SqliteStore {
+        &self.store
     }
 
     /// 返回扩展来源客户端。

@@ -35,6 +35,8 @@ tags:
     description: Structured instance configuration documents and lossless patches
   - name: Tasks
     description: Long-running operation status and cancellation
+  - name: Audit
+    description: Administrator-only immutable Panel request audit records
 security:
   - cookieAuth: [ ]
   - bearerAuth: [ ]
@@ -386,6 +388,34 @@ paths:
                 $ref: '#/components/schemas/User'
         '401':
           $ref: '#/components/responses/Unauthenticated'
+  /audit-events:
+    get:
+      tags: [ Audit ]
+      operationId: listAuditEvents
+      summary: Read Panel user-level audit events
+      description: |
+        Read immutable request metadata retained by Panel. Only administrators
+        can access this endpoint. Query strings, request bodies, cookies, access
+        tokens, refresh tokens, and passwords are never returned or persisted.
+        Results are ordered newest first and the store retains at most 10,000
+        events.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Panel request audit events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PanelAuditPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/ServiceUnavailable'
   /ws/tickets:
     post:
       tags: [ Realtime ]
@@ -4577,6 +4607,52 @@ components:
             $ref: '#/components/schemas/InstanceAuditRecord'
         nextCursor:
           type: [ string, 'null' ]
+    PanelAuditPermissionResult:
+      type: string
+      enum: [ ALLOWED, DENIED, NOT_REQUIRED ]
+    PanelAuditEvent:
+      type: object
+      required:
+        - id
+        - occurredAt
+        - requestId
+        - method
+        - path
+        - statusCode
+        - permissionResult
+      properties:
+        id:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+        userId:
+          type: [ string, 'null' ]
+        requestId:
+          type: string
+          format: uuid
+        sourceIp:
+          type: [ string, 'null' ]
+        method:
+          type: string
+        path:
+          type: string
+          description: Request path without query parameters
+        statusCode:
+          type: integer
+          minimum: 100
+          maximum: 599
+        permissionResult:
+          $ref: '#/components/schemas/PanelAuditPermissionResult'
+    PanelAuditPage:
+      type: object
+      required: [ items ]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PanelAuditEvent'
     LogLine:
       type: object
       required: [ cursor, occurredAt, stream, line ]

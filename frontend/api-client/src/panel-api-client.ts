@@ -754,6 +754,27 @@ export interface InstanceAuditPage {
   nextCursor: string | null;
 }
 
+/** Panel 用户级 HTTP 审计的授权判定。 */
+export type PanelAuditPermissionResult = 'ALLOWED' | 'DENIED' | 'NOT_REQUIRED';
+
+/** Panel 持久化的一条请求审计事件；不包含请求体或凭据。 */
+export interface PanelAuditEvent {
+  id: string;
+  occurredAt: string;
+  userId: string | null;
+  requestId: string;
+  sourceIp: string | null;
+  method: string;
+  path: string;
+  statusCode: number;
+  permissionResult: PanelAuditPermissionResult;
+}
+
+/** Panel 用户级审计查询结果，按事件时间倒序返回。 */
+export interface PanelAuditPage {
+  items: PanelAuditEvent[];
+}
+
 export interface LogLine {
   cursor: string;
   occurredAt: string;
@@ -781,6 +802,7 @@ export interface PanelApiClient {
   getCurrentUser(): Promise<User>;
   logout(): Promise<void>;
   listCores(): Promise<CorePage>;
+  listAuditEvents(limit?: number): Promise<PanelAuditPage>;
   getCpuTopology(coreId: string): Promise<CpuTopology>;
   resolveCpuPolicy(coreId: string, policy: CpuPolicy): Promise<CpuPolicyResolution>;
   listCpuReservations(coreId: string): Promise<CpuReservationPage>;
@@ -1081,6 +1103,10 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     },
     listCores() {
       return request<CorePage>('/api/v1/cores?limit=50');
+    },
+    listAuditEvents(limit = 100) {
+      const query = new URLSearchParams({ limit: String(limit) });
+      return request<PanelAuditPage>(`/api/v1/audit-events?${query.toString()}`);
     },
     getCpuTopology(coreId) {
       return request<CpuTopology>(

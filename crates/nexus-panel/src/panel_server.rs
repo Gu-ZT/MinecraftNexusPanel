@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 
 use axum::Json;
 use axum::Router;
+use axum::extract::ConnectInfo;
 use axum::extract::Request;
 use axum::extract::State;
 use axum::http::HeaderName;
@@ -14,12 +15,14 @@ use axum::response::Response;
 use axum::routing::get;
 use nexus_config::PanelConfig;
 use nexus_domain::RequestId;
+use nexus_storage::NewAuditEvent;
 use nexus_storage::SqliteStore;
 use serde_json::Value;
 use serde_json::json;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tokio::net::TcpListener;
+use tokio::task::spawn_blocking;
 use uuid::Uuid;
 
 use crate::AuthService;
@@ -28,7 +31,11 @@ use crate::PanelError;
 use crate::PanelState;
 use crate::SecretCipher;
 use crate::VersionMetadataClient;
+use crate::audit_routes::audit_routes;
 use crate::auth_routes::auth_routes;
+use crate::auth_routes::authenticate;
+use crate::auth_routes::request_credential;
+use crate::auth_routes::run_blocking;
 use crate::bedrock_routes::bedrock_routes;
 use crate::config_routes::config_routes;
 use crate::core_routes::core_routes;
@@ -74,7 +81,7 @@ impl PanelServer {
                 "Panel has no users; configure MCNP_INITIAL_ADMIN_USERNAME and MCNP_INITIAL_ADMIN_PASSWORD"
             );
         }
-        let cores = CoreRegistry::new(store, SecretCipher::new(master_key), panel_id)?;
+        let cores = CoreRegistry::new(store.clone(), SecretCipher::new(master_key), panel_id)?;
         let extension_sources = ExtensionSourceClient::new()?;
         let version_metadata = VersionMetadataClient::new()?;
         if let Some(local_core) = config.local_core() {
@@ -94,7 +101,7 @@ impl PanelServer {
         Ok(Self {
             listen_address,
             listener,
-            state: PanelState::new(auth, cores, extension_sources, version_metadata),
+            state: PanelState::new(auth, cores, store, extension_sources, version_metadata),
         })
     }
 
@@ -121,9 +128,12 @@ impl PanelServer {
 }
 
 fn router(state: PanelState) -> Router {
+    let audit_state = state.clone();
+
     Router::new()
         .route("/api/v1/health/live", get(health))
         .route("/api/v1/health/ready", get(readiness))
+        .merge(audit_routes())
         .merge(auth_routes())
         .merge(core_routes())
         .merge(bedrock_routes())
@@ -137,7 +147,86 @@ fn router(state: PanelState) -> Router {
         .merge(install_template_routes())
         .merge(websocket_routes())
         .with_state(state)
+        .layer(middleware::from_fn_with_state(audit_state, audit_request))
         .layer(middleware::from_fn(assign_request_id))
+}
+
+/// 在请求完成后写入不含敏感请求体的 Panel 审计事件。
+///
+/// 审计失败只记录内部日志，不改变已经生成的业务响应；这样数据库短暂不可写时
+/// 不会把正常的 Core 控制请求误报为失败。请求路径不包含查询参数，令牌和密码不会
+/// 进入审计库。
+async fn audit_request(State(state): State<PanelState>, request: Request, next: Next) -> Response {
+    let request_id = request
+        .extensions()
+        .get::<RequestId>()
+        .copied()
+        .unwrap_or_default();
+    let method = request.method().to_string();
+    let path = request.uri().path().to_owned();
+    let source_ip = request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|info| info.0.ip().to_string());
+    let public_path = is_public_path(&path);
+    let user_id = authenticated_user_id(&state, request.headers()).await;
+
+    let response = next.run(request).await;
+    let permission_result = permission_result(response.status(), user_id.is_some(), public_path);
+    let event = NewAuditEvent {
+        id: Uuid::now_v7().to_string(),
+        occurred_at: current_timestamp(),
+        user_id,
+        request_id: request_id.to_string(),
+        source_ip,
+        method,
+        path,
+        status_code: response.status().as_u16(),
+        permission_result: permission_result.to_owned(),
+    };
+    let store = state.store().clone();
+    match spawn_blocking(move || store.append_audit_event(&event)).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => {
+            tracing::error!(%error, %request_id, "Unable to persist Panel audit event")
+        }
+        Err(error) => tracing::error!(%error, %request_id, "Panel audit worker failed"),
+    }
+
+    response
+}
+
+/// 尽力解析当前请求的用户；认证失败时返回空而不影响原请求继续由正式鉴权处理。
+async fn authenticated_user_id(
+    state: &PanelState,
+    headers: &axum::http::HeaderMap,
+) -> Option<String> {
+    let credential = request_credential(headers)?;
+    let auth = state.auth().clone();
+    run_blocking(move || authenticate(&auth, &credential))
+        .await
+        .ok()
+        .map(|session| session.user().id().to_owned())
+}
+
+fn is_public_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/api/v1/health/live"
+            | "/api/v1/health/ready"
+            | "/api/v1/auth/login"
+            | "/api/v1/auth/refresh"
+    )
+}
+
+fn permission_result(status: StatusCode, has_user: bool, public_path: bool) -> &'static str {
+    if public_path {
+        return "NOT_REQUIRED";
+    }
+    if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+        return "DENIED";
+    }
+    if has_user { "ALLOWED" } else { "DENIED" }
 }
 
 async fn assign_request_id(mut request: Request, next: Next) -> Response {
