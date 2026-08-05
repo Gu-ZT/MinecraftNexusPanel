@@ -146,6 +146,8 @@
 - [ ] 容器化实例启动、端口、网络、挂载、环境变量和资源限制。
 - [ ] 挂载逃逸、特权容器、Docker socket 与 host network 安全策略。
 - [ ] CPU 拓扑识别：物理核、逻辑 CPU、NUMA、性能/能效类别。
+  - [x] Core 启动时缓存架构、可见逻辑 CPU、物理核心数量和明确的未知值，并通过 `cpu.topology` 与 Panel `/cpu-topology` 只读暴露。
+  - [ ] Linux sysfs、Windows EfficiencyClass、ARM capacity、NUMA 和隔离 CPU 的可信探测。
 - [ ] CPU policy：AUTO、PERFORMANCE、EFFICIENCY、CUSTOM、严格/降级语义。
 - [ ] 宿主机 affinity、Docker cpuset、独占预留和冲突检测。
 

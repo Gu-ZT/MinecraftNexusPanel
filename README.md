@@ -63,6 +63,18 @@ The first configuration provider is now available through Core TCP and the Panel
 
 Cross-file validation and complex structured controls remain planned M3 work.
 
+### CPU Topology Slice
+
+Core now caches a conservative host CPU topology snapshot at startup and exposes it through
+`cpu.topology` and `GET /api/v1/cores/{coreId}/cpu-topology`:
+
+- architecture, visible logical CPUs, and physical core count when the platform reports it;
+- explicit `UNKNOWN` performance classes when performance/efficiency information is unavailable;
+- detection source and confidence, with no CPU-index-based performance guesses.
+
+Linux sysfs, Windows EfficiencyClass, ARM capacity, NUMA/isolation mapping, CPU policies, and
+exclusive reservations remain planned M4 work.
+
 ## Project Layout
 
 ```text

@@ -63,6 +63,17 @@ ZIP 归档生成和会话化大文件下载已经完成；跨 Core 重启续传�
 
 跨文件校验和复杂结构化控件仍属于 M3 后续工作。
 
+### 当前 CPU 拓扑能力
+
+Core 现在会在启动时缓存保守的宿主机 CPU 拓扑快照，并通过 `cpu.topology` 与
+`GET /api/v1/cores/{coreId}/cpu-topology` 提供查询：
+
+- 返回架构、可见逻辑 CPU，以及平台能够报告时的物理核心数量；
+- 性能核/能效核信息不可用时明确返回 `UNKNOWN`；
+- 返回探测来源和置信度，不根据 CPU 编号猜测性能类别。
+
+Linux sysfs、Windows EfficiencyClass、ARM capacity、NUMA/隔离映射、CPU policy 和独占预留仍属于 M4 后续工作。
+
 ## 工程布局
 
 ```text

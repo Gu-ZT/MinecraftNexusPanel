@@ -335,9 +335,10 @@ API 响应不回传 registry 密码/token。镜像优先保存不可变 digest�
 | PUT  | `.../{instanceId}/cpu-policy`               | `instance.settings.cpu` | 修改实例 CPU policy                       |
 | POST | `.../{instanceId}/actions/apply-cpu-policy` | `instance.settings.cpu` | 停机后重新应用 affinity                   |
 
-Core 启动时识别并缓存拓扑。Linux 优先读取 sysfs topology、`cpu_capacity`/arch scale capacity 和 cgroup cpuset；Windows 使用
-Processor Relationship/EfficiencyClass；ARM big.LITTLE 使用平台暴露的 capacity。无法可靠识别性能类别时，`PERFORMANCE`
-自动模式必须返回 `UNSUPPORTED`，不得按 CPU 编号猜测。
+Core 启动时识别并缓存拓扑，并通过上表的 `GET /cores/{coreId}/cpu-topology` 返回架构、逻辑 CPU、物理核心数量、可用集合和探测置信度。
+当前基础实现只采信系统可用并行度和 sysinfo 物理核心数量；性能类别、NUMA、隔离状态在未被平台可靠报告时返回未知，不能按 CPU
+编号猜测。Linux sysfs topology/`cpu_capacity`、cgroup cpuset、Windows Processor Relationship/EfficiencyClass、ARM
+big.LITTLE capacity 和后续 CPU policy 仍需逐平台实现。
 
 拓扑示例：
 

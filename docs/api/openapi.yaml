@@ -590,6 +590,32 @@ paths:
           $ref: '#/components/responses/NotFound'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /cores/{coreId}/cpu-topology:
+    get:
+      tags: [ Cores ]
+      operationId: getCpuTopology
+      summary: Read the Core host CPU topology
+      description: |
+        Return the topology snapshot cached by Core at startup. Unknown
+        performance classes, NUMA mappings, and isolation state are explicit
+        unknown values; clients must not infer them from CPU indexes.
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+      responses:
+        '200':
+          description: Core CPU topology snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CpuTopology'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/CoreFailure'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/environments:
     get:
       tags: [ Environments ]
@@ -3014,6 +3040,66 @@ components:
             $ref: '#/components/schemas/Core'
         nextCursor:
           type: [ string, 'null' ]
+    CpuPerformanceClass:
+      type: string
+      enum: [ PERFORMANCE, EFFICIENCY, UNKNOWN ]
+    CpuTopologyDetection:
+      type: object
+      required: [ source, confidence ]
+      properties:
+        source:
+          type: string
+        confidence:
+          type: string
+    CpuLogicalProcessor:
+      type: object
+      required: [ id, physicalCoreId, performanceClass, online, isolated, numaNode ]
+      properties:
+        id:
+          type: integer
+          minimum: 0
+        physicalCoreId:
+          type: [ string, 'null' ]
+        performanceClass:
+          $ref: '#/components/schemas/CpuPerformanceClass'
+        online:
+          type: boolean
+        isolated:
+          type: boolean
+        numaNode:
+          type: [ integer, 'null' ]
+          minimum: 0
+    CpuAvailability:
+      type: object
+      required: [ performanceCpuIds, efficiencyCpuIds ]
+      properties:
+        performanceCpuIds:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        efficiencyCpuIds:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+    CpuTopology:
+      type: object
+      required: [ architecture, logicalCpus, physicalCoreCount, available, detection ]
+      properties:
+        architecture:
+          type: string
+        logicalCpus:
+          type: array
+          items:
+            $ref: '#/components/schemas/CpuLogicalProcessor'
+        physicalCoreCount:
+          type: [ integer, 'null' ]
+          minimum: 1
+        available:
+          $ref: '#/components/schemas/CpuAvailability'
+        detection:
+          $ref: '#/components/schemas/CpuTopologyDetection'
     RuntimeKind:
       type: string
       enum: [ JAVA, NODE_JS, PYTHON ]
