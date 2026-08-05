@@ -823,6 +823,15 @@ impl CoreConnection {
             .await
     }
 
+    /// 校验实例配置文档之间的端口、EULA 和基岩端监听约束。
+    pub async fn validate_config_documents(
+        &mut self,
+        instance_id: &InstanceId,
+    ) -> Result<Value, CoreConnectionError> {
+        self.request("config.validate", json!({ "instanceId": instance_id }))
+            .await
+    }
+
     /// 获取单个配置文档及其 schema 和修订号。
     pub async fn get_config_document(
         &mut self,

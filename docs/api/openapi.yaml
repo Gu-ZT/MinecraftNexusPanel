@@ -1191,8 +1191,6 @@ paths:
           $ref: '#/components/responses/PreconditionRequired'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
     delete:
       tags: [ Extensions ]
       operationId: deleteInstanceExtension
@@ -1925,6 +1923,34 @@ paths:
           $ref: '#/components/responses/NotFound'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
+  /cores/{coreId}/instances/{instanceId}/config-documents:validate:
+    post:
+      tags: [ Configuration ]
+      operationId: validateConfigDocuments
+      summary: Validate instance configuration relationships
+      description: >
+        Validate provable relationships across recognized configuration files,
+        including Java server ports, RCON/query settings, EULA acceptance, and
+        Geyser Bedrock listener fields. Unknown version-specific fields are not
+        treated as errors.
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+      responses:
+        '200':
+          description: Configuration validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigValidationResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instances/{instanceId}/config-documents/{documentId}:
     get:
       tags: [ Configuration ]
@@ -4584,6 +4610,47 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ConfigDocumentSummary'
+    ConfigValidationSeverity:
+      type: string
+      enum: [ ERROR, WARNING ]
+    ConfigValidationIssue:
+      type: object
+      required: [ code, severity, path, field, message, relatedPath, relatedField ]
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable validation code.
+        severity:
+          $ref: '#/components/schemas/ConfigValidationSeverity'
+        path:
+          type: string
+          description: Relative path of the primary configuration file.
+        field:
+          type: [ string, 'null' ]
+          description: Dot-separated field path, or null for a file-level diagnostic.
+        message:
+          type: string
+        relatedPath:
+          type: [ string, 'null' ]
+          description: Related configuration path when the rule compares two locations.
+        relatedField:
+          type: [ string, 'null' ]
+          description: Related field path when the rule compares two locations.
+    ConfigValidationResult:
+      type: object
+      required: [ valid, checkedDocuments, issues ]
+      properties:
+        valid:
+          type: boolean
+          description: False when at least one ERROR diagnostic was produced.
+        checkedDocuments:
+          type: array
+          items:
+            type: string
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfigValidationIssue'
     ConfigDocument:
       type: object
       required:

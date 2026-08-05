@@ -169,6 +169,12 @@ async fn connects_to_a_core_and_reads_its_system_info() {
         .scan_config_documents(definition.id())
         .await
         .expect("Core scans configuration documents");
+    let config_validation = connection
+        .validate_config_documents(definition.id())
+        .await
+        .expect("Core validates configuration documents");
+    assert_eq!(config_validation["valid"], true);
+    assert_eq!(config_validation["issues"][0]["code"], "EULA_MISSING");
     let config_document_id = config_scan["documents"][0]["documentId"]
         .as_str()
         .expect("configuration document ID is returned");

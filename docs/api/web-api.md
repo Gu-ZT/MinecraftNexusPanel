@@ -294,6 +294,7 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 |--------|-------------------------------------------------------------------------|--------------|------------------------------|
 | GET    | `.../{instanceId}/config-documents`                                    | `config.read`  | 列出已识别配置文档           |
 | POST   | `.../{instanceId}/config-documents:scan`                               | `config.read`  | 重新扫描配置文档             |
+| POST   | `.../{instanceId}/config-documents:validate`                           | `config.read`  | 校验跨文件配置关系和可定位诊断 |
 | GET    | `.../{instanceId}/config-documents/{documentId}`                       | `config.read`  | Schema、UI Schema 与结构化值 |
 | PATCH  | `.../{instanceId}/config-documents/{documentId}/values`                 | `config.write` | 按 revision 应用 Merge Patch |
 | GET    | `.../{instanceId}/config-documents/{documentId}/raw`                   | `file.read`    | 读取最多 1 MiB 的 UTF-8 原文  |
@@ -302,7 +303,7 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 当前实现识别 `.properties`、`.json`、`.yaml`/`.yml` 和 `.toml` 文件。`documentId` 是相对路径的 SHA-256，结构化写入请求体为
 `{ "revision": "...", "patch": { "motd": "Nexus" }, "allowLossy": false }`；revision 必须等于当前内容 SHA-256。properties 补丁只允许顶层字符串、布尔、数字或
 `null`，并保留注释、键顺序和换行；JSON/YAML/TOML 支持嵌套顶层 Merge Patch，但必须把 `allowLossy` 设置为 `true` 才会规范化写回。raw PUT 使用 `If-Match` 时同样按文件 SHA-256 做并发保护，并必须携带 `Idempotency-Key`。
-provider-specific Schema 和跨文件校验尚未实现。
+`config-documents:validate` 返回 `valid`、`checkedDocuments` 和 `issues`。当前诊断覆盖 Java `server.properties` 的端口范围、启用的 Query/RCON 设置、`server-ip`、`eula.txt`，以及 Geyser `config.yml` 的 Bedrock/Java 端点；重复监听端口会报告关联文件和字段。复杂结构化控件和版本专用 Schema 仍属于后续工作。
 
 ### 5.5 任务、用户和审计
 

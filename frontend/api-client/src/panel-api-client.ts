@@ -347,6 +347,27 @@ export interface ConfigDocument {
   lossy: boolean;
 }
 
+/** Core 对实例配置关系执行一次校验后的诊断严重级别。 */
+export type ConfigValidationSeverity = 'ERROR' | 'WARNING';
+
+/** 一条可定位到主文件和关联文件的配置诊断。 */
+export interface ConfigValidationIssue {
+  code: string;
+  severity: ConfigValidationSeverity;
+  path: string;
+  field: string | null;
+  message: string;
+  relatedPath: string | null;
+  relatedField: string | null;
+}
+
+/** 实例配置校验的完整结果。 */
+export interface ConfigValidationResult {
+  valid: boolean;
+  checkedDocuments: string[];
+  issues: ConfigValidationIssue[];
+}
+
 export interface RawConfigResult {
   data: ArrayBuffer;
   etag: string;
@@ -836,6 +857,7 @@ export interface PanelApiClient {
   ): Promise<TaskAccepted>;
   listConfigDocuments(coreId: string, instanceId: string): Promise<ConfigDocumentPage>;
   scanConfigDocuments(coreId: string, instanceId: string): Promise<ConfigDocumentPage>;
+  validateConfigDocuments(coreId: string, instanceId: string): Promise<ConfigValidationResult>;
   getConfigDocument(coreId: string, instanceId: string, documentId: string): Promise<ConfigDocument>;
   patchConfigDocument(
     coreId: string,
@@ -1272,6 +1294,12 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     scanConfigDocuments(coreId, instanceId) {
       return request<ConfigDocumentPage>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/config-documents:scan`,
+        { method: 'POST' },
+      );
+    },
+    validateConfigDocuments(coreId, instanceId) {
+      return request<ConfigValidationResult>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/config-documents:validate`,
         { method: 'POST' },
       );
     },

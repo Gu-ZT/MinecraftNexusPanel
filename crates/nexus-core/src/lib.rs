@@ -5,6 +5,7 @@
 
 mod archive_extractor;
 mod config_document;
+mod config_validation;
 mod core_error;
 mod core_request_state;
 mod core_server;

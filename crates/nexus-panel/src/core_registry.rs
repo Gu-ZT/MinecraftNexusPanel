@@ -948,6 +948,21 @@ impl CoreRegistry {
         Ok(connection.scan_config_documents(instance_id).await?)
     }
 
+    /// 校验指定 Core 上实例的配置文档关系。
+    pub async fn validate_config_documents(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection.validate_config_documents(instance_id).await?)
+    }
+
     /// 获取指定 Core 上的配置文档。
     pub async fn get_config_document(
         &self,

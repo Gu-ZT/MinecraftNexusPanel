@@ -50,6 +50,10 @@ pub(crate) fn config_routes() -> Router<PanelState> {
             post(scan_config_documents),
         )
         .route(
+            "/api/v1/cores/{core_id}/instances/{instance_id}/config-documents:validate",
+            post(validate_config_documents),
+        )
+        .route(
             "/api/v1/cores/{core_id}/instances/{instance_id}/config-documents/{document_id}",
             get(get_config_document),
         )
@@ -79,6 +83,29 @@ async fn scan_config_documents(
     headers: HeaderMap,
 ) -> Response {
     scan_config_documents_inner(state, request_id, core_id, instance_id, headers).await
+}
+
+async fn validate_config_documents(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, instance_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, false, request_id).await {
+        return response;
+    }
+    let Some((core_id, instance_id)) = parse_ids(&core_id, &instance_id) else {
+        return validation_error(request_id);
+    };
+
+    match state
+        .cores()
+        .validate_config_documents(core_id, &instance_id)
+        .await
+    {
+        Ok(result) => Json(result).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
 }
 
 async fn scan_config_documents_inner(

@@ -203,6 +203,7 @@ MCDR 包装器的 `args` 使用精确的 `{server}` 和 `{serverArgs}` 占位符
 |-------|---------------------------------------------------------|----------------|--------------------------|
 | GET   | `.../{instanceId}/config-documents`                     | `config.read`  | 已识别配置清单           |
 | POST  | `.../{instanceId}/config-documents:scan`                | `config.read`  | 重新扫描                 |
+| POST  | `.../{instanceId}/config-documents:validate`            | `config.read`  | 校验跨文件关系和端口/EULA 诊断 |
 | GET   | `.../{instanceId}/config-documents/{documentId}`        | `config.read`  | Schema、UI Schema 与值   |
 | PATCH | `.../{instanceId}/config-documents/{documentId}/values` | `config.write` | 按 JSON Merge Patch 修改 |
 | GET   | `.../{instanceId}/config-documents/{documentId}/raw`    | `file.read`    | 原始文本                 |
@@ -212,7 +213,7 @@ MCDR 包装器的 `args` 使用精确的 `{server}` 和 `{serverArgs}` 占位符
 
 当前可验证 provider 包括 `PROPERTIES`、`JSON`、`YAML` 和 `TOML`：Core 扫描最多 1 MiB 的 UTF-8 `.properties`、`.json`、`.yaml`/`.yml`/`.toml` 文件，使用相对路径 SHA-256 生成 `documentId`，并将内容 SHA-256
 同时作为 `revision` 和 `contentHash`。properties 结构化补丁仅处理顶层标量和删除键且始终 `lossy=false`；`server.properties` provider 会为常见布尔、整数和难度/模式枚举提供类型化 Schema/UI Schema，并将 `rcon.password` 标记为密码敏感字段，未知键仍按字符串处理。JSON/YAML/TOML provider 返回类型化 Schema/UI Schema，支持嵌套顶层 Merge Patch，但规范化写入必须显式设置 `allowLossy=true`。raw 读写用于保留 provider 尚未映射的文本区域。
-跨文件校验和复杂结构化控件仍属于后续 TODO。
+`config-documents:validate` 已提供实例级配置诊断：检查 Java `server.properties` 端口范围、Query/RCON 启用条件、`server-ip` 和 `eula.txt`，并检查 Geyser YAML 的 Bedrock/Java 端点及重复监听端口。未知版本字段保持不变，复杂结构化控件仍属于后续 TODO。
 
 ## 6. 模组与插件
 

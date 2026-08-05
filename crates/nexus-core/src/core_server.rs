@@ -570,6 +570,7 @@ async fn request_response(
         }
         "instance.metrics" => instance_metrics_response(request_id, params, state.processes()),
         "config.scan" => config_scan_response(request_id, params, state),
+        "config.validate" => config_validate_response(request_id, params, state),
         "config.get" => config_get_response(request_id, params, state),
         "config.patch" => config_patch_response(request_id, params, idempotency_key, state),
         "file.list" => file_list_response(request_id, params, state),
@@ -2340,6 +2341,32 @@ fn config_scan_response(
 
     match state.files().scan_config_documents(&instance) {
         Ok(documents) => success_response(request_id, documents),
+        Err(error) => file_manager_error_response(request_id, error),
+    }
+}
+
+fn config_validate_response(
+    request_id: RequestId,
+    params: &Value,
+    state: &CoreRequestState,
+) -> WireMessage {
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "config.validate requires a valid instanceId",
+        );
+    };
+    let instance = match state.instances().get(&instance_id) {
+        Ok(Some(instance)) => instance,
+        Ok(None) => {
+            return error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist");
+        }
+        Err(error) => return repository_failure_response(request_id, &error),
+    };
+
+    match state.files().validate_config_documents(&instance) {
+        Ok(result) => success_response(request_id, result),
         Err(error) => file_manager_error_response(request_id, error),
     }
 }

@@ -62,8 +62,9 @@ ZIP 归档生成和会话化大文件下载已经完成；跨 Core 重启续传�
 - 支持 YAML/YML 和 TOML 对象扫描、类型化 JSON Schema/UI Schema 和规范化顶层 Merge Patch；写入必须显式设置 `allowLossy=true`；
 - 为 Minecraft `server.properties` 的常见布尔、整数、难度/模式枚举提供专用元数据，并将 `rcon.password` 标记为敏感密码控件；未知键仍按字符串处理；
 - 提供原文读写，并复用文件沙箱、ETag、If-Match 和幂等键保护。
+- 提供实例级 `config-documents:validate` 诊断，校验 Java 端口、Query/RCON 设置、`server-ip`、`eula.txt`、Geyser 端点和重复监听端口。
 
-跨文件校验和复杂结构化控件仍属于 M3 后续工作。
+复杂结构化控件、版本专用 Schema 和更多跨文件规则仍属于 M3 后续工作。
 
 ### 当前 CPU 拓扑能力
 

@@ -44,6 +44,7 @@ use crate::config_document::document_id;
 use crate::config_document::is_supported_path;
 use crate::config_document::patch;
 use crate::config_document::summary;
+use crate::config_validation::validate;
 use crate::file_download::FileDownload;
 use crate::file_upload::FileUpload;
 
@@ -217,21 +218,21 @@ impl FileManager {
         &self,
         instance: &Instance,
     ) -> Result<Value, FileManagerError> {
-        let root = self.instance_root(instance)?;
-        let mut paths = Vec::new();
-        collect_config_paths(&root, &root, 0, &mut paths)?;
-        paths.sort();
-
-        let mut documents = Vec::with_capacity(paths.len());
-        for path in paths {
-            let relative_path = relative_file_path(&root, &path)?;
-            let content = read_config_content(&path)?;
-            let document = document(&relative_path, &content)
-                .map_err(|error| config_document_error(path.clone(), error))?;
-            documents.push(summary(&document));
-        }
+        let documents = self.read_config_documents(instance)?;
+        let documents = documents.iter().map(summary).collect::<Vec<_>>();
 
         Ok(json!({ "documents": documents }))
+    }
+
+    /// 校验实例目录中已识别配置之间的关系，并返回可定位的诊断结果。
+    pub(crate) fn validate_config_documents(
+        &self,
+        instance: &Instance,
+    ) -> Result<Value, FileManagerError> {
+        let documents = self.read_config_documents(instance)?;
+        let root = self.instance_root(instance)?;
+        let eula = read_optional_text_file(&root, "eula.txt")?;
+        Ok(json!(validate(instance, &documents, eula.as_deref())))
     }
 
     pub(crate) fn get_config_document(
@@ -1473,6 +1474,23 @@ impl FileManager {
         })
     }
 
+    fn read_config_documents(&self, instance: &Instance) -> Result<Vec<Value>, FileManagerError> {
+        let root = self.instance_root(instance)?;
+        let mut paths = Vec::new();
+        collect_config_paths(&root, &root, 0, &mut paths)?;
+        paths.sort();
+
+        paths
+            .into_iter()
+            .map(|path| {
+                let relative_path = relative_file_path(&root, &path)?;
+                let content = read_config_content(&path)?;
+                document(&relative_path, &content)
+                    .map_err(|error| config_document_error(path, error))
+            })
+            .collect()
+    }
+
     fn resolve_existing(
         &self,
         root: &Path,
@@ -1648,6 +1666,33 @@ fn read_config_content(path: &Path) -> Result<Vec<u8>, FileManagerError> {
         path: path.to_path_buf(),
         source,
     })
+}
+
+fn read_optional_text_file(
+    root: &Path,
+    relative_path: &str,
+) -> Result<Option<String>, FileManagerError> {
+    let path = root.join(relative_path);
+    let metadata = match fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(source) => {
+            return Err(FileManagerError::Io {
+                operation: "read optional configuration metadata",
+                path,
+                source,
+            });
+        }
+    };
+    if metadata.file_type().is_symlink() {
+        return Err(FileManagerError::SymlinkNotAllowed { path });
+    }
+    let content = read_config_content(&path)?;
+    let content = String::from_utf8(content).map_err(|_| FileManagerError::ConfigParse {
+        path,
+        message: "configuration file is not valid UTF-8".to_owned(),
+    })?;
+    Ok(Some(content))
 }
 
 fn config_document_error(path: PathBuf, error: ConfigDocumentError) -> FileManagerError {
