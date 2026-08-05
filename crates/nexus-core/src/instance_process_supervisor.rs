@@ -6,8 +6,13 @@ use std::sync::Weak;
 use std::sync::atomic::AtomicU64;
 use std::time::Duration;
 
+use nexus_domain::InstanceAuditAction;
+use nexus_domain::InstanceAuditOutcome;
+use nexus_domain::InstanceAuditRecord;
 use nexus_domain::InstanceId;
 use nexus_domain::InstanceState;
+use nexus_domain::RuntimeMode;
+use nexus_domain::SupervisorMode;
 use nexus_domain::TaskId;
 use nexus_protocol::WireMessage;
 use tokio::io::AsyncWriteExt;
@@ -19,6 +24,7 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tokio::time::sleep;
 
+use crate::InstanceAuditRepository;
 use crate::InstanceProcess;
 use crate::InstanceProcessCommand;
 use crate::InstanceProcessError;
@@ -46,6 +52,9 @@ pub(crate) struct InstanceProcessSupervisor {
     pub(crate) process_id: TaskId,
     pub(crate) processes: Weak<Mutex<BTreeMap<InstanceId, InstanceProcess>>>,
     pub(crate) sequence: Arc<AtomicU64>,
+    pub(crate) audits: InstanceAuditRepository,
+    pub(crate) runtime_mode: RuntimeMode,
+    pub(crate) supervisor_mode: SupervisorMode,
     pub(crate) stdin: ChildStdin,
     pub(crate) stop_command: String,
 }
@@ -107,6 +116,14 @@ impl InstanceProcessSupervisor {
                     self.remove_process();
                     let exit_code = status.code();
                     if timed_out || (!stopping && !kill_requested) {
+                        let reason = if timed_out {
+                            "STOP_TIMEOUT"
+                        } else if self.supervisor_mode == SupervisorMode::Mcdr {
+                            "MCDR_WRAPPER_EXITED"
+                        } else {
+                            "PROCESS_EXITED"
+                        };
+                        self.record_process_exit(InstanceAuditOutcome::Failed, reason);
                         mark_failed(
                             &self.instances,
                             &self.event_sender,
@@ -124,6 +141,10 @@ impl InstanceProcessSupervisor {
                     tracing::error!(instance_id = %self.instance_id, %error, "Unable to query instance process state");
                     let _ = self.child.start_kill();
                     self.remove_process();
+                    self.record_process_exit(
+                        InstanceAuditOutcome::Failed,
+                        "PROCESS_STATUS_QUERY_FAILED",
+                    );
                     mark_failed(
                         &self.instances,
                         &self.event_sender,
@@ -193,6 +214,27 @@ impl InstanceProcessSupervisor {
             .is_some_and(|process| process.process_id() == self.process_id);
         if matches_process {
             processes.remove(&self.instance_id);
+        }
+    }
+
+    /// 记录未由请求正常结束的受管进程结果。
+    fn record_process_exit(&self, outcome: InstanceAuditOutcome, reason: &str) {
+        let record = InstanceAuditRecord::new(
+            self.instance_id.clone(),
+            Some(self.process_id),
+            InstanceAuditAction::ProcessExit,
+            outcome,
+            self.runtime_mode,
+            self.supervisor_mode,
+            Some(reason.to_owned()),
+            crate::instance_process_manager::current_timestamp(),
+        );
+        if let Err(error) = self.audits.append(record) {
+            tracing::error!(
+                %error,
+                instance_id = %self.instance_id,
+                "Unable to record process exit audit entry"
+            );
         }
     }
 }

@@ -896,6 +896,23 @@ impl CoreRegistry {
         Ok(json!(page))
     }
 
+    /// 读取指定 Core 上实例最新的生命周期审计记录。
+    pub async fn list_instance_audit(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        limit: Option<usize>,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let page = connection.list_instance_audit(instance_id, limit).await?;
+
+        Ok(json!(page))
+    }
+
     /// 读取指定 Core 上实例的指标序列。
     pub async fn get_instance_metrics(
         &self,

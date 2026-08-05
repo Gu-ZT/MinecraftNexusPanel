@@ -1373,6 +1373,26 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
     )
     .await;
 
+    let audit = send_json_request(
+        panel_address,
+        "GET",
+        &format!(
+            "/api/v1/cores/{core_id}/instances/panel-process/audit?limit=20"
+        ),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(audit.status, 200);
+    assert!(audit.body["items"].as_array().is_some_and(|items| {
+        items
+            .iter()
+            .any(|item| item["action"] == "START" && item["outcome"] == "SUCCEEDED")
+            && items
+                .iter()
+                .any(|item| item["action"] == "STOP" && item["outcome"] == "ACCEPTED")
+    }));
+
     core_task.abort();
     let _ = core_task.await;
     stop_panel(panel_task).await;

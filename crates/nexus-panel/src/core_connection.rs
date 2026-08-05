@@ -18,6 +18,7 @@ use nexus_domain::FileContent;
 use nexus_domain::FileEntry;
 use nexus_domain::FilePage;
 use nexus_domain::Instance;
+use nexus_domain::InstanceAuditPage;
 use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
 use nexus_domain::InstanceLogPage;
@@ -49,7 +50,7 @@ use tokio::net::TcpStream;
 use crate::CoreConnectionError;
 use crate::CoreEndpoint;
 
-const PANEL_CAPABILITIES: [&str; 15] = [
+const PANEL_CAPABILITIES: [&str; 16] = [
     "bedrock-health",
     "config",
     "cpu-topology",
@@ -58,6 +59,7 @@ const PANEL_CAPABILITIES: [&str; 15] = [
     "events",
     "files",
     "instances",
+    "instance-audit",
     "metrics",
     "proxy-orchestration",
     "proxy-subservers",
@@ -772,6 +774,23 @@ impl CoreConnection {
 
         from_value(result).map_err(|_| CoreConnectionError::InvalidResponse {
             field: "instanceLogPage",
+        })
+    }
+
+    /// 读取指定实例最新的生命周期审计记录。
+    pub async fn list_instance_audit(
+        &mut self,
+        instance_id: &InstanceId,
+        limit: Option<usize>,
+    ) -> Result<InstanceAuditPage, CoreConnectionError> {
+        let mut params = json!({ "instanceId": instance_id });
+        if let Some(limit) = limit {
+            params["limit"] = json!(limit);
+        }
+        let result = self.request("instance.audit.list", params).await?;
+
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse {
+            field: "instanceAuditPage",
         })
     }
 

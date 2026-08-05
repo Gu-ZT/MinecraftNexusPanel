@@ -12,6 +12,10 @@ use std::time::Duration;
 
 use nexus_domain::EventId;
 use nexus_domain::Instance;
+use nexus_domain::InstanceAuditAction;
+use nexus_domain::InstanceAuditOutcome;
+use nexus_domain::InstanceAuditPage;
+use nexus_domain::InstanceAuditRecord;
 use nexus_domain::InstanceId;
 use nexus_domain::InstanceLogPage;
 use nexus_domain::InstanceLogStream;
@@ -33,6 +37,8 @@ use tokio::spawn;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 
+use crate::InstanceAuditRepository;
+use crate::InstanceAuditRepositoryError;
 use crate::InstanceLogStore;
 use crate::InstanceProcess;
 use crate::InstanceProcessError;
@@ -58,6 +64,7 @@ pub struct InstanceProcessManager {
     data_directory: Arc<PathBuf>,
     event_sender: broadcast::Sender<WireMessage>,
     instances: InstanceRepository,
+    audits: InstanceAuditRepository,
     logs: InstanceLogStore,
     processes: Arc<Mutex<BTreeMap<InstanceId, InstanceProcess>>>,
     sequence: Arc<AtomicU64>,
@@ -67,7 +74,11 @@ pub struct InstanceProcessManager {
 impl InstanceProcessManager {
     /// 创建实例进程管理器及其事件、日志和指标状态。
     #[must_use]
-    pub fn new(data_directory: PathBuf, instances: InstanceRepository) -> Self {
+    pub(crate) fn new(
+        data_directory: PathBuf,
+        instances: InstanceRepository,
+        audits: InstanceAuditRepository,
+    ) -> Self {
         let (event_sender, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let sequence = Arc::new(AtomicU64::new(1));
 
@@ -75,6 +86,7 @@ impl InstanceProcessManager {
             data_directory: Arc::new(data_directory),
             event_sender: event_sender.clone(),
             instances,
+            audits,
             logs: InstanceLogStore::new(event_sender, sequence.clone()),
             processes: Arc::new(Mutex::new(BTreeMap::new())),
             sequence,
@@ -86,6 +98,15 @@ impl InstanceProcessManager {
     #[must_use]
     pub fn subscribe(&self) -> broadcast::Receiver<WireMessage> {
         self.event_sender.subscribe()
+    }
+
+    /// 读取指定实例的生命周期审计记录。
+    pub(crate) fn list_audit_records(
+        &self,
+        instance_id: &InstanceId,
+        limit: usize,
+    ) -> Result<InstanceAuditPage, InstanceAuditRepositoryError> {
+        self.audits.list(instance_id, limit)
     }
 
     /// 启动处于 `Created`、`Stopped` 或 `Failed` 状态的实例。
@@ -103,10 +124,27 @@ impl InstanceProcessManager {
         )?;
         self.publish_state(&instance);
 
+        let audit_instance = instance.clone();
         match self.spawn(instance).await {
-            Ok(task_id) => Ok(task_id),
+            Ok(task_id) => {
+                self.record_audit(
+                    &audit_instance,
+                    Some(task_id),
+                    InstanceAuditAction::Start,
+                    InstanceAuditOutcome::Succeeded,
+                    None,
+                );
+                Ok(task_id)
+            }
             Err(error) => {
                 self.mark_failed(instance_id, None);
+                self.record_audit(
+                    &audit_instance,
+                    None,
+                    InstanceAuditAction::Start,
+                    InstanceAuditOutcome::Failed,
+                    Some(error.to_string()),
+                );
                 Err(error)
             }
         }
@@ -125,33 +163,63 @@ impl InstanceProcessManager {
             timeout_seconds.unwrap_or_else(|| instance.launch().stop_timeout_seconds());
         let process = self.process(instance_id)?;
 
+        let task_id = TaskId::new();
         if !process
             .stop(Duration::from_secs(u64::from(timeout_seconds)))
             .await
         {
+            self.record_audit(
+                &instance,
+                Some(task_id),
+                InstanceAuditAction::Stop,
+                InstanceAuditOutcome::Failed,
+                Some("STOP_COMMAND_REJECTED".to_owned()),
+            );
             return Err(InstanceProcessError::ProcessUnavailable {
                 instance_id: instance_id.clone(),
             });
         }
 
-        Ok(TaskId::new())
+        self.record_audit(
+            &instance,
+            Some(task_id),
+            InstanceAuditAction::Stop,
+            InstanceAuditOutcome::Accepted,
+            None,
+        );
+        Ok(task_id)
     }
 
     /// 强制终止运行中或停止中的实例进程。
     pub async fn kill(&self, instance_id: &InstanceId) -> Result<TaskId, InstanceProcessError> {
-        self.require_state(
+        let instance = self.require_state(
             instance_id,
             &[InstanceState::Running, InstanceState::Stopping],
         )?;
         let process = self.process(instance_id)?;
 
+        let task_id = TaskId::new();
         if !process.kill().await {
+            self.record_audit(
+                &instance,
+                Some(task_id),
+                InstanceAuditAction::Kill,
+                InstanceAuditOutcome::Failed,
+                Some("KILL_REQUEST_REJECTED".to_owned()),
+            );
             return Err(InstanceProcessError::ProcessUnavailable {
                 instance_id: instance_id.clone(),
             });
         }
 
-        Ok(TaskId::new())
+        self.record_audit(
+            &instance,
+            Some(task_id),
+            InstanceAuditAction::Kill,
+            InstanceAuditOutcome::Accepted,
+            None,
+        );
+        Ok(task_id)
     }
 
     /// 向运行中的实例标准输入发送一条命令。
@@ -319,6 +387,7 @@ impl InstanceProcessManager {
         let instances = self.instances.clone();
         let processes = Arc::downgrade(&self.processes);
         let sequence = self.sequence.clone();
+        let audits = self.audits.clone();
         let supervisor = InstanceProcessSupervisor {
             child,
             command_receiver,
@@ -328,6 +397,9 @@ impl InstanceProcessManager {
             process_id: task_id,
             processes,
             sequence,
+            audits,
+            runtime_mode: instance.launch().runtime_mode(),
+            supervisor_mode: instance.launch().supervisor_mode(),
             stdin,
             stop_command,
         };
@@ -446,6 +518,30 @@ impl InstanceProcessManager {
         publish_state(&self.event_sender, &self.sequence, instance);
     }
 
+    /// 写入审计记录；审计故障不会阻断已经接受的生命周期动作。
+    fn record_audit(
+        &self,
+        instance: &Instance,
+        task_id: Option<TaskId>,
+        action: InstanceAuditAction,
+        outcome: InstanceAuditOutcome,
+        reason: Option<String>,
+    ) {
+        let record = InstanceAuditRecord::new(
+            instance.id().clone(),
+            task_id,
+            action,
+            outcome,
+            instance.launch().runtime_mode(),
+            instance.launch().supervisor_mode(),
+            reason,
+            current_timestamp(),
+        );
+        if let Err(error) = self.audits.append(record) {
+            tracing::error!(%error, instance_id = %instance.id(), "Unable to record instance audit entry");
+        }
+    }
+
     fn lock_processes(
         &self,
     ) -> Result<MutexGuard<'_, BTreeMap<InstanceId, InstanceProcess>>, InstanceProcessError> {
@@ -513,7 +609,7 @@ pub(crate) fn publish_state(
     let _ = event_sender.send(event);
 }
 
-fn current_timestamp() -> String {
+pub(crate) fn current_timestamp() -> String {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_owned())

@@ -70,6 +70,10 @@ pub(crate) fn instance_routes() -> Router<PanelState> {
             get(get_instance_logs),
         )
         .route(
+            "/api/v1/cores/{core_id}/instances/{instance_id}/audit",
+            get(get_instance_audit),
+        )
+        .route(
             "/api/v1/cores/{core_id}/instances/{instance_id}/metrics",
             get(get_instance_metrics),
         )
@@ -361,6 +365,33 @@ async fn get_instance_metrics(
         .await
     {
         Ok(metrics) => Json(metrics).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn get_instance_audit(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, instance_id)): Path<(String, String)>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, false, request_id).await {
+        return response;
+    }
+    let Some((core_id, instance_id)) = parse_ids(&core_id, &instance_id) else {
+        return validation_error(request_id);
+    };
+    let Some(limit) = optional_limit(&query) else {
+        return validation_error(request_id);
+    };
+
+    match state
+        .cores()
+        .list_instance_audit(core_id, &instance_id, limit)
+        .await
+    {
+        Ok(page) => Json(page).into_response(),
         Err(error) => registry_error_response(error, request_id),
     }
 }

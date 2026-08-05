@@ -7,6 +7,9 @@ use std::time::Duration;
 use nexus_config::CoreConfig;
 use nexus_core::CoreServer;
 use nexus_domain::Instance;
+use nexus_domain::InstanceAuditAction;
+use nexus_domain::InstanceAuditOutcome;
+use nexus_domain::InstanceAuditPage;
 use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
 use nexus_domain::InstanceKind;
@@ -385,6 +388,29 @@ async fn starts_stops_and_kills_a_safe_test_process_with_state_events() {
             .is_dir()
     );
 
+    let audit_request_id = send_request(
+        &mut transport,
+        "instance.audit.list",
+        json!({ "instanceId": instance_id, "limit": 20 }),
+        None,
+    )
+    .await;
+    let audit_page: InstanceAuditPage =
+        from_value(read_success(&mut transport, audit_request_id, &mut Vec::new()).await)
+            .expect("instance audit page is valid");
+    assert!(audit_page.items().iter().any(|record| {
+        record.action() == InstanceAuditAction::Start
+            && record.outcome() == InstanceAuditOutcome::Succeeded
+    }));
+    assert!(audit_page.items().iter().any(|record| {
+        record.action() == InstanceAuditAction::Stop
+            && record.outcome() == InstanceAuditOutcome::Accepted
+    }));
+    assert!(audit_page.items().iter().any(|record| {
+        record.action() == InstanceAuditAction::Kill
+            && record.outcome() == InstanceAuditOutcome::Accepted
+    }));
+
     let crashing_instance_id =
         InstanceId::new("crashing-process".to_owned()).expect("instance ID is valid");
     let create_crashing_request_id = send_request(
@@ -419,6 +445,21 @@ async fn starts_stops_and_kills_a_safe_test_process_with_state_events() {
             InstanceState::Failed,
         ]
     );
+    let crashing_audit_request_id = send_request(
+        &mut transport,
+        "instance.audit.list",
+        json!({ "instanceId": crashing_instance_id, "limit": 20 }),
+        None,
+    )
+    .await;
+    let crashing_audit_page: InstanceAuditPage =
+        from_value(read_success(&mut transport, crashing_audit_request_id, &mut Vec::new()).await)
+            .expect("crashing instance audit page is valid");
+    assert!(crashing_audit_page.items().iter().any(|record| {
+        record.action() == InstanceAuditAction::ProcessExit
+            && record.outcome() == InstanceAuditOutcome::Failed
+            && record.reason() == Some("PROCESS_EXITED")
+    }));
     let get_crashing_request_id = send_request(
         &mut transport,
         "instance.get",

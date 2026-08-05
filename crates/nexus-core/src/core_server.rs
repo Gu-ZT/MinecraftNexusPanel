@@ -77,6 +77,7 @@ use crate::CoreTlsIdentity;
 use crate::FileBatchOperation;
 use crate::FileManager;
 use crate::FileManagerError;
+use crate::InstanceAuditRepository;
 use crate::InstanceProcessError;
 use crate::InstanceProcessManager;
 use crate::InstanceRepository;
@@ -97,7 +98,7 @@ use crate::file_manager::MAXIMUM_FILE_ARCHIVE_PATHS;
 use crate::file_manager::MAXIMUM_FILE_BATCH_OPERATIONS;
 use crate::file_manager::MAXIMUM_FILE_READ_BYTES;
 
-const CORE_CAPABILITIES: [&str; 15] = [
+const CORE_CAPABILITIES: [&str; 16] = [
     "bedrock-health",
     "config",
     "cpu-topology",
@@ -106,6 +107,7 @@ const CORE_CAPABILITIES: [&str; 15] = [
     "events",
     "files",
     "instances",
+    "instance-audit",
     "metrics",
     "proxy-orchestration",
     "proxy-subservers",
@@ -121,6 +123,8 @@ const INSTANCE_LIST_DEFAULT_LIMIT: usize = 50;
 const INSTANCE_LIST_MAXIMUM_LIMIT: usize = 200;
 const INSTANCE_LOG_DEFAULT_LIMIT: usize = 50;
 const INSTANCE_LOG_MAXIMUM_LIMIT: usize = 200;
+const INSTANCE_AUDIT_DEFAULT_LIMIT: usize = 50;
+const INSTANCE_AUDIT_MAXIMUM_LIMIT: usize = 200;
 const PROXY_SUBSERVER_HEALTH_TIMEOUT: Duration = Duration::from_secs(3);
 const BEDROCK_HEALTH_TIMEOUT: Duration = Duration::from_secs(3);
 const MINECRAFT_STATUS_PROTOCOL_VERSION: i32 = 767;
@@ -188,8 +192,12 @@ impl CoreServer {
         })?;
 
         let instances = InstanceRepository::new();
-        let processes =
-            InstanceProcessManager::new(config.data_directory().to_path_buf(), instances.clone());
+        let audits = InstanceAuditRepository::default();
+        let processes = InstanceProcessManager::new(
+            config.data_directory().to_path_buf(),
+            instances.clone(),
+            audits,
+        );
         let runtimes =
             RuntimeManager::new(config.data_directory()).map_err(CoreError::RuntimeManager)?;
         let provision = ProvisionManager::new(config.data_directory(), runtimes.clone())?;
@@ -557,6 +565,9 @@ async fn request_response(
         }
         "instance.list" => instance_list_response(request_id, params, state.instances()),
         "instance.logs" => instance_logs_response(request_id, params, state.processes()),
+        "instance.audit.list" => {
+            instance_audit_list_response(request_id, params, state.processes())
+        }
         "instance.metrics" => instance_metrics_response(request_id, params, state.processes()),
         "config.scan" => config_scan_response(request_id, params, state),
         "config.get" => config_get_response(request_id, params, state),
@@ -2186,6 +2197,47 @@ fn instance_logs_response(
     match processes.logs(&instance_id, after, before, limit) {
         Ok(page) => success_response(request_id, json!(page)),
         Err(error) => process_error_response(request_id, &error),
+    }
+}
+
+fn instance_audit_list_response(
+    request_id: RequestId,
+    params: &Value,
+    processes: &InstanceProcessManager,
+) -> WireMessage {
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.audit.list requires a valid instanceId",
+        );
+    };
+    let limit = match params.get("limit") {
+        Some(value) => value
+            .as_u64()
+            .and_then(|value| usize::try_from(value).ok())
+            .filter(|value| (1..=INSTANCE_AUDIT_MAXIMUM_LIMIT).contains(value))
+            .unwrap_or(0),
+        None => INSTANCE_AUDIT_DEFAULT_LIMIT,
+    };
+    if limit == 0 {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.audit.list limit must be between 1 and 200",
+        );
+    }
+
+    match processes.list_audit_records(&instance_id, limit) {
+        Ok(page) => success_response(request_id, json!(page)),
+        Err(error) => {
+            tracing::error!(%error, %instance_id, "Unable to read instance audit records");
+            error_response(
+                request_id,
+                "AUDIT_UNAVAILABLE",
+                "Instance audit records are unavailable",
+            )
+        }
     }
 }
 
