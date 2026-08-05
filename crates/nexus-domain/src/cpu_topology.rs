@@ -93,7 +93,7 @@ mod tests {
                 None,
                 CpuPerformanceClass::Unknown,
                 true,
-                false,
+                None,
                 None,
             )],
             Some(1),

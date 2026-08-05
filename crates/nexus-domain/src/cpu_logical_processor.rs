@@ -11,7 +11,7 @@ pub struct CpuLogicalProcessor {
     physical_core_id: Option<String>,
     performance_class: CpuPerformanceClass,
     online: bool,
-    isolated: bool,
+    isolated: Option<bool>,
     numa_node: Option<u32>,
 }
 
@@ -23,7 +23,7 @@ impl CpuLogicalProcessor {
         physical_core_id: Option<String>,
         performance_class: CpuPerformanceClass,
         online: bool,
-        isolated: bool,
+        isolated: Option<bool>,
         numa_node: Option<u32>,
     ) -> Self {
         Self {
@@ -60,9 +60,13 @@ impl CpuLogicalProcessor {
         self.online
     }
 
-    /// 判断逻辑 CPU 是否被系统标记为隔离。
+    /// 返回逻辑 CPU 的隔离状态。
+    ///
+    /// `Some(true)` 表示操作系统明确将其列入隔离集合，`Some(false)` 表示
+    /// 操作系统明确报告其不在隔离集合，`None` 表示当前平台没有提供可验证
+    /// 的隔离信息。调用方不能把 `None` 当成未隔离。
     #[must_use]
-    pub const fn isolated(&self) -> bool {
+    pub const fn isolated(&self) -> Option<bool> {
         self.isolated
     }
 
@@ -70,5 +74,28 @@ impl CpuLogicalProcessor {
     #[must_use]
     pub const fn numa_node(&self) -> Option<u32> {
         self.numa_node
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CpuLogicalProcessor;
+    use crate::CpuPerformanceClass;
+
+    #[test]
+    fn keeps_unreported_isolation_distinct_from_not_isolated() {
+        let unknown =
+            CpuLogicalProcessor::new(0, None, CpuPerformanceClass::Unknown, true, None, None);
+        let confirmed_clear = CpuLogicalProcessor::new(
+            1,
+            None,
+            CpuPerformanceClass::Unknown,
+            true,
+            Some(false),
+            None,
+        );
+
+        assert_eq!(unknown.isolated(), None);
+        assert_eq!(confirmed_clear.isolated(), Some(false));
     }
 }
