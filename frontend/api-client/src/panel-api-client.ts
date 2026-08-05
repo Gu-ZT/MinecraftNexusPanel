@@ -189,6 +189,32 @@ export interface CpuPolicyResolution {
   reservationId: string | null;
 }
 
+/** Core 当前登记的 CPU 独占预留记录。登记不代表宿主机 affinity 已应用。 */
+export interface CpuReservation {
+  reservationId: string;
+  instanceId: string;
+  cpuIds: number[];
+  createdAt: string;
+}
+
+/** Core CPU 独占预留列表。当前列表不跨 Core 重启持久化。 */
+export interface CpuReservationPage {
+  items: CpuReservation[];
+}
+
+/** 登记 CPU 独占预留所需的实例修订号和 policy。 */
+export interface CpuReservationRequest {
+  instanceId: string;
+  revision: number;
+  policy: CpuPolicy;
+}
+
+/** CPU 独占预留及 Core 实际选中的 policy。 */
+export interface CpuReservationResult {
+  reservation: CpuReservation;
+  appliedPolicy: CpuPolicyResolution;
+}
+
 export interface ManagedRuntime {
   runtimeId: string | null;
   kind: RuntimeKind;
@@ -705,6 +731,9 @@ export interface PanelApiClient {
   listCores(): Promise<CorePage>;
   getCpuTopology(coreId: string): Promise<CpuTopology>;
   resolveCpuPolicy(coreId: string, policy: CpuPolicy): Promise<CpuPolicyResolution>;
+  listCpuReservations(coreId: string): Promise<CpuReservationPage>;
+  reserveCpu(coreId: string, request: CpuReservationRequest): Promise<CpuReservationResult>;
+  releaseCpu(coreId: string, reservationId: string): Promise<void>;
   listInstallTemplates(): Promise<InstallTemplatePage>;
   listInstallTemplateVersions(templateId: string): Promise<InstallTemplateVersionPage>;
   searchExtensionCatalog(
@@ -1007,6 +1036,23 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
       return request<CpuPolicyResolution>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/cpu-policies:resolve`,
         { method: 'POST', body: policy },
+      );
+    },
+    listCpuReservations(coreId) {
+      return request<CpuReservationPage>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/cpu-reservations`,
+      );
+    },
+    reserveCpu(coreId, reservationRequest) {
+      return request<CpuReservationResult>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/cpu-reservations`,
+        { method: 'POST', body: reservationRequest, csrf: true, idempotent: true },
+      );
+    },
+    releaseCpu(coreId, reservationId) {
+      return request<void>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/cpu-reservations/${encodeURIComponent(reservationId)}`,
+        { method: 'DELETE', csrf: true, idempotent: true },
       );
     },
     listInstallTemplates() {
