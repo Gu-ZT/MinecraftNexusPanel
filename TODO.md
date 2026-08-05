@@ -131,7 +131,8 @@
   - [x] Panel 新多文件安装任务在写入前拒绝目标冲突，失败后按文件哈希和安装记录执行补偿删除，并以 `rollbackState` 报告成功或部分回滚。
   - [ ] 补齐 Core 侧统一安装任务、批量更新和更多来源适配器；更新任务失败时仍不伪造整文件恢复。
   - [x] `BedrockManagementProfile` 为 PocketMine-MP、Nukkit 和 Cloudburst Nukkit 暴露 `plugins/`，BDS/Geyser 保持无插件目录。
-  - [ ] 为不同基岩端提供插件/扩展目录、配置和版本兼容性策略。
+  - [x] 基岩画像声明 `PROPERTIES`/`YAML` 配置格式和 `UNSUPPORTED`/`PLUGIN_MANIFEST` 扩展兼容性策略；实际按版本解析插件 manifest/API 仍需接入。
+  - [ ] 为不同基岩端补齐版本级插件/扩展 manifest/API 兼容性解析和安装校验。
 - [ ] 代理端与基岩端专门运维：子服务器连通性、Bedrock/RakNet 监听、端口冲突、健康检查、升级和备份恢复。
   - [x] 从实际 Core 节点对已登记代理后端执行受限 TCP 连通性和 Minecraft Java Status 协议检查，分别返回网络状态、协议状态、延迟和错误分类。
   - [x] 从 Core 节点优先读取 BDS/PocketMine/Nukkit 的 `server.properties:server-port` 或 Geyser 的 `config.yml:bedrock.port`，探测配置端口并在失败时回退 `19132`，区分端口可用、已占用和绑定失败。
