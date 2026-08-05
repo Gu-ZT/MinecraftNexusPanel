@@ -11,6 +11,7 @@ use nexus_domain::BedrockHealth;
 use nexus_domain::BedrockManagementProfile;
 use nexus_domain::BedrockPortCheck;
 use nexus_domain::CoreId;
+use nexus_domain::CpuPolicy;
 use nexus_domain::CpuTopology;
 use nexus_domain::FileContent;
 use nexus_domain::FileEntry;
@@ -47,10 +48,11 @@ use tokio::net::TcpStream;
 use crate::CoreConnectionError;
 use crate::CoreEndpoint;
 
-const PANEL_CAPABILITIES: [&str; 13] = [
+const PANEL_CAPABILITIES: [&str; 14] = [
     "bedrock-health",
     "config",
     "cpu-topology",
+    "cpu-policy",
     "events",
     "files",
     "instances",
@@ -233,6 +235,16 @@ impl CoreConnection {
         from_value(result).map_err(|_| CoreConnectionError::InvalidResponse {
             field: "cpuTopology",
         })
+    }
+
+    /// 请求 Core 预览 CPU policy 的候选和建议集合。
+    pub async fn resolve_cpu_policy(
+        &mut self,
+        policy: &CpuPolicy,
+    ) -> Result<Value, CoreConnectionError> {
+        let policy = to_value(policy)
+            .map_err(|_| CoreConnectionError::InvalidResponse { field: "cpuPolicy" })?;
+        self.request("cpu.policy.resolve", policy).await
     }
 
     /// 列出 Core 已发现且验证的受管运行时。

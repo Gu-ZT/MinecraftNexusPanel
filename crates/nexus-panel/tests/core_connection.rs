@@ -7,6 +7,7 @@ use nexus_core::CoreServer;
 use nexus_domain::BedrockManagementKind;
 use nexus_domain::BedrockTransport;
 use nexus_domain::CpuPerformanceClass;
+use nexus_domain::CpuPolicy;
 use nexus_domain::FileKind;
 use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
@@ -67,6 +68,10 @@ async fn connects_to_a_core_and_reads_its_system_info() {
         .cpu_topology()
         .await
         .expect("Core responds with CPU topology");
+    let cpu_policy = connection
+        .resolve_cpu_policy(&CpuPolicy::default())
+        .await
+        .expect("Core resolves CPU policy");
     let definition = instance_create("survival");
     let created = connection
         .create_instance(&definition)
@@ -102,6 +107,8 @@ async fn connects_to_a_core_and_reads_its_system_info() {
     );
     assert_eq!(system_info["coreId"], connection.core_id().to_string());
     assert!(!cpu_topology.logical_cpus().is_empty());
+    assert!(cpu_policy["candidateCpuIds"].as_array().is_some());
+    assert!(cpu_policy["selectedCpuIds"].as_array().is_some());
     assert!(
         cpu_topology
             .logical_cpus()

@@ -11,6 +11,7 @@ use std::time::Instant;
 
 use nexus_config::LocalCoreConfig;
 use nexus_domain::CoreId;
+use nexus_domain::CpuPolicy;
 use nexus_domain::CpuTopology;
 use nexus_domain::ExtensionInstall;
 use nexus_domain::ExtensionKind;
@@ -274,6 +275,21 @@ impl CoreRegistry {
             .ok_or(CoreRegistryError::ConnectionUnavailable)?;
 
         Ok(connection.cpu_topology().await?)
+    }
+
+    /// 通过指定 Core 预览 CPU policy 的候选和建议集合。
+    pub async fn resolve_cpu_policy(
+        &self,
+        core_id: CoreId,
+        policy: &CpuPolicy,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection.resolve_cpu_policy(policy).await?)
     }
 
     /// 丢弃当前连接并请求后台监视器立即重连。

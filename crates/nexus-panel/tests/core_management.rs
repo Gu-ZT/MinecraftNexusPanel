@@ -111,6 +111,26 @@ async fn registers_encrypts_restores_and_reconnects_a_core() {
     );
     assert_eq!(topology.body["detection"]["confidence"], "LOW");
 
+    let policy = send_json_request(
+        panel_address,
+        "POST",
+        &format!("/api/v1/cores/{core_id}/cpu-policies:resolve"),
+        &[("Authorization", authorization.as_str())],
+        Some(serde_json::json!({
+            "mode": "AUTO",
+            "requestedCpuIds": [],
+            "minCpus": 1,
+            "maxCpus": null,
+            "preferPhysicalCores": true,
+            "numaNode": null,
+            "shareMode": "SHARED",
+            "strict": false,
+        })),
+    )
+    .await;
+    assert_eq!(policy.status, 200);
+    assert!(policy.body["candidateCpuIds"].as_array().is_some());
+
     stop_panel(panel_task).await;
     let (restored_address, restored_task) = start_panel(&panel_data).await;
     let restored_token = login(restored_address).await;

@@ -20,6 +20,7 @@ use axum::response::Response;
 use axum::routing::get;
 use axum::routing::post;
 use nexus_domain::CoreId;
+use nexus_domain::CpuPolicy;
 use nexus_domain::RequestId;
 use serde_json::Value;
 use tracing::error;
@@ -52,6 +53,10 @@ pub(crate) fn core_routes() -> Router<PanelState> {
         .route(
             "/api/v1/cores/{core_id}/cpu-topology",
             get(get_cpu_topology),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/cpu-policies:resolve",
+            post(resolve_cpu_policy),
         )
 }
 
@@ -169,6 +174,34 @@ async fn get_cpu_topology(
 
     match state.cores().cpu_topology(core_id).await {
         Ok(topology) => Json(topology).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn resolve_cpu_policy(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path(core_id): Path<String>,
+    headers: HeaderMap,
+    payload: Result<Json<CpuPolicy>, JsonRejection>,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, false, request_id).await {
+        return response;
+    }
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return invalid_core_id_response(request_id);
+    };
+    let Ok(Json(policy)) = payload else {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "VALIDATION_FAILED",
+            "CPU policy validation failed",
+            request_id,
+        );
+    };
+
+    match state.cores().resolve_cpu_policy(core_id, &policy).await {
+        Ok(result) => Json(result).into_response(),
         Err(error) => registry_error_response(error, request_id),
     }
 }
