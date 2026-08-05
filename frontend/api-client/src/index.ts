@@ -2,6 +2,8 @@ export type { ApiClientOptions } from './api-client-options';
 export { createApiUrl } from './create-api-url';
 export type {
   BedrockBindAddressSource,
+  BedrockConfigurationFormat,
+  BedrockExtensionCompatibilityPolicy,
   BedrockManagementKind,
   BedrockManagementProfile,
   BedrockPortCheck,

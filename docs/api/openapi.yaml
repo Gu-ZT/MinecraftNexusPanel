@@ -3977,9 +3977,15 @@ components:
     BedrockTransport:
       type: string
       enum: [ RAKNET_UDP ]
+    BedrockConfigurationFormat:
+      type: string
+      enum: [ PROPERTIES, YAML, UNKNOWN ]
+    BedrockExtensionCompatibilityPolicy:
+      type: string
+      enum: [ UNSUPPORTED, PLUGIN_MANIFEST ]
     BedrockManagementProfile:
       type: object
-      required: [ managementKind, transport, defaultBindAddress, defaultPort, configurationFiles, extensionKind, extensionDirectories ]
+      required: [ managementKind, transport, defaultBindAddress, defaultPort, configurationFiles, configurationFormat, extensionKind, extensionDirectories, extensionCompatibilityPolicy ]
       properties:
         managementKind:
           $ref: '#/components/schemas/BedrockManagementKind'
@@ -3996,6 +4002,8 @@ components:
           type: array
           items:
             type: string
+        configurationFormat:
+          $ref: '#/components/schemas/BedrockConfigurationFormat'
         extensionKind:
           oneOf:
             - $ref: '#/components/schemas/ExtensionKind'
@@ -4004,6 +4012,8 @@ components:
           type: array
           items:
             type: string
+        extensionCompatibilityPolicy:
+          $ref: '#/components/schemas/BedrockExtensionCompatibilityPolicy'
     BedrockPortCheck:
       type: object
       required: [ instanceId, managementKind, transport, bindAddress, bindAddressSource, port, portSource, state, available, checkedAt, error ]

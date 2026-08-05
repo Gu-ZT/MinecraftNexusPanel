@@ -66,6 +66,8 @@ export type DownloadPlatform = 'LINUX' | 'MACOS' | 'WINDOWS';
 export type DownloadArchitecture = 'AARCH64' | 'X86_64';
 export type BedrockManagementKind = 'DEDICATED_SERVER' | 'POCKET_MINE' | 'NUKKIT' | 'GEYSER';
 export type BedrockTransport = 'RAKNET_UDP';
+export type BedrockConfigurationFormat = 'PROPERTIES' | 'YAML' | 'UNKNOWN';
+export type BedrockExtensionCompatibilityPolicy = 'UNSUPPORTED' | 'PLUGIN_MANIFEST';
 export type BedrockPortCheckState = 'AVAILABLE' | 'IN_USE' | 'UNAVAILABLE';
 export type BedrockPortSource = 'CONFIGURED' | 'DEFAULT';
 export type BedrockBindAddressSource = 'CONFIGURED' | 'DEFAULT';
@@ -297,8 +299,10 @@ export interface BedrockManagementProfile {
   defaultBindAddress: string;
   defaultPort: number;
   configurationFiles: string[];
+  configurationFormat: BedrockConfigurationFormat;
   extensionKind: ExtensionKind | null;
   extensionDirectories: string[];
+  extensionCompatibilityPolicy: BedrockExtensionCompatibilityPolicy;
 }
 
 export interface BedrockPortCheck {
