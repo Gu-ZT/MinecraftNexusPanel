@@ -855,6 +855,27 @@ impl CoreRegistry {
         Ok(task_accepted_json(task_id))
     }
 
+    /// 显式复位指定 Core 上处于 `FAILED` 或 `UNKNOWN` 的实例。
+    ///
+    /// 复位不会启动进程，只会在 Core 完成安全确认后恢复为 `STOPPED`。
+    pub async fn reset_instance(
+        &self,
+        core_id: CoreId,
+        instance_id: &InstanceId,
+        idempotency_key: &str,
+    ) -> Result<Value, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+        let instance = connection
+            .reset_instance(instance_id, idempotency_key)
+            .await?;
+
+        Ok(instance_json(core_id, &json!(instance)))
+    }
+
     /// 向指定 Core 上的实例发送命令。
     pub async fn send_instance_command(
         &self,

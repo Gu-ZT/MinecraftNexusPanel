@@ -58,6 +58,9 @@ pub enum CoreError {
     /// 运行时管理器初始化或执行失败。
     #[error(transparent)]
     RuntimeManager(#[from] crate::RuntimeManagerError),
+    /// 实例配置仓储初始化或持久化失败。
+    #[error(transparent)]
+    InstanceRepository(#[from] crate::InstanceRepositoryError),
     /// 一键搭建管理器初始化或执行失败。
     #[error(transparent)]
     ProvisionManager(#[from] crate::ProvisionManagerError),

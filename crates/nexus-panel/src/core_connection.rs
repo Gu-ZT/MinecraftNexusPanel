@@ -716,6 +716,29 @@ impl CoreConnection {
         .await
     }
 
+    /// 显式复位处于 `FAILED` 或 `UNKNOWN` 的实例。
+    ///
+    /// `UNKNOWN` 只能由管理员明确确认旧进程不再由当前 Core 接管后复位；
+    /// 请求使用幂等键，避免 Panel 在连接超时后重复提交复位动作。
+    pub async fn reset_instance(
+        &mut self,
+        instance_id: &InstanceId,
+        idempotency_key: &str,
+    ) -> Result<Instance, CoreConnectionError> {
+        let result = self
+            .request_with_idempotency(
+                "instance.reset",
+                json!({
+                    "instanceId": instance_id,
+                    "confirmation": "RESET",
+                }),
+                Some(idempotency_key),
+            )
+            .await?;
+
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse { field: "instance" })
+    }
+
     /// 向实例发送命令，不提供幂等键。
     pub async fn send_instance_command(
         &mut self,

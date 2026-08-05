@@ -1,3 +1,6 @@
+use std::io;
+use std::path::PathBuf;
+
 use nexus_domain::InstanceCreateError;
 use nexus_domain::InstanceId;
 use nexus_domain::InstanceState;
@@ -38,6 +41,69 @@ pub enum InstanceRepositoryError {
     /// 实例仓库锁不可用。
     #[error("instance repository lock is poisoned")]
     LockPoisoned,
+    /// 实例数据目录创建失败。
+    #[error("failed to create instance data directory {path}")]
+    CreateDirectory {
+        /// 创建失败的数据目录路径。
+        path: PathBuf,
+        #[source]
+        /// 操作系统返回的目录创建错误。
+        source: io::Error,
+    },
+    /// 读取实例数据文件失败。
+    #[error("failed to read instance store {path}")]
+    Read {
+        /// 读取失败的实例数据文件路径。
+        path: PathBuf,
+        #[source]
+        /// 操作系统返回的读取错误。
+        source: io::Error,
+    },
+    /// 实例数据文件不是合法的 JSON 实例映射。
+    #[error("instance store {path} contains invalid JSON")]
+    Decode {
+        /// 包含非法 JSON 的实例数据文件路径。
+        path: PathBuf,
+        #[source]
+        /// JSON 解码错误。
+        source: serde_json::Error,
+    },
+    /// 创建实例临时数据文件失败。
+    #[error("failed to create temporary instance store in {path}")]
+    CreateTemporary {
+        /// 创建临时文件的目录路径。
+        path: PathBuf,
+        #[source]
+        /// 操作系统返回的创建错误。
+        source: io::Error,
+    },
+    /// 序列化实例数据失败。
+    #[error("failed to encode instance store {path}")]
+    Encode {
+        /// 无法写入的实例数据文件路径。
+        path: PathBuf,
+        #[source]
+        /// JSON 编码错误。
+        source: serde_json::Error,
+    },
+    /// 写入或同步实例临时数据文件失败。
+    #[error("failed to write instance store {path}")]
+    Write {
+        /// 写入失败的实例数据文件路径。
+        path: PathBuf,
+        #[source]
+        /// 操作系统返回的写入错误。
+        source: io::Error,
+    },
+    /// 用临时文件替换正式实例数据文件失败。
+    #[error("failed to atomically replace instance store {path}")]
+    Replace {
+        /// 替换失败的正式实例数据文件路径。
+        path: PathBuf,
+        #[source]
+        /// 操作系统返回的替换错误。
+        source: io::Error,
+    },
     /// 当前实例状态不允许执行请求动作。
     #[error("instance {instance_id} is in state {state:?}")]
     StateConflict {

@@ -27,6 +27,20 @@ impl InstanceRuntime {
         }
     }
 
+    /// 创建一个 Core 重启后无法确认来源的运行时快照。
+    ///
+    /// Core 进程退出时不会自动替实例重新接管旧 PID；上次保存为启动中或
+    /// 运行中的实例必须恢复为 `UNKNOWN`，避免把已经失效的进程事实暴露为仍在运行。
+    #[must_use]
+    pub const fn unknown() -> Self {
+        Self {
+            state: InstanceState::Unknown,
+            pid: None,
+            started_at: None,
+            exit_code: None,
+        }
+    }
+
     /// 返回当前生命周期状态。
     #[must_use]
     pub const fn state(&self) -> InstanceState {

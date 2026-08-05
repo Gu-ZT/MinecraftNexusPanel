@@ -178,6 +178,10 @@ Panel 使用 `MCNP_PANEL_MASTER_KEY` 对 Core PSK 执行 AES-256-GCM 信封加�
 
 实例路径总是包含 `coreId`，防止不同 Core 上相同实例 ID 产生歧义。
 
+Core 将实例定义和运行时快照持久化到数据目录的 `instances.json`。Core 重启不会自动接管旧进程；
+若保存的状态为 `STARTING`、`RUNNING` 或 `STOPPING`，恢复后的实例状态为 `UNKNOWN`。管理员必须先
+通过 `actions/reset` 明确确认旧进程不再由当前 Core 接管，才能将实例复位为 `STOPPED` 并重新启动。
+
 | 方法   | 路径                                     | 权限                     | 说明                       |
 |--------|------------------------------------------|--------------------------|----------------------------|
 | GET    | `/cores/{coreId}/instances`              | `instance.read`          | 实例列表                   |
@@ -189,6 +193,7 @@ Panel 使用 `MCNP_PANEL_MASTER_KEY` 对 Core PSK 执行 AES-256-GCM 信封加�
 | POST   | `.../{instanceId}/actions/stop`          | `instance.control`       | 优雅停止                   |
 | POST   | `.../{instanceId}/actions/restart`       | `instance.control`       | 优雅重启                   |
 | POST   | `.../{instanceId}/actions/kill`          | `instance.control`       | 强制终止，需要确认字段     |
+| POST   | `.../{instanceId}/actions/reset`         | `instance.control`       | 复位 FAILED/UNKNOWN，需要 `RESET` 确认 |
 | POST   | `.../{instanceId}/commands`              | `instance.console.write` | 发送一条控制台命令         |
 | GET    | `.../{instanceId}/logs`                  | `instance.console.read`  | 游标分页读取日志           |
 | GET    | `.../{instanceId}/metrics`               | `instance.read`          | 实例资源指标               |
@@ -220,8 +225,9 @@ Panel 使用 `MCNP_PANEL_MASTER_KEY` 对 Core PSK 执行 AES-256-GCM 信封加�
 }
 ```
 
-状态操作的正常响应是 `202` 任务引用。若操作已达到目标状态，例如对 RUNNING 实例再次 start，使用同一幂等键时返回原结果；新请求返回
-`409 INSTANCE_STATE_CONFLICT`。
+启动、停止和强制终止的正常响应是 `202` 任务引用。复位操作要求 `Idempotency-Key` 请求头和
+`{"confirmation":"RESET"}` 请求体，成功时返回 `200` 的实例资源；它只接受 `FAILED` 或 `UNKNOWN` 状态，
+并将实例恢复为 `STOPPED`，不会启动或接管旧进程。若状态不允许操作，返回 `409 INSTANCE_STATE_CONFLICT`。
 
 发送命令：
 

@@ -33,6 +33,7 @@
 - Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit 与 Geyser 使用专门画像管理 RakNet UDP、默认绑定地址、配置文件、扩展能力、声明的扩展目录、配置格式和扩展兼容性策略。Core 会在支持时读取 BDS/PocketMine/Nukkit 的 `server-ip`/`server-port` 或 Geyser 的 `bedrock.address`/`bedrock.port`，只接受 IP 字面量，地址和端口配置分别在不可用或非法时回退到 `0.0.0.0` 与 `19132`，并报告地址/端口来源以及 UDP 绑定可用、已占用或不可用。画像策略仍为声明性元数据；manifest 结构校验和可选目标 API 匹配已经前置到安装阶段，自动发现和完整版本矩阵仍待完成。
 - Core 还提供专用基岩健康检查，使用 RakNet Unconnected Ping/Pong 区分已响应、超时、无效响应和探测不可用，并在响应有效时返回服务端身份；绑定地址为未指定地址时使用本机回环探测。该检查独立于 UDP 端口可绑定检查和 Java Status 健康检查。
 - 实例启动配置将 HOST/CONTAINER 运行模式与 DIRECT/MCDR 监督模式分开。HOST 支持直接命令和显式的 MCDR `{server}`/`{serverArgs}` 包装模板；容器后端完成前，CONTAINER 只保存配置并由 Core 拒绝启动。
+- Core 会将实例定义和运行时快照持久化到 `instances.json`。Core 重启后，原来处于 `STARTING`、`RUNNING` 或 `STOPPING` 的快照会恢复为明确的 `UNKNOWN`；管理员必须使用 `confirmation=RESET` 显式复位后才能再次启动，Core 不会声称已经重新接管旧 PID。
 - Core 会记录实例启动成功/失败、停止和强制终止请求，以及受管进程的异常退出；MCDR 包装器退出会记录专用失败原因，并可通过 `instance.audit.list`、Panel REST 和共享 TypeScript Client 查询最新记录。Core 会在 `instance-audit.json` 中通过原子替换持久化最近 2048 条记录，文件损坏时拒绝启动；这些 Core 事实不能替代仍需由 Panel 持久化的用户级审计日志。
 
 ### 当前文件管理能力

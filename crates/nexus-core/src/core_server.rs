@@ -191,7 +191,7 @@ impl CoreServer {
             source,
         })?;
 
-        let instances = InstanceRepository::new();
+        let instances = InstanceRepository::open(config.data_directory())?;
         let audits = InstanceAuditRepository::open(config.data_directory())?;
         let processes = InstanceProcessManager::new(
             config.data_directory().to_path_buf(),
@@ -595,6 +595,9 @@ async fn request_response(
             instance_stop_response(request_id, params, idempotency_key, state.processes()).await
         }
         "instance.update" => instance_update_response(request_id, params, state.instances()),
+        "instance.reset" => {
+            instance_reset_response(request_id, params, idempotency_key, state.instances())
+        }
         "event.subscribe" => event_subscribe_response(request_id, params, state),
         "event.unsubscribe" => event_unsubscribe_response(request_id, params, state),
         _ => error_response(
@@ -3489,6 +3492,46 @@ fn instance_update_response(
             request_id,
             "INSTANCE_STATE_CONFLICT",
             "Instance state does not allow settings changes",
+            false,
+            Some(json!({ "state": state })),
+        ),
+        Err(error) => repository_failure_response(request_id, &error),
+    }
+}
+
+fn instance_reset_response(
+    request_id: RequestId,
+    params: &Value,
+    idempotency_key: Option<&str>,
+    instances: &InstanceRepository,
+) -> WireMessage {
+    if idempotency_key.is_none() {
+        return missing_idempotency_key_response(request_id);
+    }
+    let Some(instance_id) = instance_id_parameter(params) else {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.reset requires a valid instanceId",
+        );
+    };
+    if params.get("confirmation").and_then(Value::as_str) != Some("RESET") {
+        return error_response(
+            request_id,
+            "BAD_REQUEST",
+            "instance.reset requires confirmation=RESET",
+        );
+    }
+
+    match instances.reset(&instance_id) {
+        Ok(instance) => success_response(request_id, json!(instance)),
+        Err(InstanceRepositoryError::NotFound { .. }) => {
+            error_response(request_id, "INSTANCE_NOT_FOUND", "Instance does not exist")
+        }
+        Err(InstanceRepositoryError::StateConflict { state, .. }) => error_response_with_details(
+            request_id,
+            "INSTANCE_STATE_CONFLICT",
+            "Only FAILED or UNKNOWN instances can be reset",
             false,
             Some(json!({ "state": state })),
         ),

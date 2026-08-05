@@ -260,11 +260,14 @@ sequenceDiagram
 | `instance.stop`    | instanceId、timeoutSeconds            | taskId            |
 | `instance.restart` | instanceId、timeoutSeconds            | taskId            |
 | `instance.kill`    | instanceId、confirmation              | taskId            |
+| `instance.reset`   | instanceId、confirmation              | Instance          |
 | `instance.command` | instanceId、command                   | acceptedAt        |
 | `instance.logs`    | instanceId、after、before、limit      | items、nextCursor |
 | `instance.metrics` | instanceId、range、resolution         | series            |
 
-实例写入使用 `revision` 做乐观锁。启动/停止等状态操作必须提供 `idempotencyKey`。命令最大 8 KiB，移除尾部换行后由 Core
+实例写入使用 `revision` 做乐观锁。启动/停止/终止/复位等状态操作必须提供 `idempotencyKey`。`instance.reset` 只接受当前状态为
+`FAILED` 或 `UNKNOWN` 的实例，并要求 `confirmation=RESET`；成功后将运行时快照恢复为 `STOPPED`，不会启动或接管任何旧进程。
+命令最大 8 KiB，移除尾部换行后由 Core
 追加一个平台正确的换行；空命令、包含 NUL 的命令会被拒绝，命令内容不会由 Core 写入控制台日志。
 
 控制台日志按实例保留最近 10,000 行内存历史，stdout 和 stderr 各行合并到同一单调游标空间。单行正文最多 64 KiB，超出部分以

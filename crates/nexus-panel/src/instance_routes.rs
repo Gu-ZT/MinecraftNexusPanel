@@ -27,6 +27,7 @@ use nexus_domain::RequestId;
 
 use crate::InstanceCommandRequest;
 use crate::InstanceKillRequest;
+use crate::InstanceResetRequest;
 use crate::InstanceStopRequest;
 use crate::PanelState;
 use crate::auth_routes::error_response;
@@ -60,6 +61,10 @@ pub(crate) fn instance_routes() -> Router<PanelState> {
         .route(
             "/api/v1/cores/{core_id}/instances/{instance_id}/actions/kill",
             post(kill_instance),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/instances/{instance_id}/actions/reset",
+            post(reset_instance),
         )
         .route(
             "/api/v1/cores/{core_id}/instances/{instance_id}/commands",
@@ -272,6 +277,36 @@ async fn kill_instance(
         .await
     {
         Ok(task) => (StatusCode::ACCEPTED, Json(task)).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn reset_instance(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, instance_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    payload: Result<Json<InstanceResetRequest>, JsonRejection>,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Some(idempotency_key) = idempotency_key(&headers) else {
+        return precondition_required_response(request_id);
+    };
+    let Some((core_id, instance_id)) = parse_ids(&core_id, &instance_id) else {
+        return validation_error(request_id);
+    };
+    if !matches!(payload, Ok(Json(request)) if request.confirmation() == "RESET") {
+        return validation_error(request_id);
+    }
+
+    match state
+        .cores()
+        .reset_instance(core_id, &instance_id, idempotency_key)
+        .await
+    {
+        Ok(instance) => resource_response(StatusCode::OK, instance),
         Err(error) => registry_error_response(error, request_id),
     }
 }

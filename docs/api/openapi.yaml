@@ -1760,6 +1760,47 @@ paths:
           $ref: '#/components/responses/TaskAccepted'
         '409':
           $ref: '#/components/responses/Conflict'
+  /cores/{coreId}/instances/{instanceId}/actions/reset:
+    post:
+      tags: [ Instances ]
+      operationId: resetInstance
+      summary: Reset an instance after explicit stale-process confirmation
+      description: |
+        Reset an instance in FAILED or UNKNOWN state to STOPPED. UNKNOWN is
+        produced after Core restarts when a previous process cannot be safely
+        reattached; this action never starts or reclaims that process.
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ confirmation ]
+              properties:
+                confirmation:
+                  type: string
+                  const: RESET
+      responses:
+        '200':
+          description: Instance reset to STOPPED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Instance'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
   /cores/{coreId}/instances/{instanceId}/commands:
     post:
       tags: [ Instances ]

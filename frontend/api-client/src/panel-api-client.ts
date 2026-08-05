@@ -981,6 +981,7 @@ export interface PanelApiClient {
   startInstance(coreId: string, instanceId: string): Promise<TaskAccepted>;
   stopInstance(coreId: string, instanceId: string): Promise<TaskAccepted>;
   killInstance(coreId: string, instanceId: string): Promise<TaskAccepted>;
+  resetInstance(coreId: string, instanceId: string): Promise<Instance>;
   sendInstanceCommand(coreId: string, instanceId: string, command: string): Promise<CommandAccepted>;
 }
 
@@ -1623,6 +1624,12 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
       return request<TaskAccepted>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/actions/kill`,
         { method: 'POST', csrf: true, idempotent: true, body: { confirmation: 'KILL' } },
+      );
+    },
+    resetInstance(coreId, instanceId) {
+      return request<Instance>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/actions/reset`,
+        { method: 'POST', csrf: true, idempotent: true, body: { confirmation: 'RESET' } },
       );
     },
     sendInstanceCommand(coreId, instanceId, command) {
