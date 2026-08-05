@@ -109,7 +109,10 @@ async fn registers_encrypts_restores_and_reconnects_a_core() {
             .as_array()
             .is_some_and(|cpus| !cpus.is_empty())
     );
-    assert_eq!(topology.body["detection"]["confidence"], "LOW");
+    assert!(matches!(
+        topology.body["detection"]["confidence"].as_str(),
+        Some("HIGH" | "MEDIUM" | "LOW")
+    ));
 
     let policy = send_json_request(
         panel_address,

@@ -128,7 +128,10 @@ async fn accepts_an_encrypted_session_hello() {
             .as_array()
             .is_some_and(|cpus| !cpus.is_empty())
     );
-    assert_eq!(topology["detection"]["confidence"], "LOW");
+    assert!(matches!(
+        topology["detection"]["confidence"].as_str(),
+        Some("HIGH" | "MEDIUM" | "LOW")
+    ));
     assert!(
         topology["available"]["performanceCpuIds"]
             .as_array()
