@@ -6,6 +6,8 @@
 //! 服务端类型应使用哪套运维逻辑。
 
 mod bedrock_bind_address_source;
+mod bedrock_configuration_format;
+mod bedrock_extension_compatibility_policy;
 mod bedrock_health;
 mod bedrock_health_status;
 mod bedrock_management_kind;
@@ -96,6 +98,8 @@ mod task_id;
 mod version_metadata_provider;
 
 pub use bedrock_bind_address_source::BedrockBindAddressSource;
+pub use bedrock_configuration_format::BedrockConfigurationFormat;
+pub use bedrock_extension_compatibility_policy::BedrockExtensionCompatibilityPolicy;
 pub use bedrock_health::BedrockHealth;
 pub use bedrock_health_status::BedrockHealthStatus;
 pub use bedrock_management_kind::BedrockManagementKind;

@@ -3,6 +3,8 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::BedrockConfigurationFormat;
+use crate::BedrockExtensionCompatibilityPolicy;
 use crate::BedrockManagementKind;
 use crate::BedrockTransport;
 use crate::ExtensionKind;
@@ -18,8 +20,10 @@ pub struct BedrockManagementProfile {
     default_bind_address: String,
     default_port: u16,
     configuration_files: Vec<String>,
+    configuration_format: BedrockConfigurationFormat,
     extension_kind: Option<ExtensionKind>,
     extension_directories: Vec<String>,
+    extension_compatibility_policy: BedrockExtensionCompatibilityPolicy,
 }
 
 impl BedrockManagementProfile {
@@ -32,14 +36,26 @@ impl BedrockManagementProfile {
         configuration_files: Vec<String>,
         extension_kind: Option<ExtensionKind>,
     ) -> Self {
+        let configuration_format = configuration_files
+            .first()
+            .map_or(BedrockConfigurationFormat::Unknown, |path| {
+                BedrockConfigurationFormat::from_path(path)
+            });
+        let extension_compatibility_policy = if extension_kind.is_some() {
+            BedrockExtensionCompatibilityPolicy::PluginManifest
+        } else {
+            BedrockExtensionCompatibilityPolicy::Unsupported
+        };
         Self {
             management_kind,
             transport,
             default_bind_address: "0.0.0.0".to_owned(),
             default_port,
             configuration_files,
+            configuration_format,
             extension_kind,
             extension_directories: Vec::new(),
+            extension_compatibility_policy,
         }
     }
 
@@ -47,6 +63,26 @@ impl BedrockManagementProfile {
     #[must_use]
     pub fn with_extension_directories(mut self, extension_directories: Vec<String>) -> Self {
         self.extension_directories = extension_directories;
+        self
+    }
+
+    /// 覆盖配置格式画像；用于版本模板声明与文件扩展名不一致的情况。
+    #[must_use]
+    pub const fn with_configuration_format(
+        mut self,
+        configuration_format: BedrockConfigurationFormat,
+    ) -> Self {
+        self.configuration_format = configuration_format;
+        self
+    }
+
+    /// 覆盖扩展版本兼容性策略。
+    #[must_use]
+    pub const fn with_extension_compatibility_policy(
+        mut self,
+        policy: BedrockExtensionCompatibilityPolicy,
+    ) -> Self {
+        self.extension_compatibility_policy = policy;
         self
     }
 
@@ -87,6 +123,12 @@ impl BedrockManagementProfile {
         &self.configuration_files
     }
 
+    /// 返回配置文件对应的结构化格式策略。
+    #[must_use]
+    pub const fn configuration_format(&self) -> BedrockConfigurationFormat {
+        self.configuration_format
+    }
+
     /// 返回该端支持管理的扩展种类。
     #[must_use]
     pub const fn extension_kind(&self) -> Option<ExtensionKind> {
@@ -97,5 +139,11 @@ impl BedrockManagementProfile {
     #[must_use]
     pub fn extension_directories(&self) -> &[String] {
         &self.extension_directories
+    }
+
+    /// 返回扩展版本兼容性策略。
+    #[must_use]
+    pub const fn extension_compatibility_policy(&self) -> BedrockExtensionCompatibilityPolicy {
+        self.extension_compatibility_policy
     }
 }

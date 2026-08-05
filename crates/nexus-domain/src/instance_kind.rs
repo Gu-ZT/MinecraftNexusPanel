@@ -3,6 +3,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::BedrockExtensionCompatibilityPolicy;
 use crate::BedrockManagementKind;
 use crate::BedrockManagementProfile;
 use crate::BedrockTransport;
@@ -164,6 +165,11 @@ impl InstanceKind {
                 configuration_files,
                 extension_kind,
             )
+            .with_extension_compatibility_policy(if extension_kind.is_some() {
+                BedrockExtensionCompatibilityPolicy::PluginManifest
+            } else {
+                BedrockExtensionCompatibilityPolicy::Unsupported
+            })
             .with_extension_directories(extension_directories),
         )
     }
@@ -172,6 +178,8 @@ impl InstanceKind {
 #[cfg(test)]
 mod tests {
     use super::InstanceKind;
+    use crate::BedrockConfigurationFormat;
+    use crate::BedrockExtensionCompatibilityPolicy;
     use crate::BedrockManagementKind;
     use crate::ExtensionKind;
 
@@ -185,14 +193,38 @@ mod tests {
             BedrockManagementKind::DedicatedServer
         );
         assert_eq!(dedicated.configuration_files(), ["server.properties"]);
+        assert_eq!(
+            dedicated.configuration_format(),
+            BedrockConfigurationFormat::Properties
+        );
         assert_eq!(dedicated.extension_kind(), None);
+        assert_eq!(
+            dedicated.extension_compatibility_policy(),
+            BedrockExtensionCompatibilityPolicy::Unsupported
+        );
 
         let pocketmine = InstanceKind::PocketMineMp
             .bedrock_management_profile()
             .expect("PocketMine-MP has a Bedrock profile");
         assert_eq!(pocketmine.extension_kind(), Some(ExtensionKind::Plugin));
         assert_eq!(pocketmine.extension_directories(), ["plugins"]);
+        assert_eq!(
+            pocketmine.extension_compatibility_policy(),
+            BedrockExtensionCompatibilityPolicy::PluginManifest
+        );
         assert_eq!(pocketmine.default_port(), 19132);
+
+        let geyser = InstanceKind::Geyser
+            .bedrock_management_profile()
+            .expect("Geyser has a Bedrock profile");
+        assert_eq!(
+            geyser.configuration_format(),
+            BedrockConfigurationFormat::Yaml
+        );
+        assert_eq!(
+            geyser.extension_compatibility_policy(),
+            BedrockExtensionCompatibilityPolicy::Unsupported
+        );
 
         assert!(InstanceKind::Paper.bedrock_management_profile().is_none());
     }
