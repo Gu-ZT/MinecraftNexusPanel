@@ -405,7 +405,7 @@ Core 的强制策略。
 | 方法                        | 参数                            | 结果                                  |
 |-----------------------------|---------------------------------|---------------------------------------|
 | `cpu.topology`              | 无                              | CpuTopology                           |
-| `cpu.policy.resolve`        | CpuPolicy、instanceId           | candidates、conflicts、degradedReason |
+| `cpu.policy.resolve`        | CpuPolicy                        | requested、candidateCpuIds、selectedCpuIds、conflicts |
 | `cpu.reserve`               | instanceId、CpuPolicy、revision | reservationId、appliedPolicy          |
 | `cpu.release`               | reservationId                   | 空对象                                |
 | `instance.cpu_policy.get`   | instanceId                      | requested、applied、status            |
@@ -413,6 +413,8 @@ Core 的强制策略。
 
 - Linux Core 使用 sysfs 与进程 cpuset 提供 online/offline、物理核心、NUMA、隔离集合和
   `core_type`/`cpu_capacity`；缺失的性能类别、NUMA 或隔离信息保持未知。
+- `cpu.policy.resolve` 只生成候选和建议集合，不应用 host affinity，也不创建 CpuReservation；`EXCLUSIVE`
+  在预留能力交付前会以严格失败或显式降级返回。
 - Core 必须在实例子进程创建前应用 host affinity；Docker 实例映射为 cpuset-cpus/cpuset-mems。
 - `shareMode=EXCLUSIVE` 需要 Core 侧 CpuReservation，冲突时返回 `CPU_CAPACITY_UNAVAILABLE`。
 - 识别不到性能类别时，`PERFORMANCE` 不得按编号猜测；`strict=true` 失败，`strict=false` 只能返回 `DEGRADED`。

@@ -75,7 +75,8 @@ Core 现在会在启动时缓存保守的宿主机 CPU 拓扑快照，并通过 
 
 - Linux Core 现在读取 sysfs 拓扑、进程 cpuset、ARM `cpu_capacity`、NUMA、online/offline
   和隔离信息；平台未提供的字段保持明确未知值。
-Windows EfficiencyClass、CPU policy 和独占预留仍属于 M4 后续工作。
+- Core 和 Panel 现在提供带严格/降级结果的 CPU policy 只读预览；实际 host affinity 和独占预留仍未应用。
+Windows EfficiencyClass、实际 CPU affinity 应用和独占预留仍属于 M4 后续工作。
 
 ## 工程布局
 

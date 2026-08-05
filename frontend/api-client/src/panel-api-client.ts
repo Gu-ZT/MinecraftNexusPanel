@@ -163,6 +163,32 @@ export interface CpuTopology {
   detection: CpuTopologyDetection;
 }
 
+export type CpuPolicyMode = 'AUTO' | 'PERFORMANCE' | 'EFFICIENCY' | 'CUSTOM';
+export type CpuShareMode = 'SHARED' | 'EXCLUSIVE';
+
+/** 实例请求的 CPU 选择和共享策略。 */
+export interface CpuPolicy {
+  mode: CpuPolicyMode;
+  requestedCpuIds: number[];
+  minCpus: number;
+  maxCpus: number | null;
+  preferPhysicalCores: boolean;
+  numaNode: number | null;
+  shareMode: CpuShareMode;
+  strict: boolean;
+}
+
+/** Core 对 CPU policy 的只读候选解析结果，不代表 affinity 已应用。 */
+export interface CpuPolicyResolution {
+  requested: CpuPolicy;
+  candidateCpuIds: number[];
+  selectedCpuIds: number[];
+  performanceClass: CpuPerformanceClass;
+  conflicts: string[];
+  degradedReason: string | null;
+  reservationId: string | null;
+}
+
 export interface ManagedRuntime {
   runtimeId: string | null;
   kind: RuntimeKind;
@@ -678,6 +704,7 @@ export interface PanelApiClient {
   logout(): Promise<void>;
   listCores(): Promise<CorePage>;
   getCpuTopology(coreId: string): Promise<CpuTopology>;
+  resolveCpuPolicy(coreId: string, policy: CpuPolicy): Promise<CpuPolicyResolution>;
   listInstallTemplates(): Promise<InstallTemplatePage>;
   listInstallTemplateVersions(templateId: string): Promise<InstallTemplateVersionPage>;
   searchExtensionCatalog(
@@ -974,6 +1001,12 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     getCpuTopology(coreId) {
       return request<CpuTopology>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/cpu-topology`,
+      );
+    },
+    resolveCpuPolicy(coreId, policy) {
+      return request<CpuPolicyResolution>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/cpu-policies:resolve`,
+        { method: 'POST', body: policy },
       );
     },
     listInstallTemplates() {

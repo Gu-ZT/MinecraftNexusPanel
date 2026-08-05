@@ -152,6 +152,8 @@
   - [x] Linux sysfs、进程 cpuset、ARM capacity、NUMA、online/offline 和隔离 CPU 的可信探测；缺失字段保持未知。
   - [ ] Windows Processor Relationship/EfficiencyClass 和其他平台等价探测。
 - [ ] CPU policy：AUTO、PERFORMANCE、EFFICIENCY、CUSTOM、严格/降级语义。
+  - [x] Domain 校验、Core `cpu.policy.resolve` 和 Panel `cpu-policies:resolve` 只读候选解析。
+  - [ ] 实际 host affinity、Docker cpuset、CpuReservation 独占预留和实例 policy 持久化。
 - [ ] 宿主机 affinity、Docker cpuset、独占预留和冲突检测。
 
 ## M5：统一客户端

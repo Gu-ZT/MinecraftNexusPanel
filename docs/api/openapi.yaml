@@ -616,6 +616,40 @@ paths:
           $ref: '#/components/responses/CoreFailure'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/cpu-policies:resolve:
+    post:
+      tags: [ Cores ]
+      operationId: resolveCpuPolicy
+      summary: Preview a CPU policy against the Core topology
+      description: |
+        Return candidates and a deterministic recommendation without applying
+        host affinity or creating an exclusive reservation. Strict requests
+        fail when the topology cannot prove the requested capacity.
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CpuPolicy'
+      responses:
+        '200':
+          description: Read-only CPU policy resolution
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CpuPolicyResolution'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/CoreFailure'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/environments:
     get:
       tags: [ Environments ]
@@ -3100,6 +3134,66 @@ components:
           $ref: '#/components/schemas/CpuAvailability'
         detection:
           $ref: '#/components/schemas/CpuTopologyDetection'
+    CpuPolicyMode:
+      type: string
+      enum: [ AUTO, PERFORMANCE, EFFICIENCY, CUSTOM ]
+    CpuShareMode:
+      type: string
+      enum: [ SHARED, EXCLUSIVE ]
+    CpuPolicy:
+      type: object
+      required: [ mode, requestedCpuIds, minCpus, maxCpus, preferPhysicalCores, numaNode, shareMode, strict ]
+      properties:
+        mode:
+          $ref: '#/components/schemas/CpuPolicyMode'
+        requestedCpuIds:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        minCpus:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+        maxCpus:
+          type: [ integer, 'null' ]
+          minimum: 1
+          maximum: 1000000
+        preferPhysicalCores:
+          type: boolean
+        numaNode:
+          type: [ integer, 'null' ]
+          minimum: 0
+        shareMode:
+          $ref: '#/components/schemas/CpuShareMode'
+        strict:
+          type: boolean
+    CpuPolicyResolution:
+      type: object
+      required: [ requested, candidateCpuIds, selectedCpuIds, performanceClass, conflicts, degradedReason, reservationId ]
+      properties:
+        requested:
+          $ref: '#/components/schemas/CpuPolicy'
+        candidateCpuIds:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        selectedCpuIds:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        performanceClass:
+          $ref: '#/components/schemas/CpuPerformanceClass'
+        conflicts:
+          type: array
+          items:
+            type: string
+        degradedReason:
+          type: [ string, 'null' ]
+        reservationId:
+          type: [ string, 'null' ]
     RuntimeKind:
       type: string
       enum: [ JAVA, NODE_JS, PYTHON ]

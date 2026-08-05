@@ -341,7 +341,8 @@ API 响应不回传 registry 密码/token。镜像优先保存不可变 digest�
 Core 启动时识别并缓存拓扑，并通过上表的 `GET /cores/{coreId}/cpu-topology` 返回架构、逻辑 CPU、物理核心数量、可用集合和探测置信度。
 Linux 实现读取 sysfs 的 possible/online、进程 `Cpus_allowed_list`、物理核心、NUMA、隔离集合和 `core_type`/`cpu_capacity`；
 性能类别、NUMA、隔离状态在未被平台可靠报告时返回未知，不能按 CPU 编号猜测。Windows Processor Relationship/EfficiencyClass、
-其他平台的等价能力和后续 CPU policy 仍需逐平台实现。
+其他平台的等价能力、host affinity 和独占预留仍需逐平台实现。`POST /cores/{coreId}/cpu-policies:resolve` 只返回
+候选/建议集合、冲突和降级原因，不表示资源已经应用。
 
 拓扑示例：
 

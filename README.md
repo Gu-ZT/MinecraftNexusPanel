@@ -75,7 +75,9 @@ Core now caches a conservative host CPU topology snapshot at startup and exposes
 
 - Linux Core now reads sysfs topology, process cpuset, ARM `cpu_capacity`, NUMA, online/offline,
   and isolation data; unavailable fields remain explicit unknown values.
-Windows EfficiencyClass, CPU policies, and exclusive reservations remain planned M4 work.
+- Core and Panel now provide a read-only CPU policy preview with strict/degraded results; it does
+  not yet apply host affinity or create exclusive reservations.
+Windows EfficiencyClass, actual CPU affinity application, and exclusive reservations remain planned M4 work.
 
 ## Project Layout
 
