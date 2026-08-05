@@ -303,7 +303,7 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 当前实现识别 `.properties`、`.json`、`.yaml`/`.yml` 和 `.toml` 文件。`documentId` 是相对路径的 SHA-256，结构化写入请求体为
 `{ "revision": "...", "patch": { "motd": "Nexus" }, "allowLossy": false }`；revision 必须等于当前内容 SHA-256。properties 补丁只允许顶层字符串、布尔、数字或
 `null`，并保留注释、键顺序和换行；JSON/YAML/TOML 支持嵌套顶层 Merge Patch，但必须把 `allowLossy` 设置为 `true` 才会规范化写回。raw PUT 使用 `If-Match` 时同样按文件 SHA-256 做并发保护，并必须携带 `Idempotency-Key`。
-`config-documents:validate` 返回 `valid`、`checkedDocuments` 和 `issues`。当前诊断覆盖 Java `server.properties` 的端口范围、启用的 Query/RCON 设置、`server-ip`、`eula.txt`，以及 Geyser `config.yml` 的 Bedrock/Java 端点；重复监听端口会报告关联文件和字段。复杂结构化控件和版本专用 Schema 仍属于后续工作。
+`config-documents:validate` 返回 `valid`、`checkedDocuments` 和 `issues`。当前诊断覆盖 Java `server.properties` 的端口范围、启用的 Query/RCON 设置、`server-ip`、`eula.txt`，以及 Geyser `config.yml` 的 Bedrock/Java 端点；重复监听端口会报告关联文件和字段。JSON/YAML/TOML 已返回嵌套对象和数组的递归 Schema/UI Schema；前端完整复杂表单和版本专用 Schema 仍属于后续工作。
 
 ### 5.5 任务、用户和审计
 

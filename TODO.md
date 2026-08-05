@@ -106,7 +106,8 @@
   - [x] Core/Panel `config.validate`：返回带路径、字段、严重级别和关联位置的实例级诊断。
   - [x] 校验 Java `server.properties` 端口范围、启用 Query/RCON 条件、RCON 密码、`server-ip` 和 `eula.txt`。
   - [x] 校验 Geyser `config.yml` 的 Bedrock/Java 端点，并报告重复监听端口；未知版本字段不误报。
-  - [ ] 复杂结构化控件、版本专用 Schema 和更多跨文件规则。
+  - [x] JSON/YAML/TOML provider 为嵌套对象和数组生成递归 JSON Schema/UI Schema，前端可按字段层级选择 group、array、number 和 checkbox 控件。
+  - [ ] 前端复杂表单渲染、异构数组编辑、版本专用 Schema 和更多跨文件规则。
 - [ ] 实例文件浏览、上传、下载、移动、删除与路径逃逸防护。
   - [x] Core 文件沙箱：目录列表、分页游标、32 KiB 分块读取、SHA-256 和 1 MiB 内原子写入。
   - [x] Panel REST 与 TypeScript Client：二进制读取、ETag/If-Match、幂等写入和路径错误映射。

@@ -501,20 +501,43 @@ fn json_schema_for(value: &Value) -> Value {
         }
         Value::Number(_) => json!({ "type": "number" }),
         Value::String(_) => json!({ "type": "string" }),
-        Value::Array(_) => json!({ "type": "array", "items": {} }),
-        Value::Object(_) => json!({ "type": "object", "additionalProperties": true }),
+        Value::Array(values) => {
+            let items = values.first().map_or_else(|| json!({}), json_schema_for);
+            json!({ "type": "array", "items": items })
+        }
+        Value::Object(values) => {
+            let properties = values
+                .iter()
+                .map(|(key, value)| (key.clone(), json_schema_for(value)))
+                .collect::<Map<_, _>>();
+            json!({
+                "type": "object",
+                "properties": properties,
+                "additionalProperties": true
+            })
+        }
     }
 }
 
 fn json_ui_schema_for(value: &Value) -> Value {
-    let widget = match value {
-        Value::Null => "text",
-        Value::Bool(_) => "checkbox",
-        Value::Number(_) => "number",
-        Value::String(_) => "text",
-        Value::Array(_) | Value::Object(_) => "json",
-    };
-    json!({ "widget": widget })
+    match value {
+        Value::Null | Value::String(_) => json!({ "widget": "text" }),
+        Value::Bool(_) => json!({ "widget": "checkbox" }),
+        Value::Number(_) => json!({ "widget": "number" }),
+        Value::Array(values) => {
+            let items = values
+                .first()
+                .map_or_else(|| json!({ "widget": "json" }), json_ui_schema_for);
+            json!({ "widget": "array", "items": items })
+        }
+        Value::Object(values) => {
+            let properties = values
+                .iter()
+                .map(|(key, value)| (key.clone(), json_ui_schema_for(value)))
+                .collect::<Map<_, _>>();
+            json!({ "widget": "group", "properties": properties })
+        }
+    }
 }
 
 fn parse_property_lines(content: &str) -> Vec<PropertyLine> {
@@ -801,6 +824,36 @@ mod tests {
         );
         assert_eq!(document["lossy"], true);
         assert_eq!(document["unmapped"], json!([]));
+    }
+
+    #[test]
+    fn builds_recursive_schema_and_ui_metadata_for_nested_values() {
+        let document = document(
+            "config/settings.json",
+            br#"{"servers":[{"name":"hub","port":25565}],"flags":[true,false]}"#,
+        )
+        .expect("nested JSON configuration is parsed");
+
+        assert_eq!(
+            document["schema"]["properties"]["servers"]["items"]["properties"]["port"]["type"],
+            "integer"
+        );
+        assert_eq!(
+            document["schema"]["properties"]["flags"]["items"]["type"],
+            "boolean"
+        );
+        assert_eq!(
+            document["uiSchema"]["properties"]["servers"]["widget"],
+            "array"
+        );
+        assert_eq!(
+            document["uiSchema"]["properties"]["servers"]["items"]["properties"]["name"]["widget"],
+            "text"
+        );
+        assert_eq!(
+            document["uiSchema"]["properties"]["flags"]["items"]["widget"],
+            "checkbox"
+        );
     }
 
     #[test]

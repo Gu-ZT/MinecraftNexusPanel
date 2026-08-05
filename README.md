@@ -63,9 +63,10 @@ The first configuration provider is now available through Core TCP and the Panel
 - YAML/YML and TOML object discovery with typed JSON Schema/UI Schema and normalized top-level Merge Patch updates; writes require explicit `allowLossy=true`;
 - Minecraft `server.properties` metadata for common booleans, integers, difficulty/gamemode enums, and a sensitive password widget for `rcon.password`; unknown keys remain strings;
 - raw text reads and writes with the same sandbox, ETag, If-Match, and idempotency protections as file management.
+- recursive nested object and array Schema/UI Schema metadata for JSON, YAML, and TOML values, so clients can render field-level group, array, number, and checkbox controls without treating sample values as a complete version schema.
 - instance-level `config-documents:validate` diagnostics for Java ports, Query/RCON settings, `server-ip`, `eula.txt`, Geyser endpoints, and duplicate listening ports.
 
-Complex structured controls, version-specific schemas, and broader cross-file rules remain planned M3 work.
+Rich frontend form rendering, version-specific schemas, heterogeneous array editing, and broader cross-file rules remain planned M3 work.
 
 ### CPU Topology Slice
 

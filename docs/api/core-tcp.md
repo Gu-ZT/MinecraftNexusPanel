@@ -390,7 +390,8 @@ Core 侧 Secret 且协议仅传引用 ID。
 
 当前 Core 已实现 `PROPERTIES`、`JSON`、`YAML` 和 `TOML` 提供者：`config.scan` 递归发现 `.properties`、`.json`、`.yaml`/`.yml` 与 `.toml` 文件，`config.get` 返回 JSON Schema、UI Schema、结构化值、未映射文本、内容
 SHA-256 `revision`/`contentHash` 和稳定的路径派生 `documentId`。`config.patch` 要求幂等键和当前 revision，并通过原子文件替换；properties 补丁只接受顶层字符串、布尔、数字或 `null`，保留注释、键顺序和换行，结构化格式补丁支持嵌套 Merge Patch 但只有显式 `allowLossy=true` 才允许规范化写回。Panel 可通过对应 raw 端点读取或替换最多 1 MiB 的 UTF-8 原文。
-`config.validate` 会复用同一次安全扫描，检查 Java `server.properties` 的端口范围、启用的 Query/RCON 端口和密码、IP 字面量、Java 服务端 `eula.txt`，并检查 Geyser YAML 的 Bedrock/Java 端点；重复监听端口会返回带关联路径的警告。未知版本字段不会被伪装成错误，复杂结构化控件仍需后续实现。
+`config.validate` 会复用同一次安全扫描，检查 Java `server.properties` 的端口范围、启用的 Query/RCON 端口和密码、IP 字面量、Java 服务端 `eula.txt`，并检查 Geyser YAML 的 Bedrock/Java 端点；重复监听端口会返回带关联路径的警告。未知版本字段不会被伪装成错误。
+JSON/YAML/TOML provider 会从当前值递归生成嵌套对象 `properties` 和数组 `items` 的 JSON Schema/UI Schema；空集合保留通用控件，不能把样本值当作完整版本 Schema。前端完整复杂表单仍需后续实现。
 
 ### 5.7 Docker
 
