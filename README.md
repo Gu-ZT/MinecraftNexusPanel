@@ -72,8 +72,9 @@ Core now caches a conservative host CPU topology snapshot at startup and exposes
 - explicit `UNKNOWN` performance classes when performance/efficiency information is unavailable;
 - detection source and confidence, with no CPU-index-based performance guesses.
 
-Linux sysfs, Windows EfficiencyClass, ARM capacity, NUMA/isolation mapping, CPU policies, and
-exclusive reservations remain planned M4 work.
+- Linux Core now reads sysfs topology, process cpuset, ARM `cpu_capacity`, NUMA, online/offline,
+  and isolation data; unavailable fields remain explicit unknown values.
+Windows EfficiencyClass, CPU policies, and exclusive reservations remain planned M4 work.
 
 ## Project Layout
 

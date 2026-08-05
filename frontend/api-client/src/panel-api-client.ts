@@ -142,7 +142,7 @@ export interface CpuLogicalProcessor {
   physicalCoreId: string | null;
   performanceClass: CpuPerformanceClass;
   online: boolean;
-  isolated: boolean;
+  isolated: boolean | null;
   numaNode: number | null;
 }
 

@@ -411,6 +411,8 @@ Core 的强制策略。
 | `instance.cpu_policy.get`   | instanceId                      | requested、applied、status            |
 | `instance.cpu_policy.apply` | instanceId、policy、strict      | taskId、status                        |
 
+- Linux Core 使用 sysfs 与进程 cpuset 提供 online/offline、物理核心、NUMA、隔离集合和
+  `core_type`/`cpu_capacity`；缺失的性能类别、NUMA 或隔离信息保持未知。
 - Core 必须在实例子进程创建前应用 host affinity；Docker 实例映射为 cpuset-cpus/cpuset-mems。
 - `shareMode=EXCLUSIVE` 需要 Core 侧 CpuReservation，冲突时返回 `CPU_CAPACITY_UNAVAILABLE`。
 - 识别不到性能类别时，`PERFORMANCE` 不得按编号猜测；`strict=true` 失败，`strict=false` 只能返回 `DEGRADED`。

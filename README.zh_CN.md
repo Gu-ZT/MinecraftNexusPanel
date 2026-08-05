@@ -72,7 +72,9 @@ Core 现在会在启动时缓存保守的宿主机 CPU 拓扑快照，并通过 
 - 性能核/能效核信息不可用时明确返回 `UNKNOWN`；
 - 返回探测来源和置信度，不根据 CPU 编号猜测性能类别。
 
-Linux sysfs、Windows EfficiencyClass、ARM capacity、NUMA/隔离映射、CPU policy 和独占预留仍属于 M4 后续工作。
+- Linux Core 现在读取 sysfs 拓扑、进程 cpuset、ARM `cpu_capacity`、NUMA、online/offline
+  和隔离信息；平台未提供的字段保持明确未知值。
+Windows EfficiencyClass、CPU policy 和独占预留仍属于 M4 后续工作。
 
 ## 工程布局
 

@@ -3065,7 +3065,7 @@ components:
         online:
           type: boolean
         isolated:
-          type: boolean
+          type: [ boolean, 'null' ]
         numaNode:
           type: [ integer, 'null' ]
           minimum: 0
