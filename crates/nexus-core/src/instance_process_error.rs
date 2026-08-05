@@ -2,6 +2,7 @@ use std::io;
 use std::path::PathBuf;
 
 use nexus_domain::InstanceId;
+use nexus_domain::RuntimeMode;
 use thiserror::Error;
 
 use crate::InstanceLogStoreError;
@@ -68,6 +69,20 @@ pub enum InstanceProcessError {
     #[error("instance {instance_id} process stdin is unavailable")]
     StdinUnavailable {
         /// 标准输入不可用的实例标识。
+        instance_id: InstanceId,
+    },
+    /// 启动配置选择了当前 Core 尚未执行的运行模式。
+    #[error("runtime mode {mode:?} for instance {instance_id} is not supported by this Core")]
+    UnsupportedRuntimeMode {
+        /// 选择的运行模式。
+        mode: RuntimeMode,
+        /// 受影响的实例标识。
+        instance_id: InstanceId,
+    },
+    /// 监督模式缺少可执行的包装器配置。
+    #[error("supervisor configuration for instance {instance_id} is invalid")]
+    InvalidSupervisorConfiguration {
+        /// 受影响的实例标识。
         instance_id: InstanceId,
     },
     /// 进程标准错误输出不可用。

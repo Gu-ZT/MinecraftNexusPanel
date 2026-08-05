@@ -18,6 +18,8 @@ use nexus_domain::InstanceLogStream;
 use nexus_domain::InstanceMetricSample;
 use nexus_domain::InstanceRuntime;
 use nexus_domain::InstanceState;
+use nexus_domain::LaunchConfig;
+use nexus_domain::RuntimeMode;
 use nexus_domain::TaskId;
 use nexus_protocol::WireMessage;
 use serde_json::json;
@@ -231,9 +233,10 @@ impl InstanceProcessManager {
     async fn spawn(&self, instance: Instance) -> Result<TaskId, InstanceProcessError> {
         let instance_id = instance.id().clone();
         let working_directory = self.prepare_working_directory(&instance)?;
-        let mut command = Command::new(instance.launch().executable());
+        let (executable, arguments) = process_command(&instance_id, instance.launch())?;
+        let mut command = Command::new(executable);
         command
-            .args(instance.launch().args())
+            .args(arguments)
             .current_dir(working_directory)
             .envs(instance.launch().environment())
             .kill_on_drop(true)
@@ -452,6 +455,28 @@ impl InstanceProcessManager {
     }
 }
 
+/// 将领域启动配置解析成 Core 实际要交给操作系统的命令。
+///
+/// 运行模式检查放在进程创建前，避免把尚未实现的容器配置误当成宿主机进程；
+/// 监督模式解析失败也不会回退到直接执行实例命令。
+fn process_command(
+    instance_id: &InstanceId,
+    launch: &LaunchConfig,
+) -> Result<(String, Vec<String>), InstanceProcessError> {
+    if launch.runtime_mode() != RuntimeMode::Host {
+        return Err(InstanceProcessError::UnsupportedRuntimeMode {
+            mode: launch.runtime_mode(),
+            instance_id: instance_id.clone(),
+        });
+    }
+
+    launch.resolved_process_command().ok_or_else(|| {
+        InstanceProcessError::InvalidSupervisorConfiguration {
+            instance_id: instance_id.clone(),
+        }
+    })
+}
+
 pub(crate) fn mark_failed(
     instances: &InstanceRepository,
     event_sender: &broadcast::Sender<WireMessage>,
@@ -509,4 +534,53 @@ fn normalize_command(command: &str) -> Result<String, InstanceProcessError> {
     }
 
     Ok(command.to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use nexus_domain::InstanceId;
+    use nexus_domain::LaunchConfig;
+    use nexus_domain::RuntimeMode;
+    use nexus_domain::SupervisorMode;
+
+    use super::process_command;
+    use crate::InstanceProcessError;
+
+    #[test]
+    fn rejects_container_execution_until_core_has_a_container_backend() {
+        let launch = LaunchConfig::new(
+            "java".to_owned(),
+            Vec::new(),
+            BTreeMap::new(),
+            "stop".to_owned(),
+            30,
+        )
+        .with_execution(RuntimeMode::Container, SupervisorMode::Direct, None);
+        let instance_id = InstanceId::new("container".to_owned()).expect("instance ID is valid");
+
+        assert!(matches!(
+            process_command(&instance_id, &launch),
+            Err(InstanceProcessError::UnsupportedRuntimeMode { .. })
+        ));
+    }
+
+    #[test]
+    fn refuses_to_bypass_an_invalid_supervisor_configuration() {
+        let launch = LaunchConfig::new(
+            "java".to_owned(),
+            Vec::new(),
+            BTreeMap::new(),
+            "stop".to_owned(),
+            30,
+        )
+        .with_execution(RuntimeMode::Host, SupervisorMode::Mcdr, None);
+        let instance_id = InstanceId::new("mcdr".to_owned()).expect("instance ID is valid");
+
+        assert!(matches!(
+            process_command(&instance_id, &launch),
+            Err(InstanceProcessError::InvalidSupervisorConfiguration { .. })
+        ));
+    }
 }
