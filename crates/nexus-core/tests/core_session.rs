@@ -123,6 +123,46 @@ async fn accepts_an_encrypted_session_hello() {
             .is_some_and(Vec::is_empty)
     );
 
+    let policy_request_id = RequestId::new();
+    transport
+        .write_message(&WireMessage::Request {
+            request_id: policy_request_id,
+            method: "cpu.policy.resolve".to_owned(),
+            params: json!({
+                "mode": "AUTO",
+                "requestedCpuIds": [],
+                "minCpus": 1,
+                "maxCpus": null,
+                "preferPhysicalCores": true,
+                "numaNode": null,
+                "shareMode": "SHARED",
+                "strict": false,
+            }),
+            deadline: None,
+            idempotency_key: None,
+        })
+        .await
+        .expect("CPU policy request is sent");
+    let policy_response = transport
+        .read_message()
+        .await
+        .expect("CPU policy response is received");
+    let WireMessage::Response {
+        request_id: response_id,
+        ok,
+        result,
+        error,
+    } = policy_response
+    else {
+        panic!("Core returned a non-response message for CPU policy");
+    };
+    let policy = result.expect("successful CPU policy response includes a result");
+    assert_eq!(response_id, policy_request_id);
+    assert!(ok);
+    assert!(error.is_none());
+    assert!(policy["candidateCpuIds"].as_array().is_some());
+    assert!(policy["selectedCpuIds"].as_array().is_some());
+
     let invalid_request_id = RequestId::new();
     transport
         .write_message(&WireMessage::Request {

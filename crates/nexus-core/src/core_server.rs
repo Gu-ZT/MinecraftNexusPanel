@@ -27,6 +27,7 @@ use nexus_domain::BedrockPortCheck;
 use nexus_domain::BedrockPortCheckState;
 use nexus_domain::BedrockPortSource;
 use nexus_domain::CoreId;
+use nexus_domain::CpuPolicy;
 use nexus_domain::CpuTopology;
 use nexus_domain::Instance;
 use nexus_domain::InstanceCreate;
@@ -85,16 +86,19 @@ use crate::ProxySubserverRepository;
 use crate::ProxySubserverRepositoryError;
 use crate::RuntimeManager;
 use crate::RuntimeManagerError;
+use crate::cpu_policy_resolver::CpuPolicyResolveError;
+use crate::cpu_policy_resolver::resolve_cpu_policy;
 use crate::cpu_topology_discovery::detect_cpu_topology;
 use crate::file_manager::FILE_TRANSFER_CHUNK_BYTES;
 use crate::file_manager::MAXIMUM_FILE_ARCHIVE_PATHS;
 use crate::file_manager::MAXIMUM_FILE_BATCH_OPERATIONS;
 use crate::file_manager::MAXIMUM_FILE_READ_BYTES;
 
-const CORE_CAPABILITIES: [&str; 13] = [
+const CORE_CAPABILITIES: [&str; 14] = [
     "bedrock-health",
     "config",
     "cpu-topology",
+    "cpu-policy",
     "events",
     "files",
     "instances",
@@ -473,6 +477,7 @@ async fn request_response(
         ),
         "system.ping" => success_response(request_id, json!({ "receivedAt": current_timestamp() })),
         "cpu.topology" => success_response(request_id, json!(state.cpu_topology())),
+        "cpu.policy.resolve" => cpu_policy_resolve_response(request_id, params, state),
         "runtime.list" => environment_list_response(request_id, state.runtimes()).await,
         "runtime.install" => {
             runtime_install_response(request_id, params, idempotency_key, state.runtimes())
@@ -571,6 +576,36 @@ async fn request_response(
             request_id,
             "METHOD_NOT_SUPPORTED",
             "The requested Core method is not supported",
+        ),
+    }
+}
+
+fn cpu_policy_resolve_response(
+    request_id: RequestId,
+    params: &Value,
+    state: &CoreRequestState,
+) -> WireMessage {
+    let Some(policy) = from_value::<CpuPolicy>(params.clone()).ok() else {
+        return error_response(
+            request_id,
+            "CPU_POLICY_INVALID",
+            "cpu.policy.resolve requires a valid CPU policy",
+        );
+    };
+
+    match resolve_cpu_policy(&policy, state.cpu_topology()) {
+        Ok(result) => success_response(request_id, result),
+        Err(CpuPolicyResolveError::Invalid(_)) => error_response(
+            request_id,
+            "CPU_POLICY_INVALID",
+            "CPU policy fields are invalid",
+        ),
+        Err(CpuPolicyResolveError::CapacityUnavailable(reason)) => error_response_with_details(
+            request_id,
+            "CPU_CAPACITY_UNAVAILABLE",
+            "CPU policy cannot be satisfied by the current topology",
+            false,
+            Some(json!({ "reason": reason })),
         ),
     }
 }
