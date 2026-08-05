@@ -90,6 +90,8 @@
 - 基岩版端需要独立处理 RakNet UDP 监听、端口占用、`server.properties`/`config.yml` 等配置、插件能力、扩展目录、启动健康检查、备份恢复和版本升级；不能复用只适用于 Java 服务端的探针和配置假设。
 - 当前 `BedrockManagementProfile` 已提供传输、默认端口、配置文件和扩展能力画像，Core 已补充专用 Unconnected Ping/Pong 健康检查；完整的基岩端配置编辑、扩展生命周期、监听绑定运维、备份恢复和版本升级仍属于后续 TODO。
 - [ ] Direct 与 MCDR 进程包装配置及审计任务。
+  - [x] HOST 下支持 DIRECT 和带显式占位符的 MCDR 包装；CONTAINER 配置会被 Core 明确拒绝而不会回退为宿主机执行。
+  - [ ] 为启动、停止、包装器失败和降级结果补齐统一审计任务与查询记录。
 - [x] 实例名称、类型、到期、工作目录、启动命令和更新命令设置。
 
 ## M3：日常运维

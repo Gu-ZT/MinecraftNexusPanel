@@ -212,7 +212,10 @@ Panel 使用 `MCNP_PANEL_MASTER_KEY` 对 Core PSK 执行 AES-256-GCM 信封加�
     ],
     "environment": {},
     "stopCommand": "stop",
-    "stopTimeoutSeconds": 30
+    "stopTimeoutSeconds": 30,
+    "runtimeMode": "HOST",
+    "supervisorMode": "DIRECT",
+    "mcdr": null
   }
 }
 ```

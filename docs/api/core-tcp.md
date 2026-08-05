@@ -456,7 +456,10 @@ execution ID 汇合结果，禁止重复补跑。
     ],
     "environment": {},
     "stopCommand": "stop",
-    "stopTimeoutSeconds": 30
+    "stopTimeoutSeconds": 30,
+    "runtimeMode": "HOST",
+    "supervisorMode": "DIRECT",
+    "mcdr": null
   },
   "updateCommand": {
     "templateAction": "paper.update"
@@ -475,6 +478,10 @@ execution ID 汇合结果，禁止重复补跑。
   }
 }
 ```
+
+`runtimeMode` 和 `supervisorMode` 省略时分别默认为 `HOST` 和 `DIRECT`。MCDR 模式必须提供包装器
+`executable`，并在 `args` 中恰好放置 `{server}` 与 `{serverArgs}`；Core 会把实例命令展开后再启动包装器。
+当前 Core 尚未提供容器后端，选择 `CONTAINER` 会在启动前返回不支持错误。
 
 ### Task
 

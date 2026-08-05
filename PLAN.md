@@ -133,7 +133,7 @@ MinecraftNexusPanel/
   SHA-256。
 - **一键搭建**：由可版本化的安装模板描述服务端来源、所需环境、下载/解压步骤、默认配置和启动命令；当前目录已覆盖 Java 原版、模组端、插件端、混合端、代理端和基岩版端，模板执行是可审计异步任务。
 - **进程包装**：实例分别配置 `runtimeMode=HOST|CONTAINER` 与 `supervisorMode=DIRECT|MCDR`，避免用一个布尔值混合容器和
-  MCDR。
+  MCDR；当前已支持 HOST 下的 DIRECT 与带 `{server}`/`{serverArgs}` 占位符的 MCDR 包装，CONTAINER 仍由 M4 容器后端承接。
 - **配置识别**：配置提供者输出 JSON Schema、UI Schema 和保留注释/顺序的 round-trip 补丁；无法识别时退回安全的原始文本编辑器。
 - **模组/插件**：Panel 统一搜索不同内容源，Core 执行下载和原子替换；必须保留来源、项目 ID、版本、哈希和依赖关系。
 - **Docker**：Core 通过 Docker Engine API 管理镜像和容器；禁用任意宿主机 socket 转发、特权容器和越界挂载，除非管理员显式放开策略。
@@ -249,7 +249,7 @@ stateDiagram-v2
 ### M2：环境与一键搭建
 
 - Java/Node.js/Python 受管安装、版本选择、校验与清理。
-- 服务端目录、安装模板、下载缓存和校验；支持 Direct/MCDR 包装。模板目录覆盖 Vanilla、NeoForge、Forge、Fabric、Bukkit、Spigot、Paper、Purpur、Pufferfish、Folia、Leaf、Mohist、Magma、Sponge、Arclight、Youer、AsyncYouer、Silkard、CatServer、Lingshu、Velocity、Waterfall、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit 和 Cloudburst Nukkit。
+- 服务端目录、安装模板、下载缓存和校验；支持 HOST 下 Direct/MCDR 包装。模板目录覆盖 Vanilla、NeoForge、Forge、Fabric、Bukkit、Spigot、Paper、Purpur、Pufferfish、Folia、Leaf、Mohist、Magma、Sponge、Arclight、Youer、AsyncYouer、Silkard、CatServer、Lingshu、Velocity、Waterfall、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit 和 Cloudburst Nukkit。
 - 混合端分别管理插件与模组，按模板/版本解析不同扩展目录；代理端按一对多或一对一拓扑管理子服务器；基岩端按 RakNet、端口、配置和扩展能力提供专门运维画像。
 - 实例完整设置：名称、类型、到期时间、工作目录、启动/更新命令。
 - 验收：在空 Core 上选择已验证模板与运行时，一次操作完成下载、配置和首次启动；代理拓扑和基岩端专门约束不能被普通 Java 实例路径绕过。

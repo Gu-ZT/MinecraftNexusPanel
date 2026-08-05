@@ -4014,6 +4014,24 @@ components:
     InstanceState:
       type: string
       enum: [ CREATED, STARTING, RUNNING, STOPPING, STOPPED, FAILED, UNKNOWN ]
+    RuntimeMode:
+      type: string
+      enum: [ HOST, CONTAINER ]
+    SupervisorMode:
+      type: string
+      enum: [ DIRECT, MCDR ]
+    McdrConfig:
+      type: object
+      required: [ executable, args ]
+      properties:
+        executable:
+          type: string
+          description: 包装器可执行文件或命令名。
+        args:
+          type: array
+          description: 必须恰好包含 {server} 和 {serverArgs} 两个精确占位符。
+          items:
+            type: string
     LaunchConfig:
       type: object
       required: [ executable, args, environment, stopCommand, stopTimeoutSeconds ]
@@ -4036,6 +4054,17 @@ components:
           minimum: 1
           maximum: 300
           default: 30
+        runtimeMode:
+          $ref: '#/components/schemas/RuntimeMode'
+          default: HOST
+        supervisorMode:
+          $ref: '#/components/schemas/SupervisorMode'
+          default: DIRECT
+        mcdr:
+          oneOf:
+            - $ref: '#/components/schemas/McdrConfig'
+            - type: 'null'
+          default: null
     InstanceRuntime:
       type: object
       required: [ state ]

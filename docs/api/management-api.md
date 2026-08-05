@@ -185,6 +185,9 @@ Cloudburst Nukkit 声明 `PLUGIN` 和 `plugins/`，Geyser 使用 `config.yml`、
 `PATCH /cores/{coreId}/instances/{instanceId}` 必须按实际修改字段逐组鉴权，并使用 `If-Match`。运行中不可热变更的设置返回
 `INSTANCE_RESTART_REQUIRED` 或 `INSTANCE_MUST_BE_STOPPED`。
 
+MCDR 包装器的 `args` 使用精确的 `{server}` 和 `{serverArgs}` 占位符，分别展开实例可执行文件和参数列表；Core 不猜测
+具体 MCDR 发行版的命令行。`runtimeMode=CONTAINER` 当前只保存配置，启动时会返回不支持错误，不能伪装成宿主机执行。
+
 ## 5. 配置识别
 
 配置提供者识别文件后返回：

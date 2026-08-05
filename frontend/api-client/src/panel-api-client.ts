@@ -59,6 +59,8 @@ export type InstanceKind =
 export type InstanceState = 'CREATED' | 'STARTING' | 'RUNNING' | 'STOPPING' | 'STOPPED' | 'FAILED' | 'UNKNOWN';
 export type LogStream = 'stdout' | 'stderr' | 'system';
 export type RuntimeKind = 'JAVA' | 'NODE_JS' | 'PYTHON';
+export type RuntimeMode = 'HOST' | 'CONTAINER';
+export type SupervisorMode = 'DIRECT' | 'MCDR';
 export type RuntimeArchiveFormat = 'TAR_GZ' | 'ZIP';
 export type DownloadPlatform = 'LINUX' | 'MACOS' | 'WINDOWS';
 export type DownloadArchitecture = 'AARCH64' | 'X86_64';
@@ -599,6 +601,14 @@ export interface LaunchConfig {
   environment: Record<string, string>;
   stopCommand: string;
   stopTimeoutSeconds: number;
+  runtimeMode?: RuntimeMode;
+  supervisorMode?: SupervisorMode;
+  mcdr?: McdrConfig | null;
+}
+
+export interface McdrConfig {
+  executable: string;
+  args: string[];
 }
 
 export interface InstanceRuntime {
