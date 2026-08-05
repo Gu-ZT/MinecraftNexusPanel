@@ -95,6 +95,22 @@ async fn registers_encrypts_restores_and_reconnects_a_core() {
     assert_eq!(tested.body["success"], true);
     assert_eq!(tested.body["protocolVersion"], "1.0");
 
+    let topology = send_json_request(
+        panel_address,
+        "GET",
+        &format!("/api/v1/cores/{core_id}/cpu-topology"),
+        &[("Authorization", authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(topology.status, 200);
+    assert!(
+        topology.body["logicalCpus"]
+            .as_array()
+            .is_some_and(|cpus| !cpus.is_empty())
+    );
+    assert_eq!(topology.body["detection"]["confidence"], "LOW");
+
     stop_panel(panel_task).await;
     let (restored_address, restored_task) = start_panel(&panel_data).await;
     let restored_token = login(restored_address).await;

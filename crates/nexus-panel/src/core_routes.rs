@@ -49,6 +49,10 @@ pub(crate) fn core_routes() -> Router<PanelState> {
             "/api/v1/cores/{core_id}/actions/reconnect",
             post(reconnect_core),
         )
+        .route(
+            "/api/v1/cores/{core_id}/cpu-topology",
+            get(get_cpu_topology),
+        )
 }
 
 async fn list_cores(
@@ -146,6 +150,25 @@ async fn reconnect_core(
 
     match state.cores().reconnect(core_id).await {
         Ok(core) => resource_response(StatusCode::ACCEPTED, core),
+        Err(error) => registry_error_response(error, request_id),
+    }
+}
+
+async fn get_cpu_topology(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path(core_id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, false, request_id).await {
+        return response;
+    }
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return invalid_core_id_response(request_id);
+    };
+
+    match state.cores().cpu_topology(core_id).await {
+        Ok(topology) => Json(topology).into_response(),
         Err(error) => registry_error_response(error, request_id),
     }
 }

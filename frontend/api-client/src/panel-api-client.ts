@@ -127,6 +127,40 @@ export interface CorePage {
   nextCursor: string | null;
 }
 
+/** 操作系统报告的逻辑 CPU 性能类别。 */
+export type CpuPerformanceClass = 'PERFORMANCE' | 'EFFICIENCY' | 'UNKNOWN';
+
+/** Core 拓扑探测的来源和可信度。 */
+export interface CpuTopologyDetection {
+  source: string;
+  confidence: string;
+}
+
+/** 单个逻辑 CPU 的拓扑和可调度状态。 */
+export interface CpuLogicalProcessor {
+  id: number;
+  physicalCoreId: string | null;
+  performanceClass: CpuPerformanceClass;
+  online: boolean;
+  isolated: boolean;
+  numaNode: number | null;
+}
+
+/** 当前已确认可用于性能核或能效核策略的 CPU 集合。 */
+export interface CpuAvailability {
+  performanceCpuIds: number[];
+  efficiencyCpuIds: number[];
+}
+
+/** Core 宿主机 CPU 拓扑只读快照。 */
+export interface CpuTopology {
+  architecture: string;
+  logicalCpus: CpuLogicalProcessor[];
+  physicalCoreCount: number | null;
+  available: CpuAvailability;
+  detection: CpuTopologyDetection;
+}
+
 export interface ManagedRuntime {
   runtimeId: string | null;
   kind: RuntimeKind;
@@ -633,6 +667,7 @@ export interface PanelApiClient {
   getCurrentUser(): Promise<User>;
   logout(): Promise<void>;
   listCores(): Promise<CorePage>;
+  getCpuTopology(coreId: string): Promise<CpuTopology>;
   listInstallTemplates(): Promise<InstallTemplatePage>;
   listInstallTemplateVersions(templateId: string): Promise<InstallTemplateVersionPage>;
   searchExtensionCatalog(
@@ -925,6 +960,11 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     },
     listCores() {
       return request<CorePage>('/api/v1/cores?limit=50');
+    },
+    getCpuTopology(coreId) {
+      return request<CpuTopology>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/cpu-topology`,
+      );
     },
     listInstallTemplates() {
       return request<InstallTemplatePage>('/api/v1/install-templates');

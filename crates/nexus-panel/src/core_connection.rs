@@ -11,6 +11,7 @@ use nexus_domain::BedrockHealth;
 use nexus_domain::BedrockManagementProfile;
 use nexus_domain::BedrockPortCheck;
 use nexus_domain::CoreId;
+use nexus_domain::CpuTopology;
 use nexus_domain::FileContent;
 use nexus_domain::FileEntry;
 use nexus_domain::FilePage;
@@ -46,9 +47,10 @@ use tokio::net::TcpStream;
 use crate::CoreConnectionError;
 use crate::CoreEndpoint;
 
-const PANEL_CAPABILITIES: [&str; 12] = [
+const PANEL_CAPABILITIES: [&str; 13] = [
     "bedrock-health",
     "config",
+    "cpu-topology",
     "events",
     "files",
     "instances",
@@ -222,6 +224,15 @@ impl CoreConnection {
     /// 获取 Core 系统信息 JSON。
     pub async fn system_info(&mut self) -> Result<Value, CoreConnectionError> {
         self.request("system.info", json!({})).await
+    }
+
+    /// 获取 Core 启动时缓存的 CPU 拓扑快照。
+    pub async fn cpu_topology(&mut self) -> Result<CpuTopology, CoreConnectionError> {
+        let result = self.request("cpu.topology", json!({})).await?;
+
+        from_value(result).map_err(|_| CoreConnectionError::InvalidResponse {
+            field: "cpuTopology",
+        })
     }
 
     /// 列出 Core 已发现且验证的受管运行时。

@@ -6,6 +6,7 @@ use nexus_config::CoreConfig;
 use nexus_core::CoreServer;
 use nexus_domain::BedrockManagementKind;
 use nexus_domain::BedrockTransport;
+use nexus_domain::CpuPerformanceClass;
 use nexus_domain::FileKind;
 use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceId;
@@ -62,6 +63,10 @@ async fn connects_to_a_core_and_reads_its_system_info() {
         .system_info()
         .await
         .expect("Core responds with system information");
+    let cpu_topology = connection
+        .cpu_topology()
+        .await
+        .expect("Core responds with CPU topology");
     let definition = instance_create("survival");
     let created = connection
         .create_instance(&definition)
@@ -82,6 +87,11 @@ async fn connects_to_a_core_and_reads_its_system_info() {
     assert!(
         connection
             .capabilities()
+            .contains(&"cpu-topology".to_owned())
+    );
+    assert!(
+        connection
+            .capabilities()
             .contains(&"proxy-orchestration".to_owned())
     );
     assert!(connection.capabilities().contains(&"metrics".to_owned()));
@@ -91,6 +101,13 @@ async fn connects_to_a_core_and_reads_its_system_info() {
             .contains(&"transfer-v1".to_owned())
     );
     assert_eq!(system_info["coreId"], connection.core_id().to_string());
+    assert!(!cpu_topology.logical_cpus().is_empty());
+    assert!(
+        cpu_topology
+            .logical_cpus()
+            .iter()
+            .all(|cpu| cpu.performance_class() == CpuPerformanceClass::Unknown)
+    );
     assert_eq!(connection.heartbeat_seconds(), 20);
     assert_eq!(connection.tls_certificate_sha256(), certificate_sha256);
     assert_eq!(created.revision(), 1);

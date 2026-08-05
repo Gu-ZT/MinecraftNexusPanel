@@ -11,6 +11,7 @@ use std::time::Instant;
 
 use nexus_config::LocalCoreConfig;
 use nexus_domain::CoreId;
+use nexus_domain::CpuTopology;
 use nexus_domain::ExtensionInstall;
 use nexus_domain::ExtensionKind;
 use nexus_domain::FileContent;
@@ -262,6 +263,17 @@ impl CoreRegistry {
             "latencyMs": elapsed_milliseconds(started_at),
             "protocolVersion": protocol_text(connection.protocol()),
         }))
+    }
+
+    /// 查询指定 Core 的 CPU 拓扑快照。
+    pub async fn cpu_topology(&self, core_id: CoreId) -> Result<CpuTopology, CoreRegistryError> {
+        let core = self.find(core_id).await?;
+        let mut connection = core.connection.lock().await;
+        let connection = connection
+            .as_mut()
+            .ok_or(CoreRegistryError::ConnectionUnavailable)?;
+
+        Ok(connection.cpu_topology().await?)
     }
 
     /// 丢弃当前连接并请求后台监视器立即重连。
