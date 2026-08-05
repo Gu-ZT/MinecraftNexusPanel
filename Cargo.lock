@@ -2180,8 +2180,10 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
+ "serde_yaml",
  "sha1",
  "sha2 0.11.0",
+ "tar",
  "tempfile",
  "thiserror 2.0.19",
  "time",
@@ -2189,6 +2191,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "zip",
 ]
 
 [[package]]

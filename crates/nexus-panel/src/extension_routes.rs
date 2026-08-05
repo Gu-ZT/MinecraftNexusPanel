@@ -35,6 +35,7 @@ use nexus_domain::FileEntry;
 use nexus_domain::FilePage;
 use nexus_domain::Instance;
 use nexus_domain::InstanceId;
+use nexus_domain::InstanceKind;
 use nexus_domain::RequestId;
 use nexus_domain::TaskId;
 use serde_json::Value;
@@ -50,6 +51,7 @@ use tokio::fs::remove_file;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::spawn;
+use tokio::task::spawn_blocking;
 use tokio::time::sleep;
 
 use crate::CoreConnectionError;
@@ -57,6 +59,7 @@ use crate::CoreRegistryError;
 use crate::PanelState;
 use crate::auth_routes::error_response;
 use crate::auth_routes::header_text;
+use crate::bedrock_extension_validator::validate_artifact;
 use crate::core_routes::authorize;
 use crate::core_routes::invalid_core_id_response;
 use crate::core_routes::parse_core_id;
@@ -134,7 +137,12 @@ async fn install_instance_extensions(
         return validation_error(request_id);
     };
     let request = match payload {
-        Ok(Json(request)) if is_valid_plan_request(request.plan()) => request,
+        Ok(Json(request))
+            if is_valid_plan_request(request.plan())
+                && is_valid_bedrock_api_versions(request.bedrock_api_versions()) =>
+        {
+            request
+        }
         Ok(_) | Err(_) => return validation_error(request_id),
     };
     let plan = request.plan();
@@ -228,6 +236,8 @@ async fn install_instance_extensions(
         let task_state = state.clone();
         let task_directory = directory.to_owned();
         let task_instance_id = instance_id.clone();
+        let task_instance_kind = instance.kind();
+        let task_bedrock_api_versions = request.bedrock_api_versions().map(ToOwned::to_owned);
         let task_idempotency_key = idempotency_key.to_owned();
         spawn(async move {
             run_extension_install_task(
@@ -235,6 +245,8 @@ async fn install_instance_extensions(
                 task_id,
                 core_id,
                 task_instance_id,
+                task_instance_kind,
+                task_bedrock_api_versions,
                 task_directory,
                 plan,
                 None,
@@ -282,7 +294,12 @@ async fn update_instance_extension(
         return validation_error(request_id);
     };
     let request = match payload {
-        Ok(Json(request)) if is_valid_plan_request(request.plan()) => request,
+        Ok(Json(request))
+            if is_valid_plan_request(request.plan())
+                && is_valid_bedrock_api_versions(request.bedrock_api_versions()) =>
+        {
+            request
+        }
         Ok(_) | Err(_) => return validation_error(request_id),
     };
     let plan_request = request.plan();
@@ -455,6 +472,8 @@ async fn update_instance_extension(
         let task_state = state.clone();
         let task_directory = directory.to_owned();
         let task_instance_id = instance_id.clone();
+        let task_instance_kind = instance.kind();
+        let task_bedrock_api_versions = request.bedrock_api_versions().map(ToOwned::to_owned);
         let target_path = existing.path().to_owned();
         let task_expected_sha256 = expected_sha256;
         let task_idempotency_key = idempotency_key.to_owned();
@@ -464,6 +483,8 @@ async fn update_instance_extension(
                 task_id,
                 core_id,
                 task_instance_id,
+                task_instance_kind,
+                task_bedrock_api_versions,
                 task_directory,
                 update_plan,
                 Some(target_path),
@@ -537,6 +558,8 @@ async fn run_extension_install_task(
     task_id: TaskId,
     core_id: CoreId,
     instance_id: InstanceId,
+    instance_kind: InstanceKind,
+    bedrock_api_versions: Option<Vec<String>>,
     directory: String,
     plan: ExtensionPlanResolution,
     target_path: Option<String>,
@@ -657,7 +680,9 @@ async fn run_extension_install_task(
             &instance_id,
             &path,
             plan.kind(),
+            instance_kind,
             item,
+            bedrock_api_versions.as_deref(),
             if index == 0 {
                 expected_sha256.as_deref()
             } else {
@@ -901,7 +926,9 @@ async fn install_extension_artifact(
     instance_id: &InstanceId,
     path: &str,
     kind: ExtensionKind,
+    instance_kind: InstanceKind,
     item: &ExtensionPlanItem,
+    expected_bedrock_api_versions: Option<&[String]>,
     expected_sha256: Option<&str>,
     idempotency_key: &str,
 ) -> Result<ExtensionInstall, String> {
@@ -910,6 +937,13 @@ async fn install_extension_artifact(
         let staged =
             download_artifact_to_file(state.extension_sources(), item.artifact(), &temporary_path)
                 .await?;
+        validate_bedrock_artifact(
+            &temporary_path,
+            item.artifact().file_name(),
+            instance_kind,
+            expected_bedrock_api_versions,
+        )
+        .await?;
         let entry = upload_artifact_to_core(
             state,
             core_id,
@@ -951,6 +985,27 @@ async fn install_extension_artifact(
     }
 
     result
+}
+
+async fn validate_bedrock_artifact(
+    path: &FilePath,
+    file_name: &str,
+    instance_kind: InstanceKind,
+    expected_api_versions: Option<&[String]>,
+) -> Result<(), String> {
+    let path = path.to_path_buf();
+    let file_name = file_name.to_owned();
+    let expected_api_versions = expected_api_versions.map(ToOwned::to_owned);
+    spawn_blocking(move || {
+        validate_artifact(
+            &path,
+            &file_name,
+            instance_kind,
+            expected_api_versions.as_deref(),
+        )
+    })
+    .await
+    .map_err(|error| format!("Bedrock plugin validation task failed: {error}"))?
 }
 
 async fn download_artifact_to_file(
@@ -1122,6 +1177,17 @@ fn is_valid_plan_request(request: &ExtensionPlanRequest) -> bool {
         && request.loader().is_none_or(|loader| {
             !loader.is_empty() && loader.chars().count() <= 64 && !loader.contains('\0')
         })
+}
+
+fn is_valid_bedrock_api_versions(api_versions: Option<&[String]>) -> bool {
+    api_versions.is_none_or(|versions| {
+        !versions.is_empty()
+            && versions.len() <= 32
+            && versions
+                .iter()
+                .all(|version| !version.is_empty() && version.chars().count() <= 64)
+            && versions.iter().all(|version| !version.contains('\0'))
+    })
 }
 
 fn selected_extension_directory<'a>(

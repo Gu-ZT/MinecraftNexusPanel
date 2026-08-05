@@ -15,6 +15,8 @@ pub struct ExtensionInstallRequest {
     #[serde(flatten)]
     plan: ExtensionPlanRequest,
     directory: Option<String>,
+    #[serde(default)]
+    bedrock_api_versions: Option<Vec<String>>,
 }
 
 impl ExtensionInstallRequest {
@@ -28,5 +30,14 @@ impl ExtensionInstallRequest {
     #[must_use]
     pub fn directory(&self) -> Option<&str> {
         self.directory.as_deref()
+    }
+
+    /// 返回可选的目标 Bedrock 插件 API 版本列表。
+    ///
+    /// 调用方未提供该列表时，Panel 仍会校验 manifest 结构，但不会把
+    /// Minecraft 服务端版本字符串误当成 PocketMine/Nukkit API 版本。
+    #[must_use]
+    pub fn bedrock_api_versions(&self) -> Option<&[String]> {
+        self.bedrock_api_versions.as_deref()
     }
 }

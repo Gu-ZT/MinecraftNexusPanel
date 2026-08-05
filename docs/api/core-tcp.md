@@ -382,6 +382,12 @@ Core 只允许 `VELOCITY`、`WATERFALL`、`BUNGEECORD`、`LIGHTFALL` 和 `GEYSER
 Panel 聚合内容源并完成依赖解析；Core 根据带摘要的 resolved plan 下载和原子替换。Core 不直接保存第三方 API Token，除非该凭据被配置为
 Core 侧 Secret 且协议仅传引用 ID。
 
+对于 PocketMine-MP、Nukkit 和 Cloudburst Nukkit，Panel 在调用 Core `transfer-v1`
+之前读取插件归档根部的 `plugin.yml`，校验 `name`、`main`、`version` 和 `api`；
+调用方可在安装请求中提供 `bedrockApiVersions`，此时 manifest 的 API 列表必须与
+目标列表精确交集。没有目标列表时只完成 manifest 结构校验，不把 Minecraft 版本
+字符串当作 Bedrock API 版本。BDS 和 Geyser 不声明插件目录，因此不进入该路径。
+
 当前 Core 已实现 `PROPERTIES`、`JSON`、`YAML` 和 `TOML` 提供者：`config.scan` 递归发现 `.properties`、`.json`、`.yaml`/`.yml` 与 `.toml` 文件，`config.get` 返回 JSON Schema、UI Schema、结构化值、未映射文本、内容
 SHA-256 `revision`/`contentHash` 和稳定的路径派生 `documentId`。`config.patch` 要求幂等键和当前 revision，并通过原子文件替换；properties 补丁只接受顶层字符串、布尔、数字或 `null`，保留注释、键顺序和换行，结构化格式补丁支持嵌套 Merge Patch 但只有显式 `allowLossy=true` 才允许规范化写回。Panel 可通过对应 raw 端点读取或替换最多 1 MiB 的 UTF-8 原文。
 `config.validate` 会复用同一次安全扫描，检查 Java `server.properties` 的端口范围、启用的 Query/RCON 端口和密码、IP 字面量、Java 服务端 `eula.txt`，并检查 Geyser YAML 的 Bedrock/Java 端点；重复监听端口会返回带关联路径的警告。未知版本字段不会被伪装成错误，复杂结构化控件仍需后续实现。

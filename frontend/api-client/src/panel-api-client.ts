@@ -492,6 +492,8 @@ export interface ExtensionPlanResolution {
 
 export interface ExtensionInstallRequest extends ExtensionPlanRequest {
   directory?: string;
+  /** 目标实例接受的精确 Bedrock 插件 API 版本列表；缺省时只校验 manifest 结构。 */
+  bedrockApiVersions?: string[];
 }
 
 export type ExtensionInstallTaskState = 'RUNNING' | 'SUCCEEDED' | 'FAILED';

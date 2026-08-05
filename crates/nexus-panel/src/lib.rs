@@ -6,6 +6,7 @@
 mod auth_error;
 mod auth_routes;
 mod auth_service;
+mod bedrock_extension_validator;
 mod bedrock_routes;
 mod client_type;
 mod config_routes;
