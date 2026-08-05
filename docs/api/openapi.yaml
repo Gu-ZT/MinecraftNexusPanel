@@ -1830,6 +1830,30 @@ paths:
                 $ref: '#/components/schemas/LogPage'
         '404':
           $ref: '#/components/responses/NotFound'
+  /cores/{coreId}/instances/{instanceId}/audit:
+    get:
+      tags: [ Instances ]
+      operationId: listInstanceAudit
+      summary: Read instance lifecycle audit records
+      description: |
+        Read the newest lifecycle facts recorded by the Core process supervisor.
+        The current implementation keeps records in Core memory, returns newest
+        records first, and does not claim persistence across Core restarts.
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/InstanceId'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Instance lifecycle audit page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceAuditPage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instances/{instanceId}/metrics:
     get:
       tags: [ Instances ]
@@ -4416,6 +4440,56 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Instance'
+        nextCursor:
+          type: [ string, 'null' ]
+    InstanceAuditAction:
+      type: string
+      enum: [ START, STOP, KILL, PROCESS_EXIT ]
+    InstanceAuditOutcome:
+      type: string
+      enum: [ ACCEPTED, SUCCEEDED, FAILED, DEGRADED ]
+    InstanceAuditRecord:
+      type: object
+      required:
+        - auditId
+        - instanceId
+        - taskId
+        - action
+        - outcome
+        - runtimeMode
+        - supervisorMode
+        - reason
+        - occurredAt
+      properties:
+        auditId:
+          type: string
+          format: uuid
+        instanceId:
+          type: string
+        taskId:
+          type: [ string, 'null' ]
+          format: uuid
+        action:
+          $ref: '#/components/schemas/InstanceAuditAction'
+        outcome:
+          $ref: '#/components/schemas/InstanceAuditOutcome'
+        runtimeMode:
+          $ref: '#/components/schemas/RuntimeMode'
+        supervisorMode:
+          $ref: '#/components/schemas/SupervisorMode'
+        reason:
+          type: [ string, 'null' ]
+        occurredAt:
+          type: string
+          format: date-time
+    InstanceAuditPage:
+      type: object
+      required: [ items, nextCursor ]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InstanceAuditRecord'
         nextCursor:
           type: [ string, 'null' ]
     LogLine:

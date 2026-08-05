@@ -702,6 +702,31 @@ export interface InstancePage {
   nextCursor: string | null;
 }
 
+/** 实例生命周期审计动作。 */
+export type InstanceAuditAction = 'START' | 'STOP' | 'KILL' | 'PROCESS_EXIT';
+
+/** 实例生命周期审计结果。 */
+export type InstanceAuditOutcome = 'ACCEPTED' | 'SUCCEEDED' | 'FAILED' | 'DEGRADED';
+
+/** Core 记录的一条实例生命周期审计事实。 */
+export interface InstanceAuditRecord {
+  auditId: string;
+  instanceId: string;
+  taskId: string | null;
+  action: InstanceAuditAction;
+  outcome: InstanceAuditOutcome;
+  runtimeMode: RuntimeMode;
+  supervisorMode: SupervisorMode;
+  reason: string | null;
+  occurredAt: string;
+}
+
+/** 实例生命周期审计查询结果。当前按最新记录优先返回。 */
+export interface InstanceAuditPage {
+  items: InstanceAuditRecord[];
+  nextCursor: string | null;
+}
+
 export interface LogLine {
   cursor: string;
   occurredAt: string;
@@ -923,6 +948,7 @@ export interface PanelApiClient {
   ): Promise<ProxySubserverHealth>;
   listInstances(coreId: string): Promise<InstancePage>;
   updateInstance(coreId: string, instanceId: string, update: InstanceUpdate, revision: number): Promise<Instance>;
+  listInstanceAudit(coreId: string, instanceId: string, limit?: number): Promise<InstanceAuditPage>;
   getInstanceLogs(coreId: string, instanceId: string): Promise<LogPage>;
   startInstance(coreId: string, instanceId: string): Promise<TaskAccepted>;
   stopInstance(coreId: string, instanceId: string): Promise<TaskAccepted>;
@@ -1534,6 +1560,12 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
       return request<Instance>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}`,
         { method: 'PATCH', body: update, csrf: true, ifMatch: revision },
+      );
+    },
+    listInstanceAudit(coreId, instanceId, limit = 200) {
+      const query = new URLSearchParams({ limit: String(limit) });
+      return request<InstanceAuditPage>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/instances/${encodeURIComponent(instanceId)}/audit?${query.toString()}`,
       );
     },
     getInstanceLogs(coreId, instanceId) {
