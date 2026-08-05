@@ -47,6 +47,7 @@ pub use core_server::CoreServer;
 pub use core_server::run;
 use core_tls_identity::CoreTlsIdentity;
 pub use core_tls_identity_error::CoreTlsIdentityError;
+pub use cpu_reservation_repository::CpuReservationRepositoryError;
 pub use download_error::DownloadError;
 pub use download_manager::DownloadManager;
 pub use download_task::DownloadTask;

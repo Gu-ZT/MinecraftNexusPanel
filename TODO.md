@@ -164,8 +164,9 @@
   - [ ] Windows Processor Relationship/EfficiencyClass 和其他平台等价探测。
 - [ ] CPU policy：AUTO、PERFORMANCE、EFFICIENCY、CUSTOM、严格/降级语义。
   - [x] Domain 校验、Core `cpu.policy.resolve` 和 Panel `cpu-policies:resolve` 只读候选解析。
-  - [x] Core/Panel `cpu-reservations`：校验实例 revision，原子检查不重叠 CPU 集合，并提供列表、登记、释放和稳定错误映射；当前记录只在 Core 内存中存在。
-  - [ ] 实际 host affinity、Docker cpuset、跨重启 CpuReservation 持久化和实例 policy 持久化。
+  - [x] Core/Panel `cpu-reservations`：校验实例 revision，原子检查不重叠 CPU 集合，并提供列表、登记、释放和稳定错误映射。
+  - [x] CPU 预留写入 Core 数据目录 `cpu-reservations.json`，启动时恢复并限制为合法 JSON；追加、替换和释放使用同目录临时文件原子替换，持久化失败会回滚内存状态。
+  - [ ] 实际 host affinity、Docker cpuset、跨 Core 调度锁和实例 policy 持久化。
 - [ ] 宿主机 affinity、Docker cpuset、独占预留和冲突检测。
   - [x] Core 内存态独占预留冲突检测和释放。
   - [ ] 宿主机 affinity、Docker cpuset 执行器、跨 Core 调度锁和审计记录。

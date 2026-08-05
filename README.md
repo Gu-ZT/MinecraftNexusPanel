@@ -80,12 +80,13 @@ Core now caches a conservative host CPU topology snapshot at startup and exposes
 
 - Linux Core now reads sysfs topology, process cpuset, ARM `cpu_capacity`, NUMA, online/offline,
   and isolation data; unavailable fields remain explicit unknown values.
-- Core and Panel now provide a read-only CPU policy preview plus Core-local `cpu-reservations`
-  registration, listing, conflict checking, and release with an instance revision precondition.
-  A reservation records selected CPU IDs only; it does not prove host affinity or Docker cpuset
-  application and is not restored across a Core restart.
-Windows EfficiencyClass, actual CPU affinity/cpuset application, durable reservations, and instance
-policy persistence remain planned M4 work.
+- Core and Panel now provide a read-only CPU policy preview plus `cpu-reservations`
+  registration, listing, conflict checking, release, and durable restart recovery with an instance
+  revision precondition. Core writes exclusive reservations to `cpu-reservations.json` through
+  atomic replacement; a reservation records selected CPU IDs only and does not prove host affinity
+  or Docker cpuset application.
+Windows EfficiencyClass, actual CPU affinity/cpuset application, cross-Core scheduling locks, and
+instance policy persistence remain planned M4 work.
 
 ## Project Layout
 

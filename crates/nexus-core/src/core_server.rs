@@ -203,7 +203,7 @@ impl CoreServer {
         let provision = ProvisionManager::new(config.data_directory(), runtimes.clone())?;
         let files = FileManager::new(config.data_directory());
         let cpu_topology = detect_cpu_topology();
-        let cpu_reservations = CpuReservationRepository::default();
+        let cpu_reservations = CpuReservationRepository::open(config.data_directory())?;
 
         Ok(Self {
             core_id,
@@ -805,7 +805,14 @@ fn cpu_reservation_error_response(
             "CPU_RESERVATION_NOT_FOUND",
             "CPU reservation does not exist",
         ),
-        CpuReservationRepositoryError::StorePoisoned => {
+        CpuReservationRepositoryError::StorePoisoned
+        | CpuReservationRepositoryError::CreateDirectory { .. }
+        | CpuReservationRepositoryError::Read { .. }
+        | CpuReservationRepositoryError::Decode { .. }
+        | CpuReservationRepositoryError::CreateTemporary { .. }
+        | CpuReservationRepositoryError::Encode { .. }
+        | CpuReservationRepositoryError::Write { .. }
+        | CpuReservationRepositoryError::Replace { .. } => {
             tracing::error!(%error, "CPU reservation operation failed");
             error_response(
                 request_id,
