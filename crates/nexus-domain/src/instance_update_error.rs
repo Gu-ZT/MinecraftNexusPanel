@@ -15,6 +15,9 @@ pub enum InstanceUpdateError {
     /// 启动配置包含无效值。
     #[error("launch configuration is invalid")]
     InvalidLaunch,
+    /// CPU policy 字段组合不符合领域约束。
+    #[error("CPU policy is invalid")]
+    InvalidCpuPolicy,
     /// 名称为空、过长或包含禁止字符。
     #[error("instance name must contain between 1 and 128 characters")]
     InvalidName,

@@ -339,6 +339,8 @@ mod tests {
 
     use super::InstanceRepository;
     use crate::InstanceRepositoryError;
+    use nexus_domain::CpuPolicyMode;
+    use nexus_domain::CpuShareMode;
     use nexus_domain::InstanceCreate;
     use nexus_domain::InstanceId;
     use nexus_domain::InstanceKind;
@@ -393,6 +395,16 @@ mod tests {
             "directory": "instances/configured-survival",
             "updateCommand": "./update.sh",
             "expiresAt": "2030-01-01T00:00:00Z",
+            "cpuPolicy": {
+                "mode": "CUSTOM",
+                "requestedCpuIds": [2, 4],
+                "minCpus": 2,
+                "maxCpus": 2,
+                "preferPhysicalCores": false,
+                "numaNode": null,
+                "shareMode": "EXCLUSIVE",
+                "strict": true
+            },
         }))
         .expect("update payload is valid");
 
@@ -404,6 +416,9 @@ mod tests {
         assert_eq!(updated.directory(), "instances/configured-survival");
         assert_eq!(updated.update_command(), Some("./update.sh"));
         assert_eq!(updated.expires_at(), Some("2030-01-01T00:00:00Z"));
+        assert_eq!(updated.cpu_policy().mode(), CpuPolicyMode::Custom);
+        assert_eq!(updated.cpu_policy().requested_cpu_ids(), &[2, 4]);
+        assert_eq!(updated.cpu_policy().share_mode(), CpuShareMode::Exclusive);
         assert_eq!(updated.revision(), 2);
         assert!(matches!(
             repository.update(&instance_id, 1, &update),
@@ -426,6 +441,55 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn persists_instance_cpu_policy_across_repository_reload() {
+        let directory = tempdir().expect("temporary instance directory is created");
+        let repository =
+            InstanceRepository::open(directory.path()).expect("instance repository opens");
+        let instance: InstanceCreate = from_value(json!({
+            "id": "pinned",
+            "name": "Pinned",
+            "kind": "PAPER",
+            "directory": "instances/pinned",
+            "launch": {
+                "executable": "java",
+                "args": [],
+                "environment": {},
+                "stopCommand": "stop",
+                "stopTimeoutSeconds": 30
+            },
+            "cpuPolicy": {
+                "mode": "PERFORMANCE",
+                "requestedCpuIds": [],
+                "minCpus": 2,
+                "maxCpus": 4,
+                "preferPhysicalCores": true,
+                "numaNode": 0,
+                "shareMode": "SHARED",
+                "strict": false
+            }
+        }))
+        .expect("CPU policy create payload is valid");
+        repository
+            .create(instance)
+            .expect("instance with CPU policy is persisted");
+        drop(repository);
+
+        let reloaded =
+            InstanceRepository::open(directory.path()).expect("instance repository reloads");
+        let instance_id = InstanceId::new("pinned".to_owned()).expect("instance ID is valid");
+        let instance = reloaded
+            .get(&instance_id)
+            .expect("instance lookup succeeds")
+            .expect("persisted instance exists");
+
+        assert_eq!(instance.cpu_policy().mode(), CpuPolicyMode::Performance);
+        assert_eq!(instance.cpu_policy().min_cpus(), 2);
+        assert_eq!(instance.cpu_policy().max_cpus(), Some(4));
+        assert_eq!(instance.cpu_policy().numa_node(), Some(0));
+        assert!(!instance.cpu_policy().strict());
     }
 
     #[test]

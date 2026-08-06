@@ -4483,7 +4483,7 @@ components:
           type: [ string, 'null' ]
     Instance:
       type: object
-      required: [ id, coreId, name, kind, directory, launch, updateCommand, expiresAt, runtime, revision ]
+      required: [ id, coreId, name, kind, directory, launch, cpuPolicy, updateCommand, expiresAt, runtime, revision ]
       properties:
         id:
           type: string
@@ -4497,6 +4497,8 @@ components:
           type: string
         launch:
           $ref: '#/components/schemas/LaunchConfig'
+        cpuPolicy:
+          $ref: '#/components/schemas/CpuPolicy'
         updateCommand:
           type: [ string, 'null' ]
           maxLength: 8192
@@ -4525,6 +4527,8 @@ components:
           type: string
         launch:
           $ref: '#/components/schemas/LaunchConfig'
+        cpuPolicy:
+          $ref: '#/components/schemas/CpuPolicy'
     InstanceUpdate:
       type: object
       minProperties: 1
@@ -4541,6 +4545,8 @@ components:
           maxLength: 1024
         launch:
           $ref: '#/components/schemas/LaunchConfig'
+        cpuPolicy:
+          $ref: '#/components/schemas/CpuPolicy'
         updateCommand:
           type: [ string, 'null' ]
           maxLength: 8192

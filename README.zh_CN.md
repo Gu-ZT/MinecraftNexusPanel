@@ -82,9 +82,9 @@ Core 现在会在启动时缓存保守的宿主机 CPU 拓扑快照，并通过 
   和隔离信息；平台未提供的字段保持明确未知值。
 - Core 和 Panel 现在提供带严格/降级结果的 CPU policy 只读预览，以及 `cpu-reservations`
   登记、列表、冲突检查、释放和重启恢复，并要求实例配置 revision 匹配。Core 通过
-  `cpu-reservations.json` 和原子替换持久化独占预留；预留记录只表示已选择不重叠的 CPU ID，
-  不代表宿主机 affinity 或 Docker cpuset 已应用。
-Windows EfficiencyClass、实际 CPU affinity/cpuset 执行器、跨 Core 调度锁和实例 policy 持久化仍属于 M4 后续工作。
+  `cpu-reservations.json` 和原子替换持久化独占预留，并将每个实例的 `cpuPolicy` 写入
+  `instances.json`；预留和 policy 只表示请求，不代表宿主机 affinity 或 Docker cpuset 已应用。
+Windows EfficiencyClass、实际 CPU affinity/cpuset 执行器和跨 Core 调度锁仍属于 M4 后续工作。
 
 ## 工程布局
 

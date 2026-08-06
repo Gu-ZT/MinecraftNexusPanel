@@ -83,10 +83,10 @@ Core now caches a conservative host CPU topology snapshot at startup and exposes
 - Core and Panel now provide a read-only CPU policy preview plus `cpu-reservations`
   registration, listing, conflict checking, release, and durable restart recovery with an instance
   revision precondition. Core writes exclusive reservations to `cpu-reservations.json` through
-  atomic replacement; a reservation records selected CPU IDs only and does not prove host affinity
-  or Docker cpuset application.
-Windows EfficiencyClass, actual CPU affinity/cpuset application, cross-Core scheduling locks, and
-instance policy persistence remain planned M4 work.
+  atomic replacement, and persists each instance's `cpuPolicy` in `instances.json`; a reservation
+  or policy records a request only and does not prove host affinity or Docker cpuset application.
+Windows EfficiencyClass, actual CPU affinity/cpuset application, and cross-Core scheduling locks
+remain planned M4 work.
 
 ## Project Layout
 

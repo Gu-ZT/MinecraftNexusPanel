@@ -199,7 +199,7 @@ export interface CpuReservation {
   createdAt: string;
 }
 
-/** Core CPU 独占预留列表。当前列表不跨 Core 重启持久化。 */
+/** Core CPU 独占预留列表；Core 会跨重启恢复登记记录。 */
 export interface CpuReservationPage {
   items: CpuReservation[];
 }
@@ -708,6 +708,8 @@ export interface Instance {
   name: string;
   kind: InstanceKind;
   directory: string;
+  /** 持久化的实例 CPU 选择策略；不代表宿主机 affinity 已应用。 */
+  cpuPolicy: CpuPolicy;
   updateCommand: string | null;
   expiresAt: string | null;
   launch: LaunchConfig;
@@ -720,6 +722,7 @@ export interface InstanceUpdate {
   kind?: InstanceKind;
   directory?: string;
   launch?: LaunchConfig;
+  cpuPolicy?: CpuPolicy;
   updateCommand?: string | null;
   expiresAt?: string | null;
 }

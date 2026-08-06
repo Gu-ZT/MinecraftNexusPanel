@@ -1,3 +1,4 @@
+use crate::CpuPolicy;
 use crate::Instance;
 use crate::InstanceCreateError;
 use crate::InstanceId;
@@ -21,6 +22,8 @@ pub struct InstanceCreate {
     kind: InstanceKind,
     directory: String,
     launch: LaunchConfig,
+    #[serde(default)]
+    cpu_policy: CpuPolicy,
 }
 
 impl InstanceCreate {
@@ -38,6 +41,7 @@ impl InstanceCreate {
             kind,
             directory,
             launch,
+            cpu_policy: CpuPolicy::default(),
         };
         instance.validate()?;
 
@@ -68,12 +72,31 @@ impl InstanceCreate {
         if !is_valid_launch(&self.launch) {
             return Err(InstanceCreateError::InvalidLaunch);
         }
+        if self.cpu_policy.validate().is_err() {
+            return Err(InstanceCreateError::InvalidCpuPolicy);
+        }
 
         Ok(())
     }
 
-    pub(crate) fn into_parts(self) -> (InstanceId, String, InstanceKind, String, LaunchConfig) {
-        (self.id, self.name, self.kind, self.directory, self.launch)
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        InstanceId,
+        String,
+        InstanceKind,
+        String,
+        LaunchConfig,
+        CpuPolicy,
+    ) {
+        (
+            self.id,
+            self.name,
+            self.kind,
+            self.directory,
+            self.launch,
+            self.cpu_policy,
+        )
     }
 }
 
@@ -82,9 +105,12 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::InstanceCreate;
+    use crate::CpuPolicyMode;
     use crate::InstanceId;
     use crate::InstanceKind;
     use crate::LaunchConfig;
+    use serde_json::from_value;
+    use serde_json::json;
 
     #[test]
     fn rejects_a_directory_that_escapes_the_instance_root() {
@@ -124,5 +150,32 @@ mod tests {
         );
 
         assert!(instance.is_err());
+    }
+
+    #[test]
+    fn accepts_legacy_payloads_without_a_cpu_policy() {
+        let instance: InstanceCreate = from_value(json!({
+            "id": "survival",
+            "name": "Survival",
+            "kind": "PAPER",
+            "directory": "instances/survival",
+            "launch": {
+                "executable": "java",
+                "args": [],
+                "environment": {},
+                "stopCommand": "stop",
+                "stopTimeoutSeconds": 30
+            }
+        }))
+        .expect("legacy instance payload is accepted");
+
+        assert_eq!(
+            instance
+                .into_instance()
+                .expect("legacy instance is created")
+                .cpu_policy()
+                .mode(),
+            CpuPolicyMode::Auto
+        );
     }
 }

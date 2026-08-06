@@ -3,6 +3,7 @@ use serde::Serialize;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+use crate::CpuPolicy;
 use crate::InstanceKind;
 use crate::InstanceUpdateError;
 use crate::LaunchConfig;
@@ -23,6 +24,8 @@ pub struct InstanceUpdate {
     directory: PatchField<String>,
     #[serde(default, skip_serializing_if = "PatchField::is_unchanged")]
     launch: PatchField<LaunchConfig>,
+    #[serde(default, skip_serializing_if = "PatchField::is_unchanged")]
+    cpu_policy: PatchField<CpuPolicy>,
     #[serde(default, skip_serializing_if = "PatchField::is_unchanged")]
     update_command: PatchField<String>,
     #[serde(default, skip_serializing_if = "PatchField::is_unchanged")]
@@ -54,6 +57,12 @@ impl InstanceUpdate {
         &self.launch
     }
 
+    /// 返回 CPU policy 更新操作。
+    #[must_use]
+    pub const fn cpu_policy(&self) -> &PatchField<CpuPolicy> {
+        &self.cpu_policy
+    }
+
     /// 返回更新命令更新操作。
     #[must_use]
     pub const fn update_command(&self) -> &PatchField<String> {
@@ -72,6 +81,7 @@ impl InstanceUpdate {
             && self.kind.is_unchanged()
             && self.directory.is_unchanged()
             && self.launch.is_unchanged()
+            && self.cpu_policy.is_unchanged()
             && self.update_command.is_unchanged()
             && self.expires_at.is_unchanged()
         {
@@ -81,6 +91,7 @@ impl InstanceUpdate {
             || matches!(&self.kind, PatchField::Clear)
             || matches!(&self.directory, PatchField::Clear)
             || matches!(&self.launch, PatchField::Clear)
+            || matches!(&self.cpu_policy, PatchField::Clear)
         {
             return Err(InstanceUpdateError::RequiredFieldCleared);
         }
@@ -92,6 +103,10 @@ impl InstanceUpdate {
         }
         if matches!(&self.launch, PatchField::Set(launch) if !is_valid_launch(launch)) {
             return Err(InstanceUpdateError::InvalidLaunch);
+        }
+        if matches!(&self.cpu_policy, PatchField::Set(cpu_policy) if cpu_policy.validate().is_err())
+        {
+            return Err(InstanceUpdateError::InvalidCpuPolicy);
         }
         if matches!(&self.update_command, PatchField::Set(command) if !is_valid_command(command)) {
             return Err(InstanceUpdateError::InvalidUpdateCommand);

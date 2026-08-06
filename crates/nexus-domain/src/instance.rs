@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::CpuPolicy;
 use crate::InstanceCreate;
 use crate::InstanceId;
 use crate::InstanceKind;
@@ -22,6 +23,9 @@ pub struct Instance {
     kind: InstanceKind,
     directory: String,
     launch: LaunchConfig,
+    /// 实例请求的 CPU 选择策略；缺少该字段的旧存档使用默认 AUTO/SHARED 策略。
+    #[serde(default)]
+    cpu_policy: CpuPolicy,
     #[serde(default)]
     update_command: Option<String>,
     #[serde(default)]
@@ -32,7 +36,7 @@ pub struct Instance {
 
 impl Instance {
     pub(crate) fn from_create(instance: InstanceCreate) -> Self {
-        let (id, name, kind, directory, launch) = instance.into_parts();
+        let (id, name, kind, directory, launch, cpu_policy) = instance.into_parts();
 
         Self {
             id,
@@ -40,6 +44,7 @@ impl Instance {
             kind,
             directory,
             launch,
+            cpu_policy,
             update_command: None,
             expires_at: None,
             runtime: InstanceRuntime::created(),
@@ -69,6 +74,12 @@ impl Instance {
     #[must_use]
     pub fn launch(&self) -> &LaunchConfig {
         &self.launch
+    }
+
+    /// 返回持久化的实例 CPU policy 请求。
+    #[must_use]
+    pub const fn cpu_policy(&self) -> &CpuPolicy {
+        &self.cpu_policy
     }
 
     /// 返回实例显示名称。
@@ -130,6 +141,12 @@ impl Instance {
             && &self.launch != launch
         {
             self.launch.clone_from(launch);
+            changed = true;
+        }
+        if let PatchField::Set(cpu_policy) = update.cpu_policy()
+            && &self.cpu_policy != cpu_policy
+        {
+            self.cpu_policy.clone_from(cpu_policy);
             changed = true;
         }
         changed |= apply_optional_patch(&mut self.update_command, update.update_command());
