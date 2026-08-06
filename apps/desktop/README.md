@@ -39,6 +39,7 @@ target/release/bundle/nsis/MCNP Desktop_0.1.0_x64-setup.exe
 
 关闭主窗口时应用会隐藏到系统托盘，本地 Core/Panel 继续运行。托盘悬浮提示显示当前动态
 Panel 地址；双击托盘图标或选择 `Open MCNP` 可恢复主窗口，选择 `Quit MCNP` 才会退出应用并停止本地 sidecar。当前版本已交付
-Windows x64 独立 sidecar 安装包。设置页可以启用当前用户登录时启动；由登录项启动时不会弹出
-主窗口，而是直接驻留托盘。系统密钥环、Windows 签名、自动更新及
+Windows x64 独立 sidecar 安装包。重复启动会转交给已运行的进程并恢复主窗口，不会再次启动
+sidecar。设置页可以启用当前用户登录时启动；由登录项启动时不会弹出主窗口，而是直接驻留托盘。
+系统密钥环、Windows 签名、自动更新及
 Linux/macOS 安装包仍属于后续发布工作。

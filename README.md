@@ -163,7 +163,8 @@ On first launch, the desktop runtime creates its SQLite data and persistent secr
 administrator password, and removes the bootstrap password after the first successful login.
 Closing the main window keeps the local Core and Panel running in the system tray. Double-clicking
 the tray icon or choosing `Open MCNP` restores the window; `Quit MCNP` explicitly exits and stops
-the sidecar. The tray tooltip reports the active loopback Panel address selected at startup.
+the sidecar. A second launch is forwarded to the existing process and restores its window instead of
+starting another sidecar. The tray tooltip reports the active loopback Panel address selected at startup.
 The local settings page can register MCNP for the current user's login; an autostart launch remains
 hidden in the tray until the user opens it.
 See [`apps/desktop/README.md`](apps/desktop/README.md) and

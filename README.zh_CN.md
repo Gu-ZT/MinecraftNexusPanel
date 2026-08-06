@@ -157,7 +157,8 @@ Node.js、Rust、pnpm，也不需要另行下载 MCNP。安装包不内置 WebVi
 秘密。登录页会显示随机生成的首位管理员密码，首次登录成功后删除引导密码。
 关闭主窗口后，本地 Core/Panel 会继续在系统托盘中运行；托盘悬浮提示显示启动时选择的动态
 Panel 地址。双击托盘图标或选择 `Open MCNP` 可恢复窗口，选择 `Quit MCNP` 才会显式退出并停止
-sidecar。设置页可管理当前用户登录时启动；由登录项启动时会直接驻留托盘，不主动弹出主窗口。详见
+sidecar。设置页可管理当前用户登录时启动；由登录项启动时会直接驻留托盘，不主动弹出主窗口。
+重复启动会转交给已运行的进程并恢复主窗口，不会再次启动 sidecar。详见
 [`apps/desktop/README.md`](apps/desktop/README.md) 和
 [`docs/operations/initial-administrator.md`](docs/operations/initial-administrator.md)。
 

@@ -1,6 +1,7 @@
 //! MCNP Desktop Tauri 容器入口。
 
 mod desktop_autostart;
+mod desktop_instance;
 mod desktop_runtime;
 mod desktop_tray;
 
@@ -17,6 +18,7 @@ use tauri::generate_context;
 /// 构建并运行桌面 Tauri 应用。
 pub fn run() -> Result<(), Error> {
     Builder::default()
+        .plugin(desktop_instance::plugin())
         .plugin(desktop_autostart::plugin())
         .invoke_handler(tauri::generate_handler![
             desktop_runtime,

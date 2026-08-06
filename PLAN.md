@@ -283,7 +283,7 @@ stateDiagram-v2
 - Vue 3 WebUI 完成全部管理页面，并由 Panel 托管。
 - 当前共享 WebUI 已交付 MCSManager 风格的紧凑控制台外壳、概览、实例目录、只读节点与 CPU 拓扑、本地主题/语言设置，以及包含概览、终端、配置和文件管理的全宽实例详情；后续页面继续按后端权限与 API 能力增量开放。
 - Tauri Desktop：已交付 Windows x64 独立安装包；安装包包含共享 Vue 构建产物和 release `mcnp all` sidecar。首启自动生成 Panel 主密钥、Core PSK 和随机管理员密码，登录页展示引导凭据，Panel 仅对 Tauri 本地来源开放跨源请求，退出时停止 sidecar。
-- Tauri Desktop 已提供显示动态 Panel 地址的系统托盘、关闭到托盘、主窗口恢复、显式退出，以及可在设置页管理的当前用户开机启动；登录项启动时静默驻留托盘。后续补齐系统密钥环/Refresh Token 安全存储、运行日志收集、签名和自动更新。
+- Tauri Desktop 已提供显示动态 Panel 地址的系统托盘、关闭到托盘、主窗口恢复、显式退出、单实例重复启动唤醒，以及可在设置页管理的当前用户开机启动；登录项启动时静默驻留托盘。后续补齐系统密钥环/Refresh Token 安全存储、运行日志收集、签名和自动更新。
 - Tauri Mobile：设备登录、生物识别保护 Refresh Token、移动终端与任务页面。
 - 验收：三端使用同一个 Vue 功能模块和生成 API Client，不存在独立维护的业务页面副本。
 
