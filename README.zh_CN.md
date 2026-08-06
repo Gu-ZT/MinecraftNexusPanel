@@ -34,7 +34,7 @@
 - Core 还提供专用基岩健康检查，使用 RakNet Unconnected Ping/Pong 区分已响应、超时、无效响应和探测不可用，并在响应有效时返回服务端身份；绑定地址为未指定地址时使用本机回环探测。该检查独立于 UDP 端口可绑定检查和 Java Status 健康检查。
 - 实例启动配置将 HOST/CONTAINER 运行模式与 DIRECT/MCDR 监督模式分开。HOST 支持直接命令和显式的 MCDR `{server}`/`{serverArgs}` 包装模板；容器后端完成前，CONTAINER 只保存配置并由 Core 拒绝启动。
 - Core 会将实例定义和运行时快照持久化到 `instances.json`。Core 重启后，原来处于 `STARTING`、`RUNNING` 或 `STOPPING` 的快照会恢复为明确的 `UNKNOWN`；管理员必须使用 `confirmation=RESET` 显式复位后才能再次启动，Core 不会声称已经重新接管旧 PID。
-- Core 会记录实例启动成功/失败、停止和强制终止请求，以及受管进程的异常退出；MCDR 包装器退出会记录专用失败原因，并可通过 `instance.audit.list`、Panel REST 和共享 TypeScript Client 查询最新记录。Core 会在 `instance-audit.json` 中通过原子替换持久化最近 2048 条记录，文件损坏时拒绝启动。Panel 还会通过 `GET /api/v1/audit-events` 持久化用户级请求审计，最多保留 10,000 条，不保存请求体、查询参数、Cookie、Token 或密码。管理员可创建、列出、更新和删除非管理员用户；权限变更对现有会话立即生效，删除会撤销会话。持久化的显式 `audit.read` 授权允许非管理员读取审计。用户组、资源 scope 和导出仍待完成。
+- Core 会记录实例启动成功/失败、停止和强制终止请求，以及受管进程的异常退出；MCDR 包装器退出会记录专用失败原因，并可通过 `instance.audit.list`、Panel REST 和共享 TypeScript Client 查询最新记录。Core 会在 `instance-audit.json` 中通过原子替换持久化最近 2048 条记录，文件损坏时拒绝启动。Panel 还会通过 `GET /api/v1/audit-events` 持久化用户级请求审计，最多保留 10,000 条，不保存请求体、查询参数、Cookie、Token 或密码；同一安全字段集可导出为 NDJSON。管理员可创建、列出、更新和删除非管理员用户；权限变更对现有会话立即生效，删除会撤销会话。持久化的显式 `audit.read` 授权允许非管理员读取审计。用户组、资源 scope 和可配置保留策略仍待完成。
 
 ### 当前文件管理能力
 

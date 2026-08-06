@@ -11,7 +11,7 @@ interface RequestOptions {
   ifMatch?: number | string;
   idempotent?: boolean;
   accept?: string;
-  responseType?: 'arrayBuffer' | 'json';
+  responseType?: 'arrayBuffer' | 'json' | 'text';
 }
 
 interface ErrorBody {
@@ -828,6 +828,7 @@ export interface PanelApiClient {
   deleteUser(userId: string): Promise<void>;
   listCores(): Promise<CorePage>;
   listAuditEvents(limit?: number): Promise<PanelAuditPage>;
+  exportAuditEvents(): Promise<string>;
   getCpuTopology(coreId: string): Promise<CpuTopology>;
   resolveCpuPolicy(coreId: string, policy: CpuPolicy): Promise<CpuPolicyResolution>;
   listCpuReservations(coreId: string): Promise<CpuReservationPage>;
@@ -1109,6 +1110,9 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
         eof: response.headers.get('x-mcnp-file-eof') === 'true',
       } as T;
     }
+    if (requestOptions.responseType === 'text') {
+      return response.text() as Promise<T>;
+    }
 
     return response.json() as Promise<T>;
   }
@@ -1160,6 +1164,12 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     listAuditEvents(limit = 100) {
       const query = new URLSearchParams({ limit: String(limit) });
       return request<PanelAuditPage>(`/api/v1/audit-events?${query.toString()}`);
+    },
+    exportAuditEvents() {
+      return request<string>('/api/v1/audit-events:export', {
+        accept: 'application/x-ndjson',
+        responseType: 'text',
+      });
     },
     getCpuTopology(coreId) {
       return request<CpuTopology>(

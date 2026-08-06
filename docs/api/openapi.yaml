@@ -553,6 +553,34 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/ServiceUnavailable'
+  /audit-events:export:
+    get:
+      tags: [ Audit ]
+      operationId: exportAuditEvents
+      summary: Export the retained Panel audit window as NDJSON
+      description: |
+        Administrators and non-administrators with audit.read can export up to
+        the newest 10,000 retained events. Each line contains the same safe metadata
+        fields as listAuditEvents and never contains query strings, request bodies,
+        cookies, tokens, or passwords.
+      responses:
+        '200':
+          description: Newest-first audit event archive with one JSON object per line
+          headers:
+            Content-Disposition:
+              description: Fixed attachment filename for the NDJSON archive
+              schema:
+                type: string
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/ServiceUnavailable'
   /ws/tickets:
     post:
       tags: [ Realtime ]

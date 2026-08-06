@@ -329,6 +329,7 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 | PUT              | `/groups/{groupId}/members`      | `user.manage`      | 设置用户组成员     |
 | PUT              | `/groups/{groupId}/grants`       | `user.manage`      | 设置权限和实例范围 |
 | GET              | `/audit-events`                  | `audit.read`       | 只读 Panel 请求审计事件 |
+| GET              | `/audit-events:export`           | `audit.read`       | 导出当前保留窗口的 NDJSON |
 
 当前已实现 `/users` 列表、创建、单项查询、更新和删除。管理员可管理非管理员的显示名与权限，
 权限变更对现有会话立即生效，删除会级联撤销目标用户会话；管理员账户和自删除受到保护。现阶段仅
@@ -337,7 +338,8 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 `limit`（1-200，默认 100），按最新优先返回 Panel 请求元数据。
 事件最多保留 10,000 条，且不允许通过 API 修改或删除。记录包含用户 ID、请求 ID、来源 IP、HTTP 方法、
 不含查询参数的路径、状态码和权限判定；请求体、查询参数、Cookie、Token 与密码不会写入审计库。
-资源范围筛选、审计导出和可配置保留策略仍属于后续 TODO。
+`GET /audit-events:export` 按相同字段和顺序将当前最多 10,000 条保留记录导出为逐行 JSON，响应使用
+`application/x-ndjson` 和固定附件文件名。资源范围筛选和可配置保留策略仍属于后续 TODO。
 
 ## 6. 资源示例
 

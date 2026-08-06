@@ -335,6 +335,43 @@ async fn grants_audit_read_without_granting_administrator_access() {
     .await;
     assert_eq!(reader_audit.status, 200);
 
+    let audit_export = send_json_request(
+        listen_address,
+        "GET",
+        "/api/v1/audit-events:export",
+        &[("Authorization", reader_authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(audit_export.status, 200);
+    assert!(
+        audit_export
+            .headers
+            .get("content-type")
+            .is_some_and(|value| value.starts_with("application/x-ndjson"))
+    );
+    assert!(
+        audit_export
+            .headers
+            .get("content-disposition")
+            .is_some_and(|value| value.contains("mcnp-audit-events.ndjson"))
+    );
+    let exported_events = audit_export
+        .body_text
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("NDJSON line is valid JSON"))
+        .collect::<Vec<_>>();
+    assert!(!exported_events.is_empty());
+    assert!(
+        exported_events
+            .iter()
+            .all(|event| event.get("requestId").is_some()
+                && event.get("path").is_some()
+                && event.get("body").is_none()
+                && event.get("query").is_none()
+                && event.get("authorization").is_none())
+    );
+
     let updated_reader = send_json_request(
         listen_address,
         "PATCH",
@@ -564,6 +601,7 @@ struct TestHttpResponse {
     status: u16,
     headers: HashMap<String, String>,
     body: Value,
+    body_text: String,
 }
 
 impl TestHttpResponse {
@@ -577,20 +615,27 @@ impl TestHttpResponse {
             .and_then(|line| line.split_whitespace().nth(1))
             .and_then(|status| status.parse().ok())
             .expect("HTTP response has a numeric status");
-        let headers = lines
+        let headers: HashMap<String, String> = lines
             .filter_map(|line| line.split_once(':'))
             .map(|(name, value)| (name.to_ascii_lowercase(), value.trim().to_owned()))
             .collect();
+        let body_text = body.to_owned();
         let body = if body.is_empty() {
             Value::Null
-        } else {
+        } else if headers
+            .get("content-type")
+            .is_some_and(|value| value.starts_with("application/json"))
+        {
             serde_json::from_str(body).expect("HTTP response body is JSON")
+        } else {
+            Value::Null
         };
 
         Self {
             status,
             headers,
             body,
+            body_text,
         }
     }
 }
