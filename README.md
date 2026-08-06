@@ -89,6 +89,19 @@ Core now caches a conservative host CPU topology snapshot at startup and exposes
 Windows EfficiencyClass, actual CPU affinity/cpuset application, and cross-Core scheduling locks
 remain planned M4 work.
 
+## WebUI
+
+The shared Vue application now provides an operations-focused instance workspace inspired by the
+information density of MCSManager while remaining an independent implementation. It uses Arco
+Design controls and icons, and Vue Router keeps the selected Core, instance, and `console` or
+`config` view in the URL so refreshes and direct links restore the same context.
+
+Appearance can follow the operating system or be pinned to light or dark mode. Language selection
+can follow the browser or be pinned to an installed locale. Locale files live at
+`frontend/app/src/locales/<language-code>.json`; the filename is the locale code and `$meta.name`
+is its display name. Adding another JSON file in that directory automatically includes it in the
+language menu without changing registration code.
+
 ## Project Layout
 
 ```text

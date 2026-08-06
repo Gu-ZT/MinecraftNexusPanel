@@ -27,6 +27,7 @@
 4. Proxy topology is part of the domain model. `ProxyTopology::OneToMany` applies to Velocity, Waterfall, BungeeCord, and Lightfall; `ProxyTopology::OneToOne` applies to Geyser. Manage backend relationships through `ProxySubserver`, validate that targets are existing non-proxy instances, and enforce the topology cardinality in Core.
 5. Bedrock-facing operations require a `BedrockManagementProfile` rather than Java assumptions. The current profile records RakNet UDP, default port `19132`, configuration files, and extension capability: BDS uses `server.properties` without a plugin kind; PocketMine-MP and Nukkit/Cloudburst Nukkit expose plugin management; Geyser uses `config.yml` and its single Java backend relation.
 6. When documenting or implementing a server type, distinguish a catalog/domain profile from a verified installer. Version metadata providers, archive layouts, launch commands, configuration paths, extension directories, health checks, and update procedures may be added incrementally per type and version.
+7. The shared Vue frontend uses Arco Design for standard controls and icons, Vue Router for Core/instance/view context, and `system`/`light`/`dark` theme preferences. User-facing text belongs in `frontend/app/src/locales/<locale-code>.json`; adding a locale file must automatically expose it through the language menu without a centralized registration edit.
 
 ## Tool Preference For Other Work
 

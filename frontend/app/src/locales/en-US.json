@@ -1,0 +1,153 @@
+{
+  "$meta": {
+    "name": "English",
+    "order": 2
+  },
+  "app": {
+    "name": "Minecraft Nexus Panel",
+    "shortName": "MCNP"
+  },
+  "common": {
+    "auto": "Auto",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "none": "None",
+    "notRecorded": "Not recorded",
+    "refresh": "Refresh",
+    "save": "Save",
+    "send": "Send"
+  },
+  "auth": {
+    "eyebrow": "MCNP CONSOLE",
+    "title": "Sign in to the console",
+    "bootstrapTitle": "Initial administrator credentials",
+    "bootstrapHint": "The bootstrap password is removed from local settings after the first successful sign-in.",
+    "username": "Username",
+    "password": "Password",
+    "login": "Sign in",
+    "loggingIn": "Signing in"
+  },
+  "nav": {
+    "instances": "Instances",
+    "workspace": "Instance workspace",
+    "controlPanel": "Control panel",
+    "breadcrumb": "Breadcrumb",
+    "logout": "Sign out"
+  },
+  "theme": {
+    "switch": "Change appearance",
+    "system": "Use system setting",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "language": {
+    "switch": "Change language",
+    "auto": "Use browser language"
+  },
+  "workspace": {
+    "title": "Instance workspace",
+    "coreOnlineSummary": "{online}/{total} Cores online",
+    "instanceRunningSummary": "{running}/{total} instances running",
+    "refresh": "Refresh workspace"
+  },
+  "cores": {
+    "title": "Core nodes",
+    "empty": "No Core connected",
+    "latency": "{value} ms"
+  },
+  "instances": {
+    "title": "Instances",
+    "selectCore": "Select a Core",
+    "empty": "No instances",
+    "noMatches": "No matching instances",
+    "filterPlaceholder": "Filter by name, ID, or type",
+    "kindAndId": "{id} · {kind}"
+  },
+  "console": {
+    "title": "Console",
+    "directoryAndPid": "{directory} · PID {pid}",
+    "notRunning": "Not running",
+    "start": "Start",
+    "stop": "Stop",
+    "kill": "Kill",
+    "consoleTab": "Console",
+    "configTab": "Configuration",
+    "state": "State",
+    "pid": "PID",
+    "startedAt": "Started",
+    "exitCode": "Exit code",
+    "output": "Console output",
+    "refreshOutput": "Refresh console output",
+    "selectInstance": "Select an instance to view console output.",
+    "emptyOutput": "No console output.",
+    "commandPlaceholder": "Enter a console command",
+    "selectForConfig": "Select an instance to edit its configuration."
+  },
+  "config": {
+    "title": "Structured configuration",
+    "editorAria": "Configuration editor",
+    "documentsAria": "Configuration document list",
+    "selectDocument": "Select a configuration document",
+    "rescan": "Rescan",
+    "validate": "Validate",
+    "emptyDocuments": "No structured configuration",
+    "formatRevision": "{format} · revision {revision}",
+    "unmappedFields": "Unmapped fields: {fields}",
+    "selectPrompt": "Select a configuration document to begin editing.",
+    "allowLossy": "Allow normalized write-back",
+    "save": "Save configuration",
+    "saving": "Saving",
+    "emptyObject": "Empty object",
+    "tupleArrayUnsupported": "Tuple arrays cannot be edited yet",
+    "composedArrayUnsupported": "Arrays with multiple candidate structures cannot be edited yet",
+    "arraySchemaMissing": "Array items have no shared schema and cannot be edited yet",
+    "arrayItemMismatch": "The array contains items that do not match its shared schema",
+    "itemLabel": "Item {index}",
+    "itemCount": "({count} items)",
+    "addItem": "Add item",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "unsupported": "Editing is not supported"
+  },
+  "notice": {
+    "commandSent": "Command sent",
+    "startSubmitted": "Start task submitted",
+    "stopSubmitted": "Stop task submitted",
+    "killSubmitted": "Kill task submitted",
+    "actionSubmitted": "Action submitted",
+    "documentsScanned": "Configuration documents rescanned",
+    "validationPassed": "Configuration validation passed",
+    "validationFailed": "Configuration validation found issues",
+    "configSaved": "Configuration saved"
+  },
+  "error": {
+    "desktopStart": "Could not start the local MCNP service",
+    "bootstrapCleanup": "Could not remove bootstrap credentials; try again later",
+    "workspaceAfterLogin": "Signed in, but the workspace could not be loaded",
+    "login": "Sign-in failed",
+    "workspace": "Could not load the workspace",
+    "instances": "Could not load instances",
+    "logs": "Could not read console output",
+    "command": "Could not send the command",
+    "instanceAction": "Instance action failed",
+    "readDocuments": "Could not read configuration documents",
+    "scanDocuments": "Configuration scan failed",
+    "readDocument": "Could not read the configuration document",
+    "validateDocuments": "Configuration validation failed",
+    "saveDocument": "Could not save the configuration"
+  },
+  "status": {
+    "AUTH_FAILED": "Authentication failed",
+    "CREATED": "Created",
+    "DEGRADED": "Degraded",
+    "FAILED": "Failed",
+    "INCOMPATIBLE": "Incompatible",
+    "OFFLINE": "Offline",
+    "ONLINE": "Online",
+    "RUNNING": "Running",
+    "STARTING": "Starting",
+    "STOPPED": "Stopped",
+    "STOPPING": "Stopping",
+    "UNKNOWN": "Unknown"
+  }
+}

@@ -7,8 +7,26 @@ export const router = createRouter({
   routes: [
     {
       path: '/',
-      name: 'workspace',
+      redirect: '/instances',
+    },
+    {
+      path: '/instances',
+      name: 'instances',
       component: WorkspaceView,
+    },
+    {
+      path: '/instances/:coreId',
+      name: 'core-instances',
+      component: WorkspaceView,
+    },
+    {
+      path: '/instances/:coreId/:instanceId/:view(console|config)?',
+      name: 'instance-workspace',
+      component: WorkspaceView,
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: '/instances',
     },
   ],
 });

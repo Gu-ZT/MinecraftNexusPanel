@@ -1,0 +1,153 @@
+{
+  "$meta": {
+    "name": "简体中文",
+    "order": 1
+  },
+  "app": {
+    "name": "Minecraft Nexus Panel",
+    "shortName": "MCNP"
+  },
+  "common": {
+    "auto": "自动",
+    "cancel": "取消",
+    "delete": "删除",
+    "none": "无",
+    "notRecorded": "未记录",
+    "refresh": "刷新",
+    "save": "保存",
+    "send": "发送"
+  },
+  "auth": {
+    "eyebrow": "MCNP CONSOLE",
+    "title": "登录控制台",
+    "bootstrapTitle": "首次启动管理员凭据",
+    "bootstrapHint": "首次登录成功后，引导密码会从本机配置中删除。",
+    "username": "用户名",
+    "password": "密码",
+    "login": "登录",
+    "loggingIn": "正在登录"
+  },
+  "nav": {
+    "instances": "应用实例",
+    "workspace": "实例工作区",
+    "controlPanel": "控制面板",
+    "breadcrumb": "面包屑导航",
+    "logout": "退出登录"
+  },
+  "theme": {
+    "switch": "切换外观",
+    "system": "跟随系统",
+    "light": "浅色",
+    "dark": "深色"
+  },
+  "language": {
+    "switch": "切换语言",
+    "auto": "跟随浏览器"
+  },
+  "workspace": {
+    "title": "实例工作区",
+    "coreOnlineSummary": "{online}/{total} 个 Core 在线",
+    "instanceRunningSummary": "{running}/{total} 个实例运行中",
+    "refresh": "刷新工作区"
+  },
+  "cores": {
+    "title": "Core 节点",
+    "empty": "尚未连接 Core",
+    "latency": "{value} ms"
+  },
+  "instances": {
+    "title": "实例",
+    "selectCore": "请选择 Core",
+    "empty": "暂无实例",
+    "noMatches": "没有匹配的实例",
+    "filterPlaceholder": "按名称、ID 或类型筛选",
+    "kindAndId": "{id} · {kind}"
+  },
+  "console": {
+    "title": "控制台",
+    "directoryAndPid": "{directory} · PID {pid}",
+    "notRunning": "未运行",
+    "start": "启动",
+    "stop": "停止",
+    "kill": "终止",
+    "consoleTab": "控制台",
+    "configTab": "配置",
+    "state": "状态",
+    "pid": "PID",
+    "startedAt": "启动时间",
+    "exitCode": "退出码",
+    "output": "控制台输出",
+    "refreshOutput": "刷新控制台输出",
+    "selectInstance": "选择实例后显示控制台输出。",
+    "emptyOutput": "暂无控制台输出。",
+    "commandPlaceholder": "输入控制台命令",
+    "selectForConfig": "选择实例后编辑配置。"
+  },
+  "config": {
+    "title": "结构化配置",
+    "editorAria": "配置编辑器",
+    "documentsAria": "配置文档列表",
+    "selectDocument": "选择配置文档",
+    "rescan": "重新扫描",
+    "validate": "校验",
+    "emptyDocuments": "暂无结构化配置",
+    "formatRevision": "{format} · 版本 {revision}",
+    "unmappedFields": "未映射字段：{fields}",
+    "selectPrompt": "选择一个配置文档开始编辑。",
+    "allowLossy": "允许规范化写回",
+    "save": "保存配置",
+    "saving": "正在保存",
+    "emptyObject": "空对象",
+    "tupleArrayUnsupported": "元组数组暂不支持编辑",
+    "composedArrayUnsupported": "包含多种候选结构的数组暂不支持编辑",
+    "arraySchemaMissing": "数组项未声明统一 Schema，暂不支持编辑",
+    "arrayItemMismatch": "数组包含与统一 Schema 不匹配的项目，暂不支持编辑",
+    "itemLabel": "条目 {index}",
+    "itemCount": "（当前 {count} 项）",
+    "addItem": "添加条目",
+    "enabled": "已启用",
+    "disabled": "已停用",
+    "unsupported": "暂不支持编辑"
+  },
+  "notice": {
+    "commandSent": "命令已发送",
+    "startSubmitted": "启动任务已提交",
+    "stopSubmitted": "停止任务已提交",
+    "killSubmitted": "强制终止任务已提交",
+    "actionSubmitted": "操作已提交",
+    "documentsScanned": "配置文档已重新扫描",
+    "validationPassed": "配置校验通过",
+    "validationFailed": "配置校验发现问题",
+    "configSaved": "配置已保存"
+  },
+  "error": {
+    "desktopStart": "无法启动本地 MCNP 服务",
+    "bootstrapCleanup": "引导凭据清理失败，请稍后重试",
+    "workspaceAfterLogin": "登录成功，但加载工作区失败",
+    "login": "登录失败",
+    "workspace": "无法加载工作台",
+    "instances": "无法加载实例",
+    "logs": "无法读取控制台",
+    "command": "命令发送失败",
+    "instanceAction": "实例操作失败",
+    "readDocuments": "无法读取配置文档",
+    "scanDocuments": "配置扫描失败",
+    "readDocument": "无法读取配置文档",
+    "validateDocuments": "配置校验失败",
+    "saveDocument": "配置保存失败"
+  },
+  "status": {
+    "AUTH_FAILED": "认证失败",
+    "CREATED": "已创建",
+    "DEGRADED": "状态异常",
+    "FAILED": "失败",
+    "INCOMPATIBLE": "版本不兼容",
+    "OFFLINE": "离线",
+    "ONLINE": "在线",
+    "RUNNING": "运行中",
+    "STARTING": "启动中",
+    "STOPPED": "已停止",
+    "STOPPING": "停止中",
+    "UNKNOWN": "未知"
+  }
+}

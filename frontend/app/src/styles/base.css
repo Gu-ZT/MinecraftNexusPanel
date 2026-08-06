@@ -1,10 +1,58 @@
 :root {
-  color: #18201b;
-  background: #f4f6f4;
+  color-scheme: light;
+  color: #1d2129;
+  background: #f2f3f5;
+  --mcnp-bg: #f2f3f5;
+  --mcnp-header: #ffffff;
+  --mcnp-surface: #ffffff;
+  --mcnp-surface-raised: #f7f8fa;
+  --mcnp-surface-hover: #f2f3f5;
+  --mcnp-console: #17181a;
+  --mcnp-border: #e5e6eb;
+  --mcnp-border-subtle: #f0f1f2;
+  --mcnp-text: #1d2129;
+  --mcnp-text-muted: #4e5969;
+  --mcnp-text-faint: #86909c;
+  --mcnp-primary: #165dff;
+  --mcnp-primary-hover: #4080ff;
+  --mcnp-primary-soft: rgba(22, 93, 255, 0.1);
+  --mcnp-success: #00a52b;
+  --mcnp-warning: #d76b00;
+  --mcnp-danger: #e63535;
+  --mcnp-danger-soft: rgba(245, 63, 63, 0.1);
+  --mcnp-success-soft: rgba(0, 180, 42, 0.1);
+  --mcnp-warning-soft: rgba(255, 125, 0, 0.12);
+  --mcnp-radius: 6px;
   font-family:
     Inter, "Noto Sans SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+}
+
+:root[arco-theme='dark'] {
+  color-scheme: dark;
+  color: #d7d9de;
+  background: #202124;
+  --mcnp-bg: #202124;
+  --mcnp-header: #1b1c1f;
+  --mcnp-surface: #18191b;
+  --mcnp-surface-raised: #222326;
+  --mcnp-surface-hover: #2a2b2f;
+  --mcnp-console: #101113;
+  --mcnp-border: #3a3c42;
+  --mcnp-border-subtle: #2b2d32;
+  --mcnp-text: #d7d9de;
+  --mcnp-text-muted: #a2a6af;
+  --mcnp-text-faint: #737780;
+  --mcnp-primary: #3c89e8;
+  --mcnp-primary-hover: #65a9f3;
+  --mcnp-primary-soft: rgba(60, 137, 232, 0.16);
+  --mcnp-success: #61c985;
+  --mcnp-warning: #e0ab52;
+  --mcnp-danger: #ec7070;
+  --mcnp-danger-soft: rgba(236, 112, 112, 0.13);
+  --mcnp-success-soft: rgba(97, 201, 133, 0.13);
+  --mcnp-warning-soft: rgba(224, 171, 82, 0.14);
 }
 
 * {
@@ -21,6 +69,8 @@ body,
 
 body {
   min-height: 100vh;
+  background: var(--mcnp-bg);
+  color: var(--mcnp-text);
 }
 
 button,
@@ -28,4 +78,35 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+button,
+input,
+textarea,
+select {
+  letter-spacing: 0;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--mcnp-primary);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(36, 120, 220, 0.35);
+}
+
+* {
+  scrollbar-color: var(--mcnp-text-faint) var(--mcnp-surface);
+  scrollbar-width: thin;
+}
+
+.arco-btn,
+.arco-input-wrapper,
+.arco-select-view,
+.arco-dropdown-option {
+  letter-spacing: 0;
 }

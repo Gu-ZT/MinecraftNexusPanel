@@ -87,6 +87,17 @@ Core 现在会在启动时缓存保守的宿主机 CPU 拓扑快照，并通过 
   `instances.json`；预留和 policy 只表示请求，不代表宿主机 affinity 或 Docker cpuset 已应用。
 Windows EfficiencyClass、实际 CPU affinity/cpuset 执行器和跨 Core 调度锁仍属于 M4 后续工作。
 
+## WebUI 界面
+
+共享 Vue 应用现已提供面向运维的实例工作区：信息密度和视觉层级参考 MCSManager，但保持
+独立实现。标准控件和图标使用 Arco Design；Vue Router 会把当前 Core、实例以及
+`console`/`config` 视图写入 URL，刷新、直接链接和浏览器前进后退都能恢复工作上下文。
+
+外观可以跟随系统，也可以手动固定为浅色或深色；语言可以跟随浏览器，也可以手动固定。
+语言包位于 `frontend/app/src/locales/<语言代码>.json`，文件名就是语言代码，文件内
+`$meta.name` 是菜单显示名。直接在该目录新增 JSON 文件即可自动加入语言菜单，不需要修改
+集中注册代码。
+
 ## 工程布局
 
 ```text

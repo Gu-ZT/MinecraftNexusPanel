@@ -83,6 +83,9 @@ MinecraftNexusPanel/
 
 - REST 基础路径固定为 `/api/v1`；只在破坏兼容性时增加主版本。
 - Panel WebUI、Desktop 和 Mobile 统一使用 Vue 3、TypeScript、Vite、Vue Router、Pinia 与 TanStack Vue Query。
+- 标准表单、按钮、菜单和图标统一使用 Arco Design；运维工作区参考 MCSManager 的紧凑信息层级，但不复制其源码或制造尚无后端能力的入口。
+- Core、实例和实例子视图必须由 Vue Router 地址表达，使浏览器历史、刷新和直接链接恢复同一工作上下文。
+- 主题提供 `system`、`light`、`dark` 三种偏好并监听系统配色变化；国际化语言包按 `frontend/app/src/locales/<语言代码>.json` 自动发现，文件内 `$meta.name` 提供语言显示名。
 - 三端复用同一套页面、领域 store、API Client、表单校验和实时事件 SDK；平台差异只能通过 `platform` 适配器访问。
 - Panel 托管 Vue 构建产物；Tauri Desktop/Mobile 加载同一应用构建，不复制业务页面。
 - 浏览器适配器使用 Cookie/CSRF；当前 Desktop 适配器使用原生 Bearer Access Token，系统密钥环持久化、Refresh Token 安全存储仍需补齐。
@@ -245,7 +248,7 @@ stateDiagram-v2
 - Core：PSK 握手、节点信息、实例列表、启动/停止/终止、命令、日志游标。
 - Core 实例配置和运行时快照保存于数据目录 `instances.json`；重启时不伪造旧进程仍存活，无法确认的瞬态状态恢复为 `UNKNOWN`，且必须通过带 `RESET` 确认和幂等键的显式动作复位后才能重新启动。
 - Panel：管理员初始化、登录、Core 增删与连通性测试、实例代理 API。
-- WebUI：登录、Core 切换、实例列表、实例控制台和基础状态。
+- WebUI：登录、Core 切换、实例列表、实例控制台和基础状态；实例工作区使用路由化的 Core/实例/视图上下文、Arco Design、自动/手动深浅主题和可扩展 JSON 语言包。
 - `all`：单命令启动，仍暴露 Core TCP 端口。
 - 验收：从空数据创建一个实例，启动测试进程，实时查看输出并安全停止。
 
@@ -318,6 +321,7 @@ stateDiagram-v2
 - 所有写操作具备明确超时；危险操作支持幂等键或二次确认语义。
 - Linux 优先支持 systemd；Windows 优先支持 Windows Service；进程退出时不得遗留失控子进程。
 - WebUI 满足键盘操作、可见焦点、响应式布局和 `prefers-reduced-motion`。
+- WebUI 的主题和语言偏好必须可由用户覆盖并持久化；未覆盖主题时实时跟随 `prefers-color-scheme`，新增语言不得要求修改集中注册表。
 - 环境、服务端、扩展和镜像下载必须可限速、可取消、校验摘要并复用 Core 本地缓存。
 - CPU policy 必须返回 requested/applied/degraded 状态；不能把“偏好大核”伪装成硬保证。
 - 商业版 Panel 支持水平扩展；节点连接、调度锁和 WebSocket fan-out 不依赖单进程内存状态。

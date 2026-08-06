@@ -1,5 +1,16 @@
 <script setup lang="ts">
+import {
+  Button as AButton,
+  Input as AInput,
+  InputNumber as AInputNumber,
+  InputPassword as AInputPassword,
+  Option as AOption,
+  Select as ASelect,
+  Switch as ASwitch,
+} from '@arco-design/web-vue';
+import { IconDelete, IconPlus } from '@arco-design/web-vue/es/icon';
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -23,6 +34,8 @@ const emit = defineEmits<{
 
 defineOptions({ name: 'ConfigValueEditor' });
 
+const { t } = useI18n();
+
 const fieldType = computed(() => schemaType(props.schema, props.value));
 const properties = computed(() => Object.entries(asRecord(props.schema.properties)));
 const objectValue = computed(() => asRecord(props.value));
@@ -37,17 +50,17 @@ const arrayUnsupportedReason = computed(() => {
     return '';
   }
   if (Array.isArray(props.schema.items)) {
-    return '元组数组暂不支持编辑';
+    return t('config.tupleArrayUnsupported');
   }
   if (hasSchemaComposition(props.schema) || (itemSchema.value && hasSchemaComposition(itemSchema.value))) {
-    return '包含多种候选结构的数组暂不支持编辑';
+    return t('config.composedArrayUnsupported');
   }
   const schema = itemSchema.value;
   if (!schema || Object.keys(schema).length === 0) {
-    return '数组项未声明统一 Schema，暂不支持编辑';
+    return t('config.arraySchemaMissing');
   }
   if (arrayValue.value.some((item) => !schemaAcceptsValue(schema, item))) {
-    return '数组包含与统一 Schema 不匹配的项目，暂不支持编辑';
+    return t('config.arrayItemMismatch');
   }
   return '';
 });
@@ -159,21 +172,20 @@ function defaultValue(schema: JsonRecord): unknown {
   }
 }
 
-function updateString(event: Event): void {
-  emit('update:value', (event.target as HTMLInputElement).value);
+function updateString(value: string): void {
+  emit('update:value', value);
 }
 
-function updateNumber(event: Event): void {
-  const input = event.target as HTMLInputElement;
-  emit('update:value', input.value === '' || Number.isNaN(input.valueAsNumber) ? null : input.valueAsNumber);
+function updateNumber(value: number | undefined): void {
+  emit('update:value', value ?? null);
 }
 
-function updateBoolean(event: Event): void {
-  emit('update:value', (event.target as HTMLInputElement).checked);
+function updateBoolean(value: string | number | boolean): void {
+  emit('update:value', value === true);
 }
 
-function updateEnum(event: Event): void {
-  const encoded = (event.target as HTMLSelectElement).value;
+function updateEnum(value: unknown): void {
+  const encoded = String(value ?? '');
   try {
     emit('update:value', JSON.parse(encoded));
   } catch {
@@ -204,44 +216,58 @@ function enumValue(value: unknown): string {
         :value="objectValue[key]"
         @update:value="updateObject(key, $event)"
       />
-      <p v-if="properties.length === 0" class="config-muted">空对象</p>
+      <p v-if="properties.length === 0" class="config-muted">{{ t('config.emptyObject') }}</p>
     </div>
 
     <div v-else-if="fieldType === 'array' && arrayEditingSupported" class="config-array">
       <div v-for="(item, index) in arrayValue" :key="index" class="config-array-item">
         <ConfigValueEditor
           :depth="depth + 1"
-          :label="`条目 ${index + 1}`"
+          :label="t('config.itemLabel', { index: index + 1 })"
           :schema="itemSchema ?? {}"
           :ui-schema="itemUiSchema"
           :value="item"
           @update:value="updateArray(index, $event)"
         />
-        <button class="config-remove" type="button" @click="removeArrayItem(index)">删除</button>
+        <a-button class="config-remove" size="mini" status="danger" @click="removeArrayItem(index)">
+          <template #icon><IconDelete /></template>
+          {{ t('common.delete') }}
+        </a-button>
       </div>
-      <button class="config-add" type="button" @click="addArrayItem">添加条目</button>
+      <a-button class="config-add" size="mini" @click="addArrayItem">
+        <template #icon><IconPlus /></template>
+        {{ t('config.addItem') }}
+      </a-button>
     </div>
     <output v-else-if="fieldType === 'array'" class="config-unsupported">
-      {{ arrayUnsupportedReason }}<span v-if="arrayValue.length">（当前 {{ arrayValue.length }} 项）</span>
+      {{ arrayUnsupportedReason }}<span v-if="arrayValue.length">{{ t('config.itemCount', { count: arrayValue.length }) }}</span>
     </output>
 
-    <select v-else-if="enumValues.length > 0" :value="enumValue(value)" @change="updateEnum">
-      <option v-for="option in enumValues" :key="enumValue(option)" :value="enumValue(option)">
+    <a-select v-else-if="enumValues.length > 0" :model-value="enumValue(value)" @change="updateEnum">
+      <a-option v-for="option in enumValues" :key="enumValue(option)" :value="enumValue(option)">
         {{ option }}
-      </option>
-    </select>
-    <label v-else-if="fieldType === 'boolean'" class="config-checkbox">
-      <input :checked="value === true" type="checkbox" @change="updateBoolean" />
-      <span>{{ value === true ? '已启用' : '已停用' }}</span>
-    </label>
-    <input
+      </a-option>
+    </a-select>
+    <div v-else-if="fieldType === 'boolean'" class="config-checkbox">
+      <a-switch size="small" :model-value="value === true" @change="updateBoolean" />
+      <span>{{ value === true ? t('config.enabled') : t('config.disabled') }}</span>
+    </div>
+    <a-input-number
       v-else-if="fieldType === 'integer' || fieldType === 'number'"
-      :value="typeof value === 'number' ? value : ''"
-      type="number"
-      @input="updateNumber"
+      :model-value="typeof value === 'number' ? value : 0"
+      @change="updateNumber"
     />
-    <input v-else-if="fieldType === 'string'" :value="typeof value === 'string' ? value : ''" :type="sensitive ? 'password' : 'text'" @input="updateString" />
-    <output v-else class="config-unsupported">{{ value === null ? 'null' : '暂不支持编辑' }}</output>
+    <a-input-password
+      v-else-if="fieldType === 'string' && sensitive"
+      :model-value="typeof value === 'string' ? value : ''"
+      @input="updateString"
+    />
+    <a-input
+      v-else-if="fieldType === 'string'"
+      :model-value="typeof value === 'string' ? value : ''"
+      @input="updateString"
+    />
+    <output v-else class="config-unsupported">{{ value === null ? 'null' : t('config.unsupported') }}</output>
   </section>
 </template>
 
@@ -253,7 +279,7 @@ function enumValue(value: unknown): string {
 }
 
 .config-field-nested {
-  border-left: 2px solid #d8dfda;
+  border-left: 2px solid var(--mcnp-border);
   padding-left: 0.75rem;
 }
 
@@ -265,25 +291,24 @@ function enumValue(value: unknown): string {
 }
 
 .config-field-heading label {
-  color: #36453c;
+  color: var(--mcnp-text-muted);
   font-size: 0.84rem;
   font-weight: 650;
 }
 
 code {
-  color: #718078;
+  color: var(--mcnp-text-faint);
   font-size: 0.72rem;
 }
 
-input:not([type='checkbox']),
-select {
+.config-field :deep(.arco-input-wrapper),
+.config-field :deep(.arco-select-view) {
   width: 100%;
   min-height: 2.25rem;
-  border: 1px solid #c8d0cb;
+  border-color: var(--mcnp-border);
   border-radius: 4px;
-  padding: 0 0.65rem;
-  background: #ffffff;
-  color: #18201b;
+  background: var(--mcnp-surface);
+  color: var(--mcnp-text);
 }
 
 .config-group,
@@ -295,52 +320,28 @@ select {
 .config-array-item {
   display: grid;
   gap: 0.5rem;
-  border: 1px solid #d8dfda;
+  border: 1px solid var(--mcnp-border);
   border-radius: 4px;
   padding: 0.65rem;
-  background: #ffffff;
+  background: var(--mcnp-surface-raised);
 }
 
 .config-checkbox {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  color: #526159;
+  color: var(--mcnp-text-muted);
   font-size: 0.82rem;
-}
-
-.config-checkbox input {
-  width: 1rem;
-  height: 1rem;
-  accent-color: #206b3a;
 }
 
 .config-add,
 .config-remove {
   width: fit-content;
-  min-height: 2rem;
-  border: 1px solid #c7d0ca;
-  border-radius: 4px;
-  padding: 0 0.65rem;
-  background: #ffffff;
-  color: #2f6f95;
-  cursor: pointer;
-  font-size: 0.78rem;
-  font-weight: 650;
-}
-
-.config-remove {
-  color: #9a2f29;
-}
-
-.config-add:hover,
-.config-remove:hover {
-  border-color: currentColor;
 }
 
 .config-muted,
 .config-unsupported {
-  color: #718078;
+  color: var(--mcnp-text-faint);
   font-size: 0.8rem;
 }
 

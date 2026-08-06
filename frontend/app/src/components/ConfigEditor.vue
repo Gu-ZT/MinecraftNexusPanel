@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { Button as AButton, Checkbox as ACheckbox } from '@arco-design/web-vue';
+import { IconCheck, IconRefresh, IconSave } from '@arco-design/web-vue/es/icon';
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 import type {
   ConfigDocument,
@@ -9,6 +12,8 @@ import type {
 } from '@mcnp/api-client';
 
 import ConfigValueEditor from './ConfigValueEditor.vue';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   client: PanelApiClient;
@@ -70,7 +75,7 @@ async function loadDocuments(): Promise<void> {
     }
   } catch (error) {
     if (generation === workspaceGeneration && selection === documentGeneration) {
-      errorMessage.value = describeError(error, '无法读取配置文档');
+      errorMessage.value = describeError(error, t('error.readDocuments'));
     }
   } finally {
     if (generation === workspaceGeneration && selection === documentGeneration) {
@@ -106,10 +111,10 @@ async function scanDocuments(): Promise<void> {
       allowLossy.value = false;
       issues.value = [];
     }
-    noticeMessage.value = '配置文档已重新扫描';
+    noticeMessage.value = t('notice.documentsScanned');
   } catch (error) {
     if (generation === workspaceGeneration && selection === documentGeneration) {
-      errorMessage.value = describeError(error, '配置扫描失败');
+      errorMessage.value = describeError(error, t('error.scanDocuments'));
     }
   } finally {
     if (generation === workspaceGeneration && selection === documentGeneration) {
@@ -134,7 +139,7 @@ async function loadDocument(documentId: string, generation = workspaceGeneration
     issues.value = [];
   } catch (error) {
     if (generation === workspaceGeneration && selection === documentGeneration) {
-      errorMessage.value = describeError(error, '无法读取配置文档');
+      errorMessage.value = describeError(error, t('error.readDocument'));
     }
   } finally {
     if (generation === workspaceGeneration && selection === documentGeneration) {
@@ -157,10 +162,10 @@ async function validateDocuments(): Promise<void> {
       return;
     }
     issues.value = result.issues;
-    noticeMessage.value = result.valid ? '配置校验通过' : '配置校验发现问题';
+    noticeMessage.value = result.valid ? t('notice.validationPassed') : t('notice.validationFailed');
   } catch (error) {
     if (generation === workspaceGeneration) {
-      errorMessage.value = describeError(error, '配置校验失败');
+      errorMessage.value = describeError(error, t('error.validateDocuments'));
     }
   } finally {
     if (generation === workspaceGeneration) {
@@ -189,9 +194,9 @@ async function saveDocument(): Promise<void> {
     selectedDocument.value = updated;
     draft.value = cloneValues(updated.values);
     allowLossy.value = false;
-    noticeMessage.value = '配置已保存';
+    noticeMessage.value = t('notice.configSaved');
   } catch (error) {
-    errorMessage.value = describeError(error, '配置保存失败');
+    errorMessage.value = describeError(error, t('error.saveDocument'));
   } finally {
     saving.value = false;
   }
@@ -207,27 +212,33 @@ function cloneValues(values: Record<string, unknown>): Record<string, unknown> {
 
 function describeError(error: unknown, fallback: string): string {
   if (error instanceof Error) {
-    return `${fallback}：${error.message}`;
+    return `${fallback}: ${error.message}`;
   }
   return fallback;
 }
 </script>
 
 <template>
-  <section class="config-editor" aria-label="配置编辑器">
+  <section class="config-editor" :aria-label="t('config.editorAria')">
     <header class="config-editor-head">
       <div>
-        <h2>结构化配置</h2>
-        <p>{{ selectedDocument?.path ?? '选择配置文档' }}</p>
+        <h2>{{ t('config.title') }}</h2>
+        <p>{{ selectedDocument?.path ?? t('config.selectDocument') }}</p>
       </div>
       <div class="config-actions">
-        <button type="button" :disabled="loading || saving" @click="scanDocuments">重新扫描</button>
-        <button type="button" :disabled="loading || saving || documents.length === 0" @click="validateDocuments">校验</button>
+        <a-button size="small" :disabled="loading || saving" @click="scanDocuments">
+          <template #icon><IconRefresh /></template>
+          {{ t('config.rescan') }}
+        </a-button>
+        <a-button size="small" :disabled="loading || saving || documents.length === 0" @click="validateDocuments">
+          <template #icon><IconCheck /></template>
+          {{ t('config.validate') }}
+        </a-button>
       </div>
     </header>
 
     <div class="config-editor-body">
-      <aside class="config-documents" aria-label="配置文档列表">
+      <aside class="config-documents" :aria-label="t('config.documentsAria')">
         <button
           v-for="document in documents"
           :key="document.documentId"
@@ -238,16 +249,18 @@ function describeError(error: unknown, fallback: string): string {
           @click="loadDocument(document.documentId)"
         >
           <strong>{{ document.path }}</strong>
-          <small>{{ document.format }} · revision {{ document.revision.slice(0, 8) }}</small>
+          <small>
+            {{ t('config.formatRevision', { format: document.format, revision: document.revision.slice(0, 8) }) }}
+          </small>
         </button>
-        <p v-if="!loading && documents.length === 0" class="config-muted">暂无结构化配置</p>
+        <p v-if="!loading && documents.length === 0" class="config-muted">{{ t('config.emptyDocuments') }}</p>
       </aside>
 
       <div class="config-form">
         <p v-if="errorMessage" class="form-error">{{ errorMessage }}</p>
         <p v-else-if="noticeMessage" class="notice">{{ noticeMessage }}</p>
         <p v-if="selectedDocument?.unmapped.length" class="config-warning">
-          未映射字段：{{ selectedDocument.unmapped.join('、') }}
+          {{ t('config.unmappedFields', { fields: selectedDocument.unmapped.join(', ') }) }}
         </p>
 
         <div v-if="selectedDocument" class="config-fields">
@@ -261,26 +274,28 @@ function describeError(error: unknown, fallback: string): string {
             @update:value="updateDraft(key, $event)"
           />
         </div>
-        <p v-else-if="!loading" class="config-muted">选择一个配置文档开始编辑。</p>
+        <p v-else-if="!loading" class="config-muted">{{ t('config.selectPrompt') }}</p>
 
-        <label v-if="selectedDocument?.lossy" class="lossy-confirmation">
-          <input v-model="allowLossy" type="checkbox" />
-          <span>允许规范化写回</span>
-        </label>
-        <button
+        <a-checkbox v-if="selectedDocument?.lossy" v-model="allowLossy" class="lossy-confirmation">
+          {{ t('config.allowLossy') }}
+        </a-checkbox>
+        <a-button
           v-if="selectedDocument"
           class="config-save"
-          type="button"
+          type="primary"
+          size="small"
+          :loading="saving"
           :disabled="saving || loading || (requiresLossyConfirmation && !allowLossy)"
           @click="saveDocument"
         >
-          {{ saving ? '正在保存' : '保存配置' }}
-        </button>
+          <template #icon><IconSave /></template>
+          {{ saving ? t('config.saving') : t('config.save') }}
+        </a-button>
 
         <ul v-if="issues.length" class="config-issues">
           <li v-for="issue in issues" :key="`${issue.code}-${issue.path}-${issue.field}`">
             <strong>{{ issue.severity }}</strong>
-            <span>{{ issue.path }}：{{ issue.message }}</span>
+            <span>{{ issue.path }}: {{ issue.message }}</span>
           </li>
         </ul>
       </div>
@@ -294,7 +309,7 @@ function describeError(error: unknown, fallback: string): string {
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  background: #f7f8f7;
+  background: var(--mcnp-surface);
 }
 
 .config-editor-head {
@@ -303,20 +318,20 @@ function describeError(error: unknown, fallback: string): string {
   justify-content: space-between;
   gap: 1rem;
   padding: 0.85rem 1rem;
-  border-bottom: 1px solid #d7dcd8;
-  background: #ffffff;
+  border-bottom: 1px solid var(--mcnp-border);
+  background: var(--mcnp-surface);
 }
 
 .config-editor-head h2 {
   margin: 0;
-  color: #18201b;
+  color: var(--mcnp-text);
   font-size: 0.95rem;
 }
 
 .config-editor-head p {
   margin: 0.3rem 0 0;
   overflow: hidden;
-  color: #637068;
+  color: var(--mcnp-text-faint);
   font-size: 0.78rem;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -328,36 +343,14 @@ function describeError(error: unknown, fallback: string): string {
   gap: 0.5rem;
 }
 
-.config-actions button,
-.config-save {
-  min-height: 2.15rem;
-  border: 1px solid #c7d0ca;
-  border-radius: 4px;
-  padding: 0 0.7rem;
-  background: #ffffff;
-  color: #2f6f95;
-  cursor: pointer;
-  font-size: 0.78rem;
-  font-weight: 650;
-}
-
-.config-actions button:hover:not(:disabled),
-.config-save:hover:not(:disabled) {
-  border-color: #2f7d4a;
-  color: #1f6239;
-}
-
-.config-actions button:disabled,
-.config-save:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
 .config-save {
   width: fit-content;
-  border-color: #206b3a;
-  background: #206b3a;
-  color: #ffffff;
+}
+
+.config-actions :deep(.arco-btn) {
+  border-color: var(--mcnp-border);
+  background: var(--mcnp-surface-raised);
+  color: var(--mcnp-text-muted);
 }
 
 .config-editor-body {
@@ -374,8 +367,8 @@ function describeError(error: unknown, fallback: string): string {
   min-width: 0;
   overflow: auto;
   padding: 0.75rem;
-  border-right: 1px solid #d7dcd8;
-  background: #fbfcfb;
+  border-right: 1px solid var(--mcnp-border);
+  background: var(--mcnp-surface-raised);
 }
 
 .config-document {
@@ -383,18 +376,22 @@ function describeError(error: unknown, fallback: string): string {
   gap: 0.3rem;
   width: 100%;
   min-width: 0;
-  border: 1px solid #c7d0ca;
+  border: 1px solid transparent;
   border-radius: 4px;
   padding: 0.65rem;
-  background: #ffffff;
-  color: #26352b;
+  background: transparent;
+  color: var(--mcnp-text);
   cursor: pointer;
   text-align: left;
 }
 
 .config-document.selected {
-  border-color: #2f7d4a;
-  background: #eef7f1;
+  border-color: var(--mcnp-primary);
+  background: var(--mcnp-primary-soft);
+}
+
+.config-document:hover:not(:disabled) {
+  background: var(--mcnp-surface-hover);
 }
 
 .config-document strong,
@@ -405,12 +402,12 @@ function describeError(error: unknown, fallback: string): string {
 }
 
 .config-document strong {
-  color: #18201b;
+  color: var(--mcnp-text);
   font-size: 0.82rem;
 }
 
 .config-document small {
-  color: #637068;
+  color: var(--mcnp-text-faint);
   font-size: 0.72rem;
 }
 
@@ -438,35 +435,31 @@ function describeError(error: unknown, fallback: string): string {
 }
 
 .form-error {
-  background: #fde4e2;
-  color: #8f2b25;
+  background: var(--mcnp-danger-soft);
+  color: var(--mcnp-danger);
 }
 
 .notice {
-  background: #e1f2ea;
-  color: #1f6239;
+  background: var(--mcnp-success-soft);
+  color: var(--mcnp-success);
 }
 
 .config-warning {
-  background: #fff3cf;
-  color: #8a5a00;
+  background: var(--mcnp-warning-soft);
+  color: var(--mcnp-warning);
 }
 
 .lossy-confirmation {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: #8a5a00;
+  color: var(--mcnp-warning);
   font-size: 0.8rem;
-}
-
-.lossy-confirmation input {
-  accent-color: #8a5a00;
 }
 
 .config-muted {
   margin: 0;
-  color: #718078;
+  color: var(--mcnp-text-faint);
   font-size: 0.82rem;
 }
 
@@ -481,15 +474,15 @@ function describeError(error: unknown, fallback: string): string {
 .config-issues li {
   display: grid;
   gap: 0.25rem;
-  border-left: 3px solid #c7d0ca;
+  border-left: 3px solid var(--mcnp-border);
   padding: 0.45rem 0.6rem;
-  background: #ffffff;
-  color: #526159;
+  background: var(--mcnp-surface-raised);
+  color: var(--mcnp-text-muted);
   font-size: 0.78rem;
 }
 
 .config-issues li strong {
-  color: #8a5a00;
+  color: var(--mcnp-warning);
   font-size: 0.7rem;
 }
 
@@ -506,7 +499,7 @@ function describeError(error: unknown, fallback: string): string {
   .config-documents {
     max-height: 12rem;
     border-right: 0;
-    border-bottom: 1px solid #d7dcd8;
+    border-bottom: 1px solid var(--mcnp-border);
   }
 }
 </style>

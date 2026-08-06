@@ -177,6 +177,10 @@
 
 - [ ] 由 OpenAPI 生成共享 TypeScript API Client。
 - [ ] 完成 WebUI 全部管理页面和权限驱动交互。
+  - [x] 实例工作区采用参考 MCSManager 信息密度的独立实现，提供紧凑顶栏、Core/实例列表、控制台和结构化配置视图。
+  - [x] 使用 Vue Router 将 Core、实例及 `console`/`config` 视图写入 URL，并支持前进、后退和直接访问恢复选择。
+  - [x] 接入 Arco Design 控件和图标；支持跟随系统、浅色、深色三种主题偏好及手动持久化切换。
+  - [x] 接入 Vue I18n，并从 `frontend/app/src/locales/<语言代码>.json` 自动发现语言包；新增 JSON 文件无需修改注册代码。
 - [ ] Desktop sidecar、托盘、开机启动和安全 WebUI 暴露。
   - [x] Windows x64 Tauri NSIS 安装包内置共享 Vue 前端和 release `mcnp all` sidecar，最终用户无需安装 Node.js、Rust、pnpm 或单独下载 MCNP。
   - [x] Desktop 首次启动生成并持久化 Panel 主密钥、Core PSK 和随机首位管理员密码，登录页显示引导凭据，成功登录后删除引导密码。
