@@ -47,3 +47,7 @@ Linux/macOS 安装包仍属于后续发布工作。
 
 Windows Desktop 会把原生 refresh token 保存到 Windows Credential Manager，应用重启时通过
 Panel 刷新接口换取短期 access token；登出时删除该凭据。其他平台的安全存储仍需单独接入。
+
+Windows x64 发布工作流会生成明确标记为 unsigned 的 NSIS 安装包和 `SHA256SUMS.txt`；在
+Authenticode 代码签名完成前不得将其描述为已签名版本。详见
+[`docs/operations/desktop-release.md`](../../docs/operations/desktop-release.md)。

@@ -171,6 +171,8 @@ data `logs` directory with one rotated file, and the settings page can open that
 Native refresh tokens are stored in Windows Credential Manager and rotated through the Panel
 refresh endpoint after restart; the short-lived access token remains session-scoped.
 See [`apps/desktop/README.md`](apps/desktop/README.md) and
-[`docs/operations/initial-administrator.md`](docs/operations/initial-administrator.md).
+[`docs/operations/initial-administrator.md`](docs/operations/initial-administrator.md). Windows
+release artifacts and checksum rules are documented in
+[`docs/operations/desktop-release.md`](docs/operations/desktop-release.md).
 
 See [PLAN.md](PLAN.md) and the [API documentation](docs/api/README.md) for the protocol design and product scope.

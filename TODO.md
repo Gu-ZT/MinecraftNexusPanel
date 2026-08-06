@@ -209,7 +209,8 @@
 
 - [ ] Windows、Linux、macOS 安装包、校验和、签名和自动更新。
   - [x] Windows x64 NSIS 安装包已能构建，包含 `mcnp.exe` sidecar；WebView2 使用系统运行时，当前精简产物约 6.5 MB。
-  - [ ] Linux/macOS 安装包、发布校验和、代码签名和自动更新。
+  - [x] Windows x64 标签/手动打包工作流校验 Cargo/Tauri 版本，发布明确标记为 unsigned 的 NSIS 和 `SHA256SUMS.txt`，标签发布会幂等更新同名 GitHub Release。
+  - [ ] Linux/macOS/Windows ARM64 安装包、代码签名和自动更新。
 - [ ] Android/iOS 构建、签名、商店发布与设备兼容性验证。
 - [ ] Docker 镜像、多架构清单和部署示例。
 - [ ] Paper、Velocity、Fabric 模板市场与扩展元数据生态。

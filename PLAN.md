@@ -296,7 +296,7 @@ stateDiagram-v2
 
 ### M7：发布与生态
 
-- Windows x64 NSIS 安装包已可构建并包含 Core/Panel sidecar，WebView2 使用目标系统运行时而不进入安装包；Linux/macOS 安装包、Docker 镜像、自动更新、校验和发布流程及签名仍待完成。
+- Windows x64 NSIS 安装包已可构建并包含 Core/Panel sidecar，WebView2 使用目标系统运行时而不进入安装包；标签/手动工作流会校验 Cargo/Tauri 版本并发布明确标记为 unsigned 的安装包和 SHA-256 清单。Linux/macOS/Windows ARM64 安装包、Docker 镜像、自动更新和代码签名仍待完成。
 - Vanilla/Paper/Velocity/Fabric/NeoForge/Forge/Purpur/Pufferfish/Folia/Leaf/Magma/Sponge/Arclight/CatServer/Waterfall/BungeeCord/Lightfall/Geyser/Bedrock Dedicated Server/PocketMine-MP/Nukkit/Cloudburst Nukkit 常用模板和版本元数据提供方。
 - 导入/导出、迁移、灾难恢复和兼容性矩阵。
 

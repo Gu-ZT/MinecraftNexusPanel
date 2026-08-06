@@ -65,6 +65,8 @@ jobs:
         run: pnpm api:lint
       - name: Type-check Vue workspaces
         run: pnpm typecheck
+      - name: Test release scripts
+        run: node --test scripts/create-sha256.test.mjs
       - name: Build Vue application
         run: pnpm build
       - name: Check Rust formatting

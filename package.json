@@ -9,6 +9,7 @@
     "api:lint": "redocly lint docs/api/openapi.yaml",
     "build": "pnpm --filter @mcnp/app build",
     "desktop:build": "node scripts/run-tauri.mjs apps/desktop build",
+    "desktop:checksum": "node scripts/create-sha256.mjs target/release/bundle/nsis",
     "desktop:dev": "node scripts/run-tauri.mjs apps/desktop dev",
     "dev": "pnpm --filter @mcnp/app dev",
     "mobile:android": "node scripts/run-tauri.mjs apps/mobile android dev",

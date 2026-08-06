@@ -1,0 +1,98 @@
+name: Desktop Package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  NODE_VERSION: "24"
+
+jobs:
+  windows-x64:
+    name: Windows x64 unsigned NSIS
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 11.17.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: .
+          key: windows-x86_64-desktop-package
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Validate package version
+        id: version
+        shell: pwsh
+        run: |
+          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
+          $desktop = $metadata.packages | Where-Object { $_.name -eq 'mcnp-desktop' }
+          $tauri = Get-Content apps/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          if (-not $desktop -or $desktop.version -ne $tauri.version) {
+            throw "Cargo and Tauri Desktop versions must match"
+          }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$($desktop.version)") {
+            throw "Tag $env:GITHUB_REF_NAME must equal v$($desktop.version)"
+          }
+          "version=$($desktop.version)" >> $env:GITHUB_OUTPUT
+      - name: Test checksum manifest generator
+        run: node --test scripts/create-sha256.test.mjs
+      - name: Check Desktop Rust formatting
+        run: cargo fmt --all -- --check
+      - name: Lint Desktop Rust targets
+        run: cargo clippy -p mcnp-desktop --all-targets --locked -- -D warnings
+      - name: Test Desktop Rust targets
+        run: cargo test -p mcnp-desktop --locked
+      - name: Build unsigned Desktop package
+        run: pnpm desktop:build
+      - name: Normalize artifact name and create checksum
+        shell: pwsh
+        run: |
+          $directory = 'target/release/bundle/nsis'
+          $source = @(Get-ChildItem $directory -Filter '*setup.exe')
+          if ($source.Count -ne 1) {
+            throw "Expected exactly one NSIS installer, found $($source.Count)"
+          }
+          $target = Join-Path $directory "MCNP-Desktop_${{ steps.version.outputs.version }}_windows-x64-unsigned-setup.exe"
+          Move-Item -LiteralPath $source[0].FullName -Destination $target
+          node scripts/create-sha256.mjs $directory
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcnp-desktop-${{ steps.version.outputs.version }}-windows-x64-unsigned
+          path: |
+            target/release/bundle/nsis/*-unsigned-setup.exe
+            target/release/bundle/nsis/SHA256SUMS.txt
+          if-no-files-found: error
+      - name: Create or update tag release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $version = '${{ steps.version.outputs.version }}'
+          $installer = Get-ChildItem target/release/bundle/nsis -Filter '*-unsigned-setup.exe'
+          $checksum = Get-Item target/release/bundle/nsis/SHA256SUMS.txt
+          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --repo $env:GITHUB_REPOSITORY --verify-tag --draft --title "MCNP Desktop $version" --notes "Unsigned Windows x64 preview package. Verify SHA256SUMS.txt before installation."
+          }
+          gh release upload $tag $installer.FullName $checksum.FullName --repo $env:GITHUB_REPOSITORY --clobber
+          gh release edit $tag --repo $env:GITHUB_REPOSITORY --draft=false --latest

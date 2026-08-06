@@ -163,6 +163,7 @@ sidecar。设置页可管理当前用户登录时启动；由登录项启动时�
 Windows Desktop 会将原生刷新令牌保存到 Windows Credential Manager，重启后通过 Panel 刷新接口
 换取短期访问令牌；短期 access token 仍只保留在当前 WebView 会话中。详见
 [`apps/desktop/README.md`](apps/desktop/README.md) 和
-[`docs/operations/initial-administrator.md`](docs/operations/initial-administrator.md)。
+[`docs/operations/initial-administrator.md`](docs/operations/initial-administrator.md)。Windows 发布产物和
+校验和规则见 [`docs/operations/desktop-release.md`](docs/operations/desktop-release.md)。
 
 协议设计和产品范围参见 [PLAN.md](PLAN.md) 与 [API 文档](docs/api/README.md)。
