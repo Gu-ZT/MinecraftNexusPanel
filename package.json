@@ -8,10 +8,10 @@
   "scripts": {
     "api:lint": "redocly lint docs/api/openapi.yaml",
     "build": "pnpm --filter @mcnp/app build",
-    "desktop:build": "pnpm --dir apps/desktop/src-tauri exec tauri build",
-    "desktop:dev": "pnpm --dir apps/desktop/src-tauri exec tauri dev",
+    "desktop:build": "node scripts/run-tauri.mjs apps/desktop build",
+    "desktop:dev": "node scripts/run-tauri.mjs apps/desktop dev",
     "dev": "pnpm --filter @mcnp/app dev",
-    "mobile:android": "pnpm --dir apps/mobile/src-tauri exec tauri android dev",
+    "mobile:android": "node scripts/run-tauri.mjs apps/mobile android dev",
     "typecheck": "pnpm -r --if-present typecheck"
   },
   "devDependencies": {
