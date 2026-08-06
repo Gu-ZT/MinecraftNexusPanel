@@ -166,7 +166,8 @@ the tray icon or choosing `Open MCNP` restores the window; `Quit MCNP` explicitl
 the sidecar. A second launch is forwarded to the existing process and restores its window instead of
 starting another sidecar. The tray tooltip reports the active loopback Panel address selected at startup.
 The local settings page can register MCNP for the current user's login; an autostart launch remains
-hidden in the tray until the user opens it.
+hidden in the tray until the user opens it. Sidecar stdout/stderr is collected under the application
+data `logs` directory with one rotated file, and the settings page can open that directory.
 See [`apps/desktop/README.md`](apps/desktop/README.md) and
 [`docs/operations/initial-administrator.md`](docs/operations/initial-administrator.md).
 

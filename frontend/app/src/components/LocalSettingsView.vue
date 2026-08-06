@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import {
   Option as AOption,
+  Button as AButton,
   Radio as ARadio,
   RadioGroup as ARadioGroup,
   Select as ASelect,
   Switch as ASwitch,
 } from '@arco-design/web-vue';
-import { IconComputer, IconLanguage, IconMoon, IconPoweroff, IconSettings, IconSun } from '@arco-design/web-vue/es/icon';
+import { IconComputer, IconFolder, IconLanguage, IconMoon, IconPoweroff, IconSettings, IconSun } from '@arco-design/web-vue/es/icon';
 import { useI18n } from 'vue-i18n';
 
 import type { PlatformKind } from '@mcnp/platform';
@@ -20,10 +21,12 @@ defineProps<{
   apiBaseUrl: string;
   autostartEnabled: boolean | null;
   autostartPending: boolean;
+  logsPending: boolean;
 }>();
 
 const emit = defineEmits<{
   changeAutostart: [enabled: boolean];
+  openLogs: [];
 }>();
 
 const { t } = useI18n();
@@ -45,6 +48,10 @@ function changeAutostart(value: string | number | boolean): void {
   if (typeof value === 'boolean') {
     emit('changeAutostart', value);
   }
+}
+
+function openLogs(): void {
+  emit('openLogs');
 }
 </script>
 
@@ -98,6 +105,16 @@ function changeAutostart(value: string | number | boolean): void {
           :disabled="autostartPending || autostartEnabled === null"
           @change="changeAutostart"
         />
+      </div>
+      <div class="settings-control">
+        <div>
+          <strong>{{ t('settings.logs') }}</strong>
+          <small>{{ t('settings.logsHint') }}</small>
+        </div>
+        <a-button type="secondary" :loading="logsPending" @click="openLogs">
+          <template #icon><IconFolder /></template>
+          {{ t('settings.openLogs') }}
+        </a-button>
       </div>
     </section>
 

@@ -1,5 +1,14 @@
+//! Desktop 本地 Core/Panel sidecar 的启动、秘密引导和生命周期管理。
+//!
+//! sidecar 由 Tauri 进程托管，使用动态 loopback 端口和仅存在于当前用户数据目录的秘密
+//! 启动；其输出管道由 `desktop_logs` 模块异步收集，避免桌面壳吞掉故障诊断信息。
+
 use std::fs;
 use std::io;
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Read;
+use std::io::Write;
 use std::net::Ipv4Addr;
 use std::net::SocketAddr;
 use std::net::TcpListener;
@@ -11,7 +20,9 @@ use std::path::PathBuf;
 use std::process::Child;
 use std::process::Command;
 use std::process::Stdio;
+use std::sync::Arc;
 use std::sync::Mutex;
+use std::thread;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -24,6 +35,9 @@ use tauri::AppHandle;
 use tauri::Manager;
 use tauri::Runtime;
 use thiserror::Error;
+
+use crate::desktop_logs::LOG_DIRECTORY_NAME;
+use crate::desktop_logs::prepare_sidecar_log;
 
 const DATA_DIRECTORY_NAME: &str = "data";
 const SECRETS_FILE_NAME: &str = "desktop-secrets.json";
@@ -84,6 +98,11 @@ impl DesktopRuntime {
         let core_address = select_loopback_port(CORE_PORT_START)?;
         let data_directory = app_data_directory.join(DATA_DIRECTORY_NAME);
         let sidecar_path = locate_sidecar(app)?;
+        let (log_path, log_file) =
+            prepare_sidecar_log(&app_data_directory).map_err(|source| DesktopRuntimeError::Io {
+                path: app_data_directory.join(LOG_DIRECTORY_NAME),
+                source,
+            })?;
         let mut child = spawn_sidecar(
             &sidecar_path,
             &app_data_directory,
@@ -92,6 +111,11 @@ impl DesktopRuntime {
             core_address,
             &secrets,
         )?;
+        if let Err(error) = attach_sidecar_logs(&mut child, log_path, log_file) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
+        }
 
         if let Err(error) = wait_for_panel(&mut child, panel_address) {
             let _ = child.kill();
@@ -278,8 +302,8 @@ fn spawn_sidecar(
         .env("MCNP_PANEL_MASTER_KEY", &secrets.panel_master_key)
         .env("MCNP_LOG_FILTER", "info")
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     if let Some(password) = &secrets.initial_admin_password {
         command.env(
             "MCNP_INITIAL_ADMIN_USERNAME",
@@ -296,6 +320,54 @@ fn spawn_sidecar(
             path: sidecar_path.to_path_buf(),
             source,
         })
+}
+
+/// 将 sidecar 两条输出管道交给独立线程消费，避免子进程因缓冲区填满而停顿。
+fn attach_sidecar_logs(
+    child: &mut Child,
+    log_path: PathBuf,
+    log_file: fs::File,
+) -> Result<(), DesktopRuntimeError> {
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| DesktopRuntimeError::LogPipe {
+            path: log_path.clone(),
+            stream: "stdout",
+        })?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| DesktopRuntimeError::LogPipe {
+            path: log_path.clone(),
+            stream: "stderr",
+        })?;
+    let shared_log_file = Arc::new(Mutex::new(log_file));
+    spawn_log_reader(stdout, Arc::clone(&shared_log_file), "stdout");
+    spawn_log_reader(stderr, shared_log_file, "stderr");
+    Ok(())
+}
+
+/// 在后台线程中转发一条 sidecar 输出流，并串行写入共享日志文件。
+fn spawn_log_reader<R: Read + Send + 'static>(
+    stream: R,
+    log_file: Arc<Mutex<fs::File>>,
+    stream_name: &'static str,
+) {
+    let _ = thread::Builder::new()
+        .name(format!("mcnp-sidecar-{stream_name}"))
+        .spawn(move || {
+            for line in BufReader::new(stream).lines() {
+                let Ok(line) = line else {
+                    break;
+                };
+                let Ok(mut file) = log_file.lock() else {
+                    break;
+                };
+                let _ = writeln!(file, "[{stream_name}] {line}");
+                let _ = file.flush();
+            }
+        });
 }
 
 fn wait_for_panel(child: &mut Child, address: SocketAddr) -> Result<(), DesktopRuntimeError> {
@@ -359,6 +431,14 @@ pub enum DesktopRuntimeError {
     /// sidecar 启动后立即退出。
     #[error("mcnp sidecar exited before Panel became ready with code {0:?}")]
     SidecarExited(Option<i32>),
+    /// sidecar 输出管道未按预期创建。
+    #[error("unable to capture sidecar {stream} output in {path}")]
+    LogPipe {
+        /// 日志文件路径。
+        path: PathBuf,
+        /// 输出流名称。
+        stream: &'static str,
+    },
     /// Panel 在限定时间内没有监听。
     #[error("Panel did not become ready at {address}")]
     PanelStartupTimeout {

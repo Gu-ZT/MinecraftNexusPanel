@@ -2,6 +2,7 @@
 
 mod desktop_autostart;
 mod desktop_instance;
+mod desktop_logs;
 mod desktop_runtime;
 mod desktop_tray;
 
@@ -20,11 +21,13 @@ pub fn run() -> Result<(), Error> {
     Builder::default()
         .plugin(desktop_instance::plugin())
         .plugin(desktop_autostart::plugin())
+        .plugin(desktop_logs::plugin())
         .invoke_handler(tauri::generate_handler![
             desktop_runtime,
             complete_initial_admin,
             desktop_autostart::desktop_autostart_enabled,
-            desktop_autostart::set_desktop_autostart_enabled
+            desktop_autostart::set_desktop_autostart_enabled,
+            desktop_logs::open_desktop_log_directory
         ])
         .setup(|app| {
             let runtime = DesktopRuntime::start(app.handle()).map_err(setup_error)?;

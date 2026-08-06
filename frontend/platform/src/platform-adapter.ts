@@ -13,4 +13,5 @@ export interface PlatformAdapter {
   completeInitialAdmin?: () => Promise<void>;
   isAutostartEnabled?: () => Promise<boolean>;
   setAutostartEnabled?: (enabled: boolean) => Promise<boolean>;
+  openLogDirectory?: () => Promise<void>;
 }

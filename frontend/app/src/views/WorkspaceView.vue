@@ -54,6 +54,7 @@ const loginPending = ref(false);
 const actionPending = ref<string | null>(null);
 const autostartEnabled = ref<boolean | null>(null);
 const autostartPending = ref(false);
+const logsPending = ref(false);
 const errorMessage = ref('');
 const noticeMessage = ref('');
 const panelApiClient = shallowRef<PanelApiClient>(createClient(application.platform.apiBaseUrl));
@@ -230,6 +231,23 @@ async function changeAutostart(enabled: boolean): Promise<void> {
   }
 }
 
+async function openLogs(): Promise<void> {
+  if (!application.platform.openLogDirectory) {
+    return;
+  }
+  logsPending.value = true;
+  errorMessage.value = '';
+  noticeMessage.value = '';
+  try {
+    await application.platform.openLogDirectory();
+    noticeMessage.value = t('notice.logsOpened');
+  } catch (error) {
+    errorMessage.value = describeError(error, t('error.logsOpen'));
+  } finally {
+    logsPending.value = false;
+  }
+}
+
 async function refreshCoreInstances(coreId: string): Promise<void> {
   const page = await api().listInstances(coreId);
   instances.value = [...instances.value.filter((instance) => instance.coreId !== coreId), ...page.items];
@@ -352,7 +370,9 @@ function clearSession(): void {
       :api-base-url="effectiveApiBaseUrl"
       :autostart-enabled="autostartEnabled"
       :autostart-pending="autostartPending"
+      :logs-pending="logsPending"
       @change-autostart="changeAutostart"
+      @open-logs="openLogs"
     />
     <InstanceWorkspace
       v-else-if="selectedCore && selectedInstance"

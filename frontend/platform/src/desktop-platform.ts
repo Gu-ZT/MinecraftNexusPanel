@@ -10,4 +10,5 @@ export const desktopPlatform: PlatformAdapter = {
   completeInitialAdmin: () => invoke('complete_initial_admin'),
   isAutostartEnabled: () => invoke<boolean>('desktop_autostart_enabled'),
   setAutostartEnabled: (enabled) => invoke<boolean>('set_desktop_autostart_enabled', { enabled }),
+  openLogDirectory: () => invoke('open_desktop_log_directory'),
 };
