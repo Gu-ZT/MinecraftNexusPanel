@@ -12,18 +12,18 @@
 
 ## 当前 M2 能力范围
 
-当前 M2 领域模型和模板目录已覆盖 29 类服务端、代理端与面向基岩版的运行画像：
+当前 M2 领域模型和模板目录已覆盖 29 类服务端、代理端与面向基岩版的运行画像，其中 27 类纳入公开版本元数据目标，AsyncYouer/Lingshu 两类为非公开、仅目录建模的混合端：
 
 | 分类 | 类型 |
 |------|------|
 | Java 原版端 | Vanilla |
 | Java 模组端 | NeoForge、Forge、Fabric |
 | Java 插件端 | Bukkit、Spigot、Paper、Purpur、Pufferfish、Folia、Leaf |
-| Java 混合端 | Mohist、Magma、Sponge、Arclight、Youer、AsyncYouer、Silkard、CatServer、Lingshu |
+| Java 混合端 | Mohist、Magma、Sponge、Arclight、Youer、AsyncYouer、Silkard、CatServer、Lingshu（AsyncYouer/Lingshu 仅非公开目录画像） |
 | 反向代理端 | Velocity、Waterfall、BungeeCord、Lightfall、Geyser |
 | 基岩版服务端 | Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit |
 
-模板目录与已验证安装器是两个层次：当前已为 Vanilla、Paper、Velocity、Fabric、NeoForge、Forge、Bukkit、Spigot、Purpur、Pufferfish、Folia、Leaf、Mohist、Youer、Silkard、Magma、Sponge、Arclight、CatServer、Waterfall、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit 接入版本元数据提供方。NeoForge 使用官方 Maven XML 目录，Pufferfish 聚合五个官方 Jenkins job，Bukkit 和 Spigot 使用官方 Jenkins RSS Atom feed，Mohist 和 Youer 使用 MohistMC 官方 project API，Silkard 使用官方 GitHub branches API，GitHub provider 要求存在 JAR/PHAR 资产，BDS 使用 Mojang 官方下载链接 API 解析 Windows/Linux 稳定版和 Preview ZIP，Nukkit 变体使用 OpenCollab Maven 元数据；Sponge 当前对应官方历史 SpongeVanilla Releases，Magma 主要提供开发构建。RSS、归档、构建、project 和 branch 元数据本身不代表服务端产物已验证可直接安装。归档结构、启动配方和安装验证仍需按类型与版本逐项补充。
+模板目录与已验证安装器是两个层次：当前已为 27 类公开类型接入版本元数据提供方，包括 Vanilla、Paper、Velocity、Fabric、NeoForge、Forge、Bukkit、Spigot、Purpur、Pufferfish、Folia、Leaf、Mohist、Youer、Silkard、Magma、Sponge、Arclight、CatServer、Waterfall、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit。AsyncYouer 和 Lingshu 已确认非公开，保留类型与目录建模但不接入公开 provider、归档验证或安装配方。NeoForge 使用官方 Maven XML 目录，Pufferfish 聚合五个官方 Jenkins job，Bukkit 和 Spigot 使用官方 Jenkins RSS Atom feed，Mohist 和 Youer 使用 MohistMC 官方 project API，Silkard 使用官方 GitHub branches API，GitHub provider 要求存在 JAR/PHAR 资产，BDS 使用 Mojang 官方下载链接 API 解析 Windows/Linux 稳定版和 Preview ZIP，Nukkit 变体使用 OpenCollab Maven 元数据；Sponge 当前对应官方历史 SpongeVanilla Releases，Magma 主要提供开发构建。RSS、归档、构建、project 和 branch 元数据本身不代表服务端产物已验证可直接安装。归档结构、启动配方和安装验证仍需按类型与版本逐项补充。
 
 - 混合端的插件与模组分别管理，扩展目录由模板和版本声明，不能使用全局固定路径；领域目录可按扩展类型分别展开这些目录。
 - 基岩插件安装前校验现在会解析 PocketMine-MP PHAR/TAR 和 Nukkit/Cloudburst Nukkit JAR/ZIP 根 `plugin.yml`；调用方可传入精确的目标 Bedrock API 版本，自动 API 发现仍待完成。
