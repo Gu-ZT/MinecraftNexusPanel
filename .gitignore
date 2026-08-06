@@ -6,6 +6,9 @@
 /apps/desktop/src-tauri/binaries/*
 !/apps/desktop/src-tauri/binaries/.gitkeep
 /data/
+ref/
+.comote/
+.agents/
 
 .env
 .env.*
