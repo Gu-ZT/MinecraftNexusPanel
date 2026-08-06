@@ -36,6 +36,11 @@ type WorkspaceViewName = 'overview' | 'console' | 'config' | 'files';
 
 const CSRF_STORAGE_KEY = 'mcnp.csrfToken';
 const ACCESS_TOKEN_STORAGE_KEY = 'mcnp.accessToken';
+const NATIVE_REFRESH_SKEW_MS = 60_000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+let nativeRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+let nativeRefreshInFlight: Promise<boolean> | null = null;
 
 const { t } = useI18n();
 const route = useRoute();
@@ -111,25 +116,25 @@ async function restoreSession(): Promise<void> {
 async function signIn(): Promise<void> {
   loginPending.value = true;
   errorMessage.value = '';
+  let credentialStoreFailed = false;
   try {
     const clientType = application.platform.kind === 'desktop' ? 'NATIVE' : 'BROWSER';
     const response = await api().login(username.value.trim(), password.value, clientType);
     currentUser.value = response.user;
-    accessToken.value = response.session.accessToken ?? '';
-    csrfToken.value = response.session.csrfToken ?? '';
+    applySession(response.session);
     storeSession();
     password.value = '';
 
-    let refreshStoreError: unknown;
     try {
       await persistDesktopRefreshToken(response.session.refreshToken);
     } catch (error) {
-      refreshStoreError = error;
+      credentialStoreFailed = true;
       try {
         await clearDesktopRefreshToken();
       } catch {
         // 原错误已经用于提示用户；这里仅尽力清除可能属于上一会话的旧令牌。
       }
+      throw error;
     }
 
     if (desktopRuntime.value?.initialAdminPassword && application.platform.completeInitialAdmin) {
@@ -142,12 +147,10 @@ async function signIn(): Promise<void> {
     }
 
     await loadWorkspace();
-    if (refreshStoreError) {
-      noticeMessage.value = describeError(refreshStoreError, t('error.refreshTokenStore'));
-    }
   } catch (error) {
-    errorMessage.value = describeError(error, t('error.login'));
-    currentUser.value = null;
+    const fallback = credentialStoreFailed ? t('error.refreshTokenStore') : t('error.login');
+    clearSession();
+    errorMessage.value = describeError(error, fallback);
   } finally {
     loginPending.value = false;
   }
@@ -156,6 +159,10 @@ async function signIn(): Promise<void> {
 async function signOut(): Promise<void> {
   actionPending.value = 'logout';
   let refreshTokenError: unknown;
+  clearNativeRefreshTimer();
+  if (nativeRefreshInFlight) {
+    await nativeRefreshInFlight;
+  }
   try {
     await api().logout();
   } catch {
@@ -244,34 +251,97 @@ async function restoreDesktopSession(): Promise<void> {
   if (application.platform.kind !== 'desktop' || !application.platform.getRefreshToken) {
     return;
   }
+  await refreshDesktopSession();
+}
+
+function refreshDesktopSession(required = false): Promise<boolean> {
+  if (nativeRefreshInFlight) {
+    return nativeRefreshInFlight;
+  }
+  const refresh = runDesktopSessionRefresh(required);
+  nativeRefreshInFlight = refresh;
+  const releaseRefreshLock = () => {
+    if (nativeRefreshInFlight === refresh) {
+      nativeRefreshInFlight = null;
+    }
+  };
+  void refresh.then(releaseRefreshLock, releaseRefreshLock);
+  return refresh;
+}
+
+async function runDesktopSessionRefresh(required: boolean): Promise<boolean> {
+  if (application.platform.kind !== 'desktop' || !application.platform.getRefreshToken) {
+    return false;
+  }
   let refreshToken: string | null;
   try {
     refreshToken = await application.platform.getRefreshToken();
-  } catch {
-    return;
+  } catch (error) {
+    if (required) {
+      clearSession();
+      errorMessage.value = describeError(error, t('error.sessionRefresh'));
+    }
+    return false;
   }
   if (!refreshToken) {
-    return;
+    if (required) {
+      clearSession();
+      errorMessage.value = t('error.sessionRefresh');
+    }
+    return false;
   }
 
   try {
     const session = await api().refreshNative(refreshToken);
-    applyNativeSession(session);
+    applySession(session);
     await persistDesktopRefreshToken(session.refreshToken);
     storeSession();
-  } catch {
+    return true;
+  } catch (error) {
+    try {
+      await api().logout();
+    } catch {
+      // Panel 失联或会话已失效时，继续完成本地安全存储清理。
+    }
     try {
       await clearDesktopRefreshToken();
     } catch {
       // 令牌已经失效时，清理失败也不能阻止本地会话回到登录页。
     }
     clearSession();
+    errorMessage.value = describeError(error, t('error.sessionRefresh'));
+    return false;
   }
 }
 
-function applyNativeSession(session: SessionTokens): void {
+function applySession(session: SessionTokens): void {
   accessToken.value = session.accessToken ?? '';
   csrfToken.value = session.csrfToken ?? '';
+  if (application.platform.kind === 'desktop' && session.accessToken) {
+    scheduleNativeRefresh(session.accessExpiresAt);
+  }
+}
+
+function scheduleNativeRefresh(accessExpiresAt: string): void {
+  clearNativeRefreshTimer();
+  const expirationTimestamp = Date.parse(accessExpiresAt);
+  if (!Number.isFinite(expirationTimestamp)) {
+    return;
+  }
+
+  // 浏览器休眠会延迟 timer；恢复后延迟值已经到期，回调会尽快执行一次安全轮换。
+  const requestedDelay = Math.max(0, expirationTimestamp - Date.now() - NATIVE_REFRESH_SKEW_MS);
+  nativeRefreshTimer = setTimeout(
+    () => void refreshDesktopSession(true),
+    Math.min(requestedDelay, MAX_TIMER_DELAY_MS),
+  );
+}
+
+function clearNativeRefreshTimer(): void {
+  if (nativeRefreshTimer !== null) {
+    clearTimeout(nativeRefreshTimer);
+    nativeRefreshTimer = null;
+  }
 }
 
 async function persistDesktopRefreshToken(refreshToken: string | null): Promise<void> {
@@ -354,6 +424,7 @@ function storeSession(): void {
 }
 
 function clearSession(): void {
+  clearNativeRefreshTimer();
   sessionStorage.removeItem(CSRF_STORAGE_KEY);
   sessionStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
   csrfToken.value = '';

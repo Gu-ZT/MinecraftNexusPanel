@@ -194,6 +194,7 @@
   - [x] sidecar stdout/stderr 由后台线程收集到 `%APPDATA%\dev.mcnp.desktop\logs`，日志文件达到 10 MiB 时保留一个轮转副本；设置页可打开日志目录。
   - [x] Windows Desktop 使用 Windows Credential Manager 保存原生 refresh token；应用重启时通过 `/api/v1/auth/refresh` 换取短期 access token，登出时删除凭据。
   - [x] macOS Desktop 使用系统 Keychain 保存原生 refresh token；Linux 尚未接入 Secret Service，不能使用 keyring mock 后端。
+  - [x] Desktop 根据 `accessExpiresAt` 在短期 access token 到期前 60 秒轮换系统凭据中的 refresh token；休眠恢复后补刷新，失败时清理本地凭据并返回登录页。
   - [ ] Linux 系统密钥环、日志加密/敏感字段策略、签名和自动更新。
 - [ ] Mobile 设备登录、安全存储、生物识别保护和移动控制台。
 - [ ] Browser/Tauri 平台适配器与共享状态、表单、实时事件 SDK。

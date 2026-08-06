@@ -289,6 +289,7 @@
     "logsOpen": "无法打开运行日志目录",
     "refreshTokenStore": "无法将刷新令牌保存到系统安全存储",
     "refreshTokenClear": "无法从系统安全存储删除刷新令牌",
+    "sessionRefresh": "原生会话刷新失败，请重新登录",
     "readDocuments": "无法读取配置文档",
     "scanDocuments": "配置扫描失败",
     "readDocument": "无法读取配置文档",

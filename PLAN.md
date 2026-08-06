@@ -89,7 +89,7 @@ MinecraftNexusPanel/
 - 当前共享应用已提供 `/dashboard`、`/instances`、`/nodes`、`/settings` 和路由化实例详情；仪表盘聚合 Core、实例和授权审计，节点页提供只读连接信息与 CPU 拓扑，实例页提供生命周期控制、终端、结构化配置和文件管理。用户、Core 编辑、镜像与 Panel 全局设置在后端 API 交付前不制造虚假控制入口。
 - 三端复用同一套页面、领域 store、API Client、表单校验和实时事件 SDK；平台差异只能通过 `platform` 适配器访问。
 - Panel 托管 Vue 构建产物；Tauri Desktop/Mobile 加载同一应用构建，不复制业务页面。
-- 浏览器适配器使用 Cookie/CSRF；Windows Desktop 使用 Windows Credential Manager、macOS Desktop 使用系统 Keychain 保存原生 Refresh Token，重启后通过 refresh 换取短期访问令牌；Linux 安全存储仍需补齐。
+- 浏览器适配器使用 Cookie/CSRF；Windows Desktop 使用 Windows Credential Manager、macOS Desktop 使用系统 Keychain 保存原生 Refresh Token，重启后及短期 Access Token 到期前 60 秒通过 refresh 轮换会话；Linux 安全存储仍需补齐。
 - 浏览器使用 `HttpOnly + Secure + SameSite` 会话 Cookie，并通过 CSRF Token 保护写操作。
 - Desktop/Mobile 使用短期 Access Token 与可轮换 Refresh Token，Token 必须绑定设备会话。
 - 实时日志、指标、节点状态和任务进度统一通过 WebSocket 推送。
