@@ -336,9 +336,9 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 允许授予已经完成服务端检查的 `audit.read`，未知或尚未执行的权限名会被拒绝。用户组和资源 scope
 仍属于后续实现。`GET /audit-events` 接受管理员或显式持有 `audit.read` 的用户，并支持可选
 `limit`（1-200，默认 100），按最新优先返回 Panel 请求元数据。
-事件最多保留 10,000 条，且不允许通过 API 修改或删除。记录包含用户 ID、请求 ID、来源 IP、HTTP 方法、
+事件默认保留 10,000 条，可在启动时通过环境变量或 CLI 配置为 100 到 100,000，且不允许通过 API 修改或删除。记录包含用户 ID、请求 ID、来源 IP、HTTP 方法、
 不含查询参数的路径、状态码和权限判定；请求体、查询参数、Cookie、Token 与密码不会写入审计库。
-`GET /audit-events:export` 按相同字段和顺序将当前最多 10,000 条保留记录导出为逐行 JSON，响应使用
+`GET /audit-events:export` 按相同字段和顺序将当前保留窗口导出为逐行 JSON，响应使用
 `application/x-ndjson` 和固定附件文件名。资源范围筛选和可配置保留策略仍属于后续 TODO。
 
 ## 6. 资源示例

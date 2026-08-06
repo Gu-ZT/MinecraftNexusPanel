@@ -19,6 +19,7 @@ pub struct PanelConfig {
     initial_admin: Option<InitialAdminConfig>,
     local_core: Option<LocalCoreConfig>,
     master_key: Option<PanelMasterKey>,
+    audit_retention_events: usize,
 }
 
 impl fmt::Debug for PanelConfig {
@@ -30,6 +31,7 @@ impl fmt::Debug for PanelConfig {
             .field("initial_admin", &self.initial_admin)
             .field("local_core", &self.local_core.as_ref().map(|_| "REDACTED"))
             .field("master_key", &self.master_key)
+            .field("audit_retention_events", &self.audit_retention_events)
             .finish()
     }
 }
@@ -37,6 +39,12 @@ impl fmt::Debug for PanelConfig {
 impl PanelConfig {
     /// Panel 默认监听地址。
     pub const DEFAULT_LISTEN_ADDRESS: &'static str = "127.0.0.1:8080";
+    /// 默认保留的 Panel 请求审计事件数量。
+    pub const DEFAULT_AUDIT_RETENTION_EVENTS: usize = 10_000;
+    /// 允许配置的最小审计保留数量。
+    pub const MIN_AUDIT_RETENTION_EVENTS: usize = 100;
+    /// 允许配置的最大审计保留数量。
+    pub const MAX_AUDIT_RETENTION_EVENTS: usize = 100_000;
 
     /// 解析 Panel 监听地址并创建基础配置。
     pub fn new(listen_address: String, data_directory: PathBuf) -> Result<Self, ConfigError> {
@@ -54,6 +62,7 @@ impl PanelConfig {
             initial_admin: None,
             local_core: None,
             master_key: None,
+            audit_retention_events: Self::DEFAULT_AUDIT_RETENTION_EVENTS,
         })
     }
 
@@ -76,6 +85,22 @@ impl PanelConfig {
     pub fn with_local_core(mut self, local_core: LocalCoreConfig) -> Self {
         self.local_core = Some(local_core);
         self
+    }
+
+    /// 设置 Panel 用户级审计事件保留数量。
+    pub fn with_audit_retention_events(
+        mut self,
+        audit_retention_events: usize,
+    ) -> Result<Self, ConfigError> {
+        if !(Self::MIN_AUDIT_RETENTION_EVENTS..=Self::MAX_AUDIT_RETENTION_EVENTS)
+            .contains(&audit_retention_events)
+        {
+            return Err(ConfigError::InvalidPanelAuditRetention {
+                value: audit_retention_events.to_string(),
+            });
+        }
+        self.audit_retention_events = audit_retention_events;
+        Ok(self)
     }
 
     /// 返回 Panel HTTP 监听地址。
@@ -106,5 +131,11 @@ impl PanelConfig {
     #[must_use]
     pub const fn master_key(&self) -> Option<&PanelMasterKey> {
         self.master_key.as_ref()
+    }
+
+    /// 返回 Panel 用户级审计事件保留数量。
+    #[must_use]
+    pub const fn audit_retention_events(&self) -> usize {
+        self.audit_retention_events
     }
 }

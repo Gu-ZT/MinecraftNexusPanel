@@ -25,7 +25,7 @@ use crate::StoredSession;
 use crate::StoredUser;
 
 const DATABASE_FILE_NAME: &str = "panel.db";
-const MAXIMUM_AUDIT_EVENTS: i64 = 10_000;
+const DEFAULT_MAXIMUM_AUDIT_EVENTS: usize = 10_000;
 
 /// 线程安全共享的 Panel SQLite 数据库访问器。
 ///
@@ -35,11 +35,26 @@ const MAXIMUM_AUDIT_EVENTS: i64 = 10_000;
 pub struct SqliteStore {
     connection: Arc<Mutex<Connection>>,
     database_path: PathBuf,
+    maximum_audit_events: i64,
 }
 
 impl SqliteStore {
     /// 打开数据目录中的 Panel 数据库并执行 schema 迁移。
     pub fn open(data_directory: &Path) -> Result<Self, StorageError> {
+        Self::open_with_audit_retention(data_directory, DEFAULT_MAXIMUM_AUDIT_EVENTS)
+    }
+
+    /// 打开数据库并设置每次审计写入后保留的最大事件数。
+    pub fn open_with_audit_retention(
+        data_directory: &Path,
+        maximum_audit_events: usize,
+    ) -> Result<Self, StorageError> {
+        let maximum_audit_events = i64::try_from(maximum_audit_events)
+            .ok()
+            .filter(|value| *value > 0)
+            .ok_or(StorageError::InvalidAuditRetention {
+                value: maximum_audit_events,
+            })?;
         fs::create_dir_all(data_directory).map_err(|source| StorageError::CreateDataDirectory {
             path: data_directory.to_path_buf(),
             source,
@@ -57,6 +72,7 @@ impl SqliteStore {
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
             database_path,
+            maximum_audit_events,
         })
     }
 
@@ -519,6 +535,12 @@ impl SqliteStore {
         &self.database_path
     }
 
+    /// 返回当前审计事件保留上限。
+    #[must_use]
+    pub fn audit_retention_events(&self) -> usize {
+        usize::try_from(self.maximum_audit_events).unwrap_or(DEFAULT_MAXIMUM_AUDIT_EVENTS)
+    }
+
     /// 追加一条 Panel 用户级审计事件，并删除超出保留上限的最旧记录。
     ///
     /// 审计写入与裁剪使用同一个立即事务，避免并发请求看到半完成的保留策略。
@@ -554,7 +576,7 @@ impl SqliteStore {
                     ORDER BY occurred_at DESC, id DESC
                     LIMIT -1 OFFSET ?1
                  )",
-                [MAXIMUM_AUDIT_EVENTS],
+                [self.maximum_audit_events],
             )
             .map_err(StorageError::Query)?;
         transaction.commit().map_err(StorageError::Query)
@@ -563,7 +585,7 @@ impl SqliteStore {
     /// 按最新优先读取 Panel 用户级审计事件。
     pub fn list_audit_events(&self, limit: usize) -> Result<Vec<StoredAuditEvent>, StorageError> {
         let connection = self.lock_connection()?;
-        let limit = i64::try_from(limit).unwrap_or(MAXIMUM_AUDIT_EVENTS);
+        let limit = i64::try_from(limit).unwrap_or(self.maximum_audit_events);
         let mut statement = connection
             .prepare(
                 "SELECT id, occurred_at, user_id, request_id, source_ip,
@@ -1050,30 +1072,35 @@ mod tests {
     #[test]
     fn persists_and_lists_panel_audit_events() {
         let data_directory = tempdir().expect("temporary Panel data directory is created");
-        let store = SqliteStore::open(data_directory.path()).expect("Panel database opens");
-        let event = NewAuditEvent {
-            id: "audit-1".to_owned(),
-            occurred_at: "2026-08-06T00:00:00Z".to_owned(),
-            user_id: Some("user-1".to_owned()),
-            request_id: "request-1".to_owned(),
-            source_ip: Some("127.0.0.1".to_owned()),
-            method: "POST".to_owned(),
-            path: "/api/v1/cores/core/instances/survival/actions/start".to_owned(),
-            status_code: 202,
-            permission_result: "ALLOWED".to_owned(),
-        };
-
-        store
-            .append_audit_event(&event)
-            .expect("Panel audit event is persisted");
+        let store = SqliteStore::open_with_audit_retention(data_directory.path(), 2)
+            .expect("Panel database opens with a custom audit retention");
+        for index in 1..=3 {
+            let event = NewAuditEvent {
+                id: format!("audit-{index}"),
+                occurred_at: format!("2026-08-06T00:00:0{index}Z"),
+                user_id: Some("user-1".to_owned()),
+                request_id: format!("request-{index}"),
+                source_ip: Some("127.0.0.1".to_owned()),
+                method: "POST".to_owned(),
+                path: "/api/v1/cores/core/instances/survival/actions/start".to_owned(),
+                status_code: 202,
+                permission_result: "ALLOWED".to_owned(),
+            };
+            store
+                .append_audit_event(&event)
+                .expect("Panel audit event is persisted");
+        }
         let events = store
             .list_audit_events(10)
             .expect("Panel audit events are listed");
         let stored = events.first().expect("stored audit event is returned");
 
-        assert_eq!(stored.id(), "audit-1");
+        assert_eq!(store.audit_retention_events(), 2);
+        assert_eq!(events.len(), 2);
+        assert_eq!(stored.id(), "audit-3");
+        assert_eq!(events[1].id(), "audit-2");
         assert_eq!(stored.user_id(), Some("user-1"));
-        assert_eq!(stored.request_id(), "request-1");
+        assert_eq!(stored.request_id(), "request-3");
         assert_eq!(stored.source_ip(), Some("127.0.0.1"));
         assert_eq!(stored.permission_result(), "ALLOWED");
     }

@@ -31,8 +31,6 @@ use crate::auth_routes::authorize_session;
 use crate::auth_routes::error_response;
 use crate::permissions::AUDIT_READ;
 
-const MAX_EXPORT_EVENTS: usize = 10_000;
-
 /// 注册 Panel 审计查询端点。
 pub(crate) fn audit_routes() -> Router<PanelState> {
     Router::new()
@@ -82,7 +80,8 @@ async fn export_audit_events(
     }
 
     let store = state.store().clone();
-    match spawn_blocking(move || store.list_audit_events(MAX_EXPORT_EVENTS)).await {
+    let retention_events = store.audit_retention_events();
+    match spawn_blocking(move || store.list_audit_events(retention_events)).await {
         Ok(Ok(events)) => match encode_ndjson(&events) {
             Ok(body) => (
                 [

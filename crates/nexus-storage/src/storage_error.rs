@@ -6,6 +6,12 @@ use thiserror::Error;
 /// Panel SQLite 存储层错误。
 #[derive(Debug, Error)]
 pub enum StorageError {
+    /// 审计保留数量为零或无法由 SQLite 整数表示。
+    #[error("invalid Panel audit retention event count: {value}")]
+    InvalidAuditRetention {
+        /// 调用方提供的保留数量。
+        value: usize,
+    },
     /// 无法创建数据目录。
     #[error("failed to create the Panel data directory {path}")]
     CreateDataDirectory {

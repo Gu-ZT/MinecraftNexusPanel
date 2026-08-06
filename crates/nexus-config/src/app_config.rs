@@ -32,6 +32,8 @@ impl AppConfig {
             environment_or_default("MCNP_CORE_LISTEN", CoreConfig::DEFAULT_LISTEN_ADDRESS);
         let mut panel_listen =
             environment_or_default("MCNP_PANEL_LISTEN", PanelConfig::DEFAULT_LISTEN_ADDRESS);
+        let mut panel_audit_retention_events = environment_optional("MCNP_AUDIT_RETENTION_EVENTS")
+            .unwrap_or_else(|| PanelConfig::DEFAULT_AUDIT_RETENTION_EVENTS.to_string());
         let mut data_directory = environment_or_default("MCNP_DATA_DIR", "data");
         let mut log_filter = environment_or_default("MCNP_LOG_FILTER", "info");
         let core_pre_shared_key = environment_optional("MCNP_CORE_PSK");
@@ -75,6 +77,10 @@ impl AppConfig {
                     core_tls_private_key = Some(next_value(&mut arguments, "--core-tls-key")?);
                 }
                 "--panel-listen" => panel_listen = next_value(&mut arguments, "--panel-listen")?,
+                "--panel-audit-retention-events" => {
+                    panel_audit_retention_events =
+                        next_value(&mut arguments, "--panel-audit-retention-events")?;
+                }
                 "--data-dir" => data_directory = next_value(&mut arguments, "--data-dir")?,
                 "--log-filter" => log_filter = next_value(&mut arguments, "--log-filter")?,
                 "--help" | "-h" => return Err(ConfigError::HelpRequested),
@@ -100,7 +106,14 @@ impl AppConfig {
             (None, None) => None,
             _ => return Err(ConfigError::IncompleteInitialAdminCredentials),
         };
-        let mut panel = PanelConfig::new(panel_listen, PathBuf::from(data_directory))?;
+        let audit_retention_events =
+            panel_audit_retention_events.parse::<usize>().map_err(|_| {
+                ConfigError::InvalidPanelAuditRetention {
+                    value: panel_audit_retention_events.clone(),
+                }
+            })?;
+        let mut panel = PanelConfig::new(panel_listen, PathBuf::from(data_directory))?
+            .with_audit_retention_events(audit_retention_events)?;
         if let Some(initial_admin) = initial_admin {
             panel = panel.with_initial_admin(initial_admin);
         }
@@ -144,7 +157,7 @@ impl AppConfig {
     /// 返回命令行帮助文本。
     #[must_use]
     pub const fn usage() -> &'static str {
-        "Usage: mcnp [core|panel|all] [OPTIONS]\n\nOptions:\n  --mode MODE              Run core, panel, or all\n  --core-listen ADDRESS    Core TCP listen address\n  --core-tls-cert PATH     Core TLS certificate chain in PEM format\n  --core-tls-key PATH      Core TLS private key in PEM format\n  --panel-listen ADDRESS   Panel HTTP listen address\n  --data-dir PATH          Runtime data directory\n  --log-filter FILTER      tracing filter directive\n  -h, --help               Print help\n  -V, --version            Print version\n\nEnvironment:\n  MCNP_CORE_PSK            Required by core and all; unpadded Base64URL PSK\n  MCNP_CORE_LISTEN          Default Core TCP listen address\n  MCNP_CORE_TLS_CERT        Optional Core TLS certificate chain path\n  MCNP_CORE_TLS_KEY         Optional Core TLS private key path\n  MCNP_PANEL_LISTEN         Default Panel HTTP listen address\n  MCNP_PANEL_MASTER_KEY     Required by panel and all; 32-byte unpadded Base64URL key\n  MCNP_INITIAL_ADMIN_USERNAME  Initial administrator username for an empty database\n  MCNP_INITIAL_ADMIN_PASSWORD  Initial administrator password for an empty database\n  MCNP_DATA_DIR             Default runtime data directory\n  MCNP_LOG_FILTER           Default tracing filter directive\n  MCNP_LOG_FORMAT           Set to json for line-delimited JSON logs"
+        "Usage: mcnp [core|panel|all] [OPTIONS]\n\nOptions:\n  --mode MODE              Run core, panel, or all\n  --core-listen ADDRESS    Core TCP listen address\n  --core-tls-cert PATH     Core TLS certificate chain in PEM format\n  --core-tls-key PATH      Core TLS private key in PEM format\n  --panel-listen ADDRESS   Panel HTTP listen address\n  --panel-audit-retention-events COUNT\n                           Retained Panel audit event count (100-100000)\n  --data-dir PATH          Runtime data directory\n  --log-filter FILTER      tracing filter directive\n  -h, --help               Print help\n  -V, --version            Print version\n\nEnvironment:\n  MCNP_CORE_PSK            Required by core and all; unpadded Base64URL PSK\n  MCNP_CORE_LISTEN          Default Core TCP listen address\n  MCNP_CORE_TLS_CERT        Optional Core TLS certificate chain path\n  MCNP_CORE_TLS_KEY         Optional Core TLS private key path\n  MCNP_PANEL_LISTEN         Default Panel HTTP listen address\n  MCNP_PANEL_MASTER_KEY     Required by panel and all; 32-byte unpadded Base64URL key\n  MCNP_AUDIT_RETENTION_EVENTS  Retained Panel audit event count (default 10000)\n  MCNP_INITIAL_ADMIN_USERNAME  Initial administrator username for an empty database\n  MCNP_INITIAL_ADMIN_PASSWORD  Initial administrator password for an empty database\n  MCNP_DATA_DIR             Default runtime data directory\n  MCNP_LOG_FILTER           Default tracing filter directive\n  MCNP_LOG_FORMAT           Set to json for line-delimited JSON logs"
     }
 }
 
@@ -183,6 +196,8 @@ mod tests {
             "test-key.pem",
             "--panel-listen",
             "127.0.0.1:8080",
+            "--panel-audit-retention-events",
+            "2500",
             "--data-dir",
             "runtime-data",
             "--log-filter",
@@ -214,6 +229,7 @@ mod tests {
             PathBuf::from("test-cert.pem")
         );
         assert_eq!(config.logging().filter(), "debug");
+        assert_eq!(config.panel().audit_retention_events(), 2500);
     }
 
     #[test]
@@ -230,6 +246,20 @@ mod tests {
         assert_eq!(
             AppConfig::from_args(arguments),
             Err(ConfigError::VersionRequested)
+        );
+    }
+
+    #[test]
+    fn rejects_an_out_of_range_audit_retention() {
+        let arguments = ["panel", "--panel-audit-retention-events", "1"]
+            .into_iter()
+            .map(str::to_owned);
+
+        assert_eq!(
+            AppConfig::from_args(arguments),
+            Err(ConfigError::InvalidPanelAuditRetention {
+                value: "1".to_owned(),
+            })
         );
     }
 }

@@ -534,8 +534,8 @@ paths:
         non-administrators with audit.read can access this endpoint. Query strings,
         request bodies, cookies, access tokens, refresh tokens, and passwords are
         never returned or persisted.
-        Results are ordered newest first and the store retains at most 10,000
-        events.
+        Results are ordered newest first. The store retains 10,000 events by
+        default and accepts a startup-configured limit from 100 to 100,000.
       parameters:
         - $ref: '#/components/parameters/Limit'
       responses:
@@ -559,8 +559,8 @@ paths:
       operationId: exportAuditEvents
       summary: Export the retained Panel audit window as NDJSON
       description: |
-        Administrators and non-administrators with audit.read can export up to
-        the newest 10,000 retained events. Each line contains the same safe metadata
+        Administrators and non-administrators with audit.read can export the
+        configured retained event window. Each line contains the same safe metadata
         fields as listAuditEvents and never contains query strings, request bodies,
         cookies, tokens, or passwords.
       responses:

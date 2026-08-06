@@ -30,6 +30,12 @@ pub enum ConfigError {
     /// Panel 主密钥不是恰好 32 字节的无填充 Base64URL。
     #[error("Panel master key must be exactly 32 bytes encoded as unpadded Base64URL")]
     InvalidPanelMasterKey,
+    /// Panel 审计保留数量不是整数或超出安全范围。
+    #[error("Panel audit retention event count is invalid: {value}")]
+    InvalidPanelAuditRetention {
+        /// 用户提供的原始数量文本。
+        value: String,
+    },
     /// 初始管理员用户名为空或超出长度限制。
     #[error("initial administrator username must contain between 1 and 64 characters")]
     InvalidInitialAdminUsername,

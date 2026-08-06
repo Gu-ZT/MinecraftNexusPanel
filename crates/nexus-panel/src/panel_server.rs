@@ -67,7 +67,10 @@ impl PanelServer {
         let master_key = config
             .master_key()
             .ok_or(PanelError::MissingPanelMasterKey)?;
-        let store = SqliteStore::open(config.data_directory())?;
+        let store = SqliteStore::open_with_audit_retention(
+            config.data_directory(),
+            config.audit_retention_events(),
+        )?;
         let panel_id = store.get_or_create_panel_id(&Uuid::now_v7().to_string())?;
         let auth = AuthService::new(store.clone());
         if let Some(initial_admin) = config.initial_admin() {

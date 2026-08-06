@@ -28,6 +28,10 @@ $env:MCNP_PANEL_MASTER_KEY = 'replace-with-a-different-generated-panel-key'
 
 `all` 模式需要两个变量，`core` 模式只需要 `MCNP_CORE_PSK`，`panel` 模式只需要 `MCNP_PANEL_MASTER_KEY`。可从根目录的 [`.env.example`](../../.env.example) 查看其他可选运行变量。实际 `.env` 文件被 Git 忽略。
 
+Panel 请求审计默认保留最新 10,000 条。可通过 `MCNP_AUDIT_RETENTION_EVENTS` 或
+`--panel-audit-retention-events` 设置为 `100..=100000`；每次审计写入和超出上限记录的裁剪在同一
+SQLite 事务完成，NDJSON 导出自动使用相同窗口。配置过小会削弱追溯能力，超出范围时 Panel 拒绝启动。
+
 ## 启动模式
 
 ```powershell
