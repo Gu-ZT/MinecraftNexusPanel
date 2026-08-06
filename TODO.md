@@ -111,7 +111,8 @@
   - [x] 校验 Java `server.properties` 端口范围、启用 Query/RCON 条件、RCON 密码、`server-ip` 和 `eula.txt`。
   - [x] 校验 Geyser `config.yml` 的 Bedrock/Java 端点，并报告重复监听端口；未知版本字段不误报。
   - [x] JSON/YAML/TOML provider 为嵌套对象和数组生成递归 JSON Schema/UI Schema，前端可按字段层级选择 group、array、number 和 checkbox 控件。
-  - [ ] 前端复杂表单渲染、异构数组编辑、版本专用 Schema 和更多跨文件规则。
+  - [x] WebUI 提供配置文档列表、重新扫描、实例级校验、revision 保存和有损写回确认；按 Schema/UI Schema 渲染递归对象、布尔、数字、枚举、敏感文本和 Schema 明确的同构数组。
+  - [ ] 异构数组编辑、版本专用 Schema 和更多跨文件规则；元组、`oneOf`/`anyOf` 或未声明数组项 Schema 当前保持只读。
 - [ ] 实例文件浏览、上传、下载、移动、删除与路径逃逸防护。
   - [x] Core 文件沙箱：目录列表、分页游标、32 KiB 分块读取、SHA-256 和 1 MiB 内原子写入。
   - [x] Panel REST 与 TypeScript Client：二进制读取、ETag/If-Match、幂等写入和路径错误映射。

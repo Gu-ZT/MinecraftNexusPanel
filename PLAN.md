@@ -259,7 +259,7 @@ stateDiagram-v2
 
 ### M3：日常运维能力
 
-- 配置识别和结构化表单、文件管理、分块上传/下载、实例终端；当前已完成带 Minecraft 字段元数据的 `server.properties` provider、JSON/YAML/TOML provider、嵌套对象/数组递归 Schema/UI Schema、文件沙箱列表、分块读取、小文件原子写入、目录创建、移动、批量操作、删除任务、ZIP 归档准备、活动 Core 内会话化分块上传/下载和 `config.validate` 实例级诊断，后续补齐前端复杂表单渲染、版本专用 Schema、跨重启续传、快照、差异比较和统一任务中心进度。
+- 配置识别和结构化表单、文件管理、分块上传/下载、实例终端；当前已完成带 Minecraft 字段元数据的 `server.properties` provider、JSON/YAML/TOML provider、嵌套对象/数组递归 Schema/UI Schema、WebUI 配置文档列表/扫描/校验/保存、递归对象和安全的同构数组控件、文件沙箱列表、分块读取、小文件原子写入、目录创建、移动、批量操作、删除任务、ZIP 归档准备、活动 Core 内会话化分块上传/下载和 `config.validate` 实例级诊断，后续补齐异构数组、版本专用 Schema、跨文件规则、跨重启续传、快照、差异比较和统一任务中心进度。
 - 模组/插件聚合搜索、安装、更新、删除和兼容性提示；当前已接入 Modrinth MOD/PLUGIN 搜索、项目版本详情、依赖记录、HTTPS 归档摘要、根项目 required 依赖计划解析、Minecraft 版本/加载器过滤、分页和来源兼容性提示；计划安装会重新解析并创建可查询的 Panel 异步任务，校验归档后通过 Core `transfer-v1` 分片写入声明目录、持久化安装记录，同一 Core、实例、扩展类型和操作重复使用 `Idempotency-Key` 会复用原任务，新的多文件安装会先拒绝目标冲突并在失败后按哈希和记录执行补偿回滚，已持久化的 Modrinth 扩展可重新解析目标版本并在 Core 目标摘要保护下只更新根文件，混合端插件/模组分开处理，目录由模板布局决定；PocketMine-MP PHAR/TAR 与 Nukkit/Cloudburst Nukkit JAR/ZIP 在写入前解析根 `plugin.yml`，并在请求给出目标 Bedrock API 列表时执行精确匹配。Core 侧统一任务、更多来源、目标 API 自动发现和批量更新仍待完成。
 - 代理子服务器连通性与启停编排；当前已完成由 Core 节点执行的登记后端 TCP 连通性和 Minecraft Java Status 协议检查，并分别返回网络状态、协议状态和延迟。代理动作支持按启用后端去重编排：启动先启动后端再启动代理，停止先停止代理再停止后端；`includeBackends` 可显式关闭后端操作，返回逐实例步骤和部分失败结果，后端失败时不会继续启动代理。停止还支持 `1..=300` 秒超时。基岩端已完成配置优先的 RakNet UDP 地址/端口探测、默认 `0.0.0.0`/`19132` 回退以及专用 Unconnected Ping/Pong 健康检查，监听绑定地址、配置文件、扩展目录、升级和备份恢复仍需独立实现。
 - Cron/事件计划任务、执行历史、任务中心、备份/恢复。

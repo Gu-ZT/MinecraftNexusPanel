@@ -66,8 +66,9 @@ The first configuration provider is now available through Core TCP and the Panel
 - raw text reads and writes with the same sandbox, ETag, If-Match, and idempotency protections as file management.
 - recursive nested object and array Schema/UI Schema metadata for JSON, YAML, and TOML values, so clients can render field-level group, array, number, and checkbox controls without treating sample values as a complete version schema.
 - instance-level `config-documents:validate` diagnostics for Java ports, Query/RCON settings, `server-ip`, `eula.txt`, Geyser endpoints, and duplicate listening ports.
+- the WebUI configuration view lists and rescans documents, renders recursive object fields and safely homogeneous arrays from Schema/UI Schema metadata, supports booleans, numbers, enums, and sensitive text controls, and saves with revision and explicit lossy-write confirmation. Ambiguous arrays remain read-only instead of inferring an unsafe item shape.
 
-Rich frontend form rendering, version-specific schemas, heterogeneous array editing, and broader cross-file rules remain planned M3 work.
+Version-specific schemas, heterogeneous array editing, and broader cross-file rules remain planned M3 work.
 
 ### CPU Topology Slice
 

@@ -66,8 +66,9 @@ ZIP 归档生成和会话化大文件下载已经完成；跨 Core 重启续传�
 - 提供原文读写，并复用文件沙箱、ETag、If-Match 和幂等键保护。
 - JSON、YAML、TOML 的嵌套对象和数组现在返回递归 Schema/UI Schema 元数据，客户端可以按字段层级渲染 group、array、number 和 checkbox 控件，但不会把样本值伪装成完整的版本 Schema。
 - 提供实例级 `config-documents:validate` 诊断，校验 Java 端口、Query/RCON 设置、`server-ip`、`eula.txt`、Geyser 端点和重复监听端口。
+- WebUI 配置视图支持列出和重新扫描文档，按 Schema/UI Schema 渲染递归对象和可确认类型一致的数组，并提供布尔、数字、枚举和敏感文本控件；保存使用 revision 并要求显式确认有损写回。无法安全推断数组项结构时保持只读。
 
-前端完整复杂表单、版本专用 Schema、异构数组编辑和更多跨文件规则仍属于 M3 后续工作。
+版本专用 Schema、异构数组编辑和更多跨文件规则仍属于 M3 后续工作。
 
 ### 当前 CPU 拓扑能力
 
