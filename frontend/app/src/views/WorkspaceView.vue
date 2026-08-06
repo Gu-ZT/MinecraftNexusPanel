@@ -5,6 +5,7 @@ import { ApiRequestError, createPanelApiClient } from '@mcnp/api-client';
 import type { Core, Instance, InstanceState, LogLine, User } from '@mcnp/api-client';
 import { McnpEmptyState } from '@mcnp/ui';
 
+import ConfigEditor from '../components/ConfigEditor.vue';
 import { useApplicationStore } from '../stores/application';
 
 const CSRF_STORAGE_KEY = 'mcnp.csrfToken';
@@ -25,6 +26,11 @@ const loginPending = ref(false);
 const actionPending = ref<string | null>(null);
 const errorMessage = ref('');
 const noticeMessage = ref('');
+const activeView = ref<'console' | 'config'>('console');
+const panelApiClient = createPanelApiClient({
+  baseUrl: application.platform.apiBaseUrl,
+  getCsrfToken: () => csrfToken.value || undefined,
+});
 
 const selectedCore = computed(() => cores.value.find((core) => core.id === selectedCoreId.value) ?? null);
 const selectedInstance = computed(
@@ -100,6 +106,7 @@ async function loadWorkspace(): Promise<void> {
 async function selectCore(coreId: string): Promise<void> {
   selectedCoreId.value = coreId;
   selectedInstanceId.value = '';
+  activeView.value = 'console';
   await loadInstances();
 }
 
@@ -126,6 +133,7 @@ async function loadInstances(): Promise<void> {
 
 async function selectInstance(instanceId: string): Promise<void> {
   selectedInstanceId.value = instanceId;
+  activeView.value = 'console';
   await loadLogs();
 }
 
@@ -195,10 +203,7 @@ async function runInstanceAction(action: string, operation: () => Promise<unknow
 }
 
 function api() {
-  return createPanelApiClient({
-    baseUrl: application.platform.apiBaseUrl,
-    getCsrfToken: () => csrfToken.value || undefined,
-  });
+  return panelApiClient;
 }
 
 function clearSession(): void {
@@ -210,6 +215,7 @@ function clearSession(): void {
   logs.value = [];
   selectedCoreId.value = '';
   selectedInstanceId.value = '';
+  activeView.value = 'console';
 }
 
 function describeError(error: unknown, fallback: string): string {
@@ -378,30 +384,64 @@ function statusClass(status: string): string {
           </div>
         </div>
 
-        <div v-if="selectedInstance" class="runtime-strip">
-          <span :class="statusClass(selectedInstance.runtime.state)">{{ selectedInstance.runtime.state }}</span>
-          <span>启动：{{ formatDate(selectedInstance.runtime.startedAt) }}</span>
-          <span>退出码：{{ selectedInstance.runtime.exitCode ?? '无' }}</span>
+        <div class="view-tabs" role="tablist" aria-label="实例视图">
+          <button
+            class="view-tab"
+            :class="{ selected: activeView === 'console' }"
+            type="button"
+            role="tab"
+            :aria-selected="activeView === 'console'"
+            @click="activeView = 'console'"
+          >
+            控制台
+          </button>
+          <button
+            class="view-tab"
+            :class="{ selected: activeView === 'config' }"
+            type="button"
+            role="tab"
+            :aria-selected="activeView === 'config'"
+            :disabled="!selectedInstance"
+            @click="activeView = 'config'"
+          >
+            配置
+          </button>
         </div>
 
-        <p v-if="errorMessage" class="form-error">{{ errorMessage }}</p>
-        <p v-else-if="noticeMessage" class="notice">{{ noticeMessage }}</p>
+        <div v-if="activeView === 'console'" class="console-view">
+          <div v-if="selectedInstance" class="runtime-strip">
+            <span :class="statusClass(selectedInstance.runtime.state)">{{ selectedInstance.runtime.state }}</span>
+            <span>启动：{{ formatDate(selectedInstance.runtime.startedAt) }}</span>
+            <span>退出码：{{ selectedInstance.runtime.exitCode ?? '无' }}</span>
+          </div>
 
-        <div class="log-pane">
-          <p v-if="!selectedInstance" class="muted">选择实例后显示控制台输出。</p>
-          <p v-else-if="logs.length === 0" class="muted">暂无控制台输出。</p>
-          <ol v-else>
-            <li v-for="line in logs" :key="line.cursor" :class="`stream-${line.stream}`">
-              <time>{{ formatDate(line.occurredAt) }}</time>
-              <span>{{ line.line }}</span>
-            </li>
-          </ol>
+          <p v-if="errorMessage" class="form-error">{{ errorMessage }}</p>
+          <p v-else-if="noticeMessage" class="notice">{{ noticeMessage }}</p>
+
+          <div class="log-pane">
+            <p v-if="!selectedInstance" class="muted">选择实例后显示控制台输出。</p>
+            <p v-else-if="logs.length === 0" class="muted">暂无控制台输出。</p>
+            <ol v-else>
+              <li v-for="line in logs" :key="line.cursor" :class="`stream-${line.stream}`">
+                <time>{{ formatDate(line.occurredAt) }}</time>
+                <span>{{ line.line }}</span>
+              </li>
+            </ol>
+          </div>
+
+          <form class="command-row" @submit.prevent="sendCommand">
+            <input v-model="command" :disabled="!selectedInstance || actionPending !== null" placeholder="输入控制台命令" />
+            <button type="submit" :disabled="!selectedInstance || !command.trim() || actionPending !== null">发送</button>
+          </form>
         </div>
 
-        <form class="command-row" @submit.prevent="sendCommand">
-          <input v-model="command" :disabled="!selectedInstance || actionPending !== null" placeholder="输入控制台命令" />
-          <button type="submit" :disabled="!selectedInstance || !command.trim() || actionPending !== null">发送</button>
-        </form>
+        <ConfigEditor
+          v-else-if="selectedInstance"
+          :client="panelApiClient"
+          :core-id="selectedCoreId"
+          :instance-id="selectedInstance.id"
+        />
+        <p v-else class="muted config-empty">选择实例后编辑配置。</p>
       </section>
     </main>
   </div>
@@ -545,10 +585,49 @@ button:disabled {
 }
 
 .console-panel {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
   border-right: 0;
   background: #f7f8f7;
+}
+
+.view-tabs {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.55rem 1rem 0;
+  border-bottom: 1px solid #d7dcd8;
+  background: #ffffff;
+}
+
+.view-tab {
+  min-height: 2.15rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0 0.65rem;
+  background: transparent;
+  color: #637068;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.view-tab.selected {
+  border-bottom-color: #206b3a;
+  color: #1f6239;
+}
+
+.view-tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.console-view {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
 
 .panel-heading,
@@ -749,6 +828,10 @@ button:disabled {
   padding: 0.85rem 1rem;
   border-top: 1px solid #d7dcd8;
   background: #ffffff;
+}
+
+.config-empty {
+  padding: 1rem;
 }
 
 @media (max-width: 62rem) {
