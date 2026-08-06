@@ -686,15 +686,17 @@ paths:
       operationId: listCpuReservations
       summary: List CPU exclusive reservations registered by a Core
       description: |
-        Return the Core-local reservation records. A reservation proves only
-        that the Core selected a non-overlapping CPU set for the instance; it
-        does not prove that host affinity or Docker cpuset has been applied,
-        and the current in-memory records are not restored after a Core restart.
+        Return the Core-local reservation records. Core persists the latest
+        reservation snapshot in cpu-reservations.json and restores it after a
+        restart. A reservation proves only that the Core selected a
+        non-overlapping CPU set for the instance; it does not prove that host
+        affinity or Docker cpuset has been applied, or that another Core has
+        honored the same reservation.
       parameters:
         - $ref: '#/components/parameters/CoreId'
       responses:
         '200':
-          description: Core-local CPU reservation records
+          description: Persisted Core-local CPU reservation records
           content:
             application/json:
               schema:
@@ -713,10 +715,10 @@ paths:
       summary: Register an exclusive CPU reservation on a Core
       description: |
         Validate the instance revision, resolve an EXCLUSIVE CPU policy, and
-        atomically register the selected CPU IDs. The operation requires an
-        idempotency key, but the current Core reservation store is in-memory;
-        retry behavior and persistence beyond the Core process are not yet a
-        durable task guarantee.
+        atomically register the selected CPU IDs. The selected reservation is
+        persisted through an atomic cpu-reservations.json snapshot. The
+        operation requires an idempotency key, but is synchronous and is not a
+        durable task-center guarantee.
       security:
         - cookieAuth: [ ]
           csrfToken: [ ]
