@@ -14,7 +14,6 @@ tauri-build.workspace = true
 [dependencies]
 base64.workspace = true
 getrandom.workspace = true
-keyring.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri.workspace = true
@@ -25,6 +24,12 @@ thiserror.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+keyring = { workspace = true, features = ["windows-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { workspace = true, features = ["apple-native"] }
 
 [lints]
 workspace = true
