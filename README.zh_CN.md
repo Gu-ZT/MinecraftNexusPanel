@@ -162,7 +162,8 @@ sidecar。设置页可管理当前用户登录时启动；由登录项启动时�
 会收集到应用数据目录的 `logs` 文件夹，并保留一个轮转副本；设置页可以直接打开该目录。
 Windows Desktop 会将原生刷新令牌保存到 Windows Credential Manager，macOS Desktop 使用系统
 Keychain；重启后及短期 access token 到期前 60 秒通过 Panel 刷新接口轮换会话，access token
-仍只保留在当前 WebView 会话中；Linux 安全存储尚未接入。详见
+仍只保留在当前 WebView 会话中。Linux Desktop 使用 keyutils 与 Secret Service 持久组合后端，
+凭据服务不可用时拒绝操作，不回退 mock。详见
 [`apps/desktop/README.md`](apps/desktop/README.md) 和
 [`docs/operations/initial-administrator.md`](docs/operations/initial-administrator.md)。Windows 发布产物和
 校验和规则见 [`docs/operations/desktop-release.md`](docs/operations/desktop-release.md)。

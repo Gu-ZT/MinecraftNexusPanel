@@ -170,8 +170,8 @@ hidden in the tray until the user opens it. Sidecar stdout/stderr is collected u
 data `logs` directory with one rotated file, and the settings page can open that directory.
 Native refresh tokens are stored in Windows Credential Manager on Windows and the system Keychain
 on macOS, then rotated through the Panel refresh endpoint after restart; the short-lived access
-token remains session-scoped and is refreshed 60 seconds before expiry. Linux secure storage is not
-enabled yet.
+token remains session-scoped and is refreshed 60 seconds before expiry. Linux uses the persistent
+keyutils and Secret Service combination and refuses to fall back to the mock credential store.
 See [`apps/desktop/README.md`](apps/desktop/README.md) and
 [`docs/operations/initial-administrator.md`](docs/operations/initial-administrator.md). Windows
 release artifacts and checksum rules are documented in
