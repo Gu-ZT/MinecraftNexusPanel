@@ -187,6 +187,7 @@
   - [x] 使用 Vue Router 将控制台页面、Core、实例及 `overview`/`console`/`config`/`files` 视图写入 URL，并支持前进、后退和直接访问恢复上下文。
   - [x] 实例工作区提供运行概览、生命周期控制、定时刷新的终端、结构化配置和完整文件管理入口；节点页不伪造尚无 API 的新增、编辑或删除操作。
   - [x] 管理员用户页接入用户列表、创建、`audit.read` 授权/撤销和带确认的删除；无 `user.manage` 权限时不显示导航入口。
+  - [x] 仪表盘为具备 `audit.read` 的用户提供当前保留窗口 NDJSON 导出，并显示下载进度与结果反馈。
   - [x] 接入 Arco Design 控件和图标；支持跟随系统、浅色、深色三种主题偏好及手动持久化切换。
   - [x] 接入 Vue I18n，并从 `frontend/app/src/locales/<语言代码>.json` 自动发现语言包；新增 JSON 文件无需修改注册代码。
 - [ ] Desktop sidecar、托盘、开机启动和安全 WebUI 暴露。

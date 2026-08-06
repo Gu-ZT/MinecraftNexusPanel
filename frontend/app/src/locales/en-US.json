@@ -73,7 +73,8 @@
     "nodeStatusHint": "Core connectivity, latency, and protocol versions",
     "audit": "Recent audit",
     "auditHint": "Panel requests visible to the current account",
-    "auditEmpty": "No audit events are available"
+    "auditEmpty": "No audit events are available",
+    "exportAudit": "Export NDJSON"
   },
   "cores": {
     "title": "Core nodes",
@@ -279,6 +280,7 @@
     "autostartEnabled": "Start at login enabled",
     "autostartDisabled": "Start at login disabled",
     "logsOpened": "Log directory opened",
+    "auditExported": "Audit events exported",
     "actionSubmitted": "Action submitted",
     "documentsScanned": "Configuration documents rescanned",
     "validationPassed": "Configuration validation passed",
@@ -306,6 +308,7 @@
     "autostartRead": "Could not read the start-at-login status",
     "autostartUpdate": "Could not update the start-at-login status",
     "logsOpen": "Could not open the runtime log directory",
+    "auditExport": "Could not export audit events",
     "refreshTokenStore": "Could not store the refresh token in secure storage",
     "refreshTokenClear": "Could not clear the refresh token from secure storage",
     "sessionRefresh": "The native session could not be refreshed; sign in again",

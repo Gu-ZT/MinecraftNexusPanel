@@ -62,6 +62,7 @@ const actionPending = ref<string | null>(null);
 const autostartEnabled = ref<boolean | null>(null);
 const autostartPending = ref(false);
 const logsPending = ref(false);
+const auditExportPending = ref(false);
 const errorMessage = ref('');
 const noticeMessage = ref('');
 const panelApiClient = shallowRef<PanelApiClient>(createClient(application.platform.apiBaseUrl));
@@ -393,6 +394,28 @@ async function openLogs(): Promise<void> {
   }
 }
 
+async function exportAuditEvents(): Promise<void> {
+  auditExportPending.value = true;
+  errorMessage.value = '';
+  noticeMessage.value = '';
+  try {
+    const contents = await api().exportAuditEvents();
+    const blob = new Blob([contents], { type: 'application/x-ndjson;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = window.document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'mcnp-audit-events.ndjson';
+    anchor.click();
+    // 下载触发后释放临时 URL，避免重复导出持续占用 WebView 内存。
+    URL.revokeObjectURL(url);
+    noticeMessage.value = t('notice.auditExported');
+  } catch (error) {
+    errorMessage.value = describeError(error, t('error.auditExport'));
+  } finally {
+    auditExportPending.value = false;
+  }
+}
+
 async function refreshCoreInstances(coreId: string): Promise<void> {
   const page = await api().listInstances(coreId);
   instances.value = [...instances.value.filter((instance) => instance.coreId !== coreId), ...page.items];
@@ -495,6 +518,9 @@ function clearSession(): void {
       :instances="instances"
       :audit-events="auditEvents"
       :loading="loading"
+      :can-export-audit="currentUser.permissions.includes('audit.read')"
+      :exporting-audit="auditExportPending"
+      @export-audit="exportAuditEvents"
     />
     <InstanceListView
       v-else-if="route.name === 'instances' || route.name === 'core-instances'"

@@ -73,7 +73,8 @@
     "nodeStatusHint": "Core 连接、延迟与协议版本",
     "audit": "最近审计",
     "auditHint": "当前账号有权读取的 Panel 请求",
-    "auditEmpty": "暂无可显示的审计事件"
+    "auditEmpty": "暂无可显示的审计事件",
+    "exportAudit": "导出 NDJSON"
   },
   "cores": {
     "title": "Core 节点",
@@ -279,6 +280,7 @@
     "autostartEnabled": "已启用登录时启动",
     "autostartDisabled": "已关闭登录时启动",
     "logsOpened": "日志目录已打开",
+    "auditExported": "审计记录已导出",
     "actionSubmitted": "操作已提交",
     "documentsScanned": "配置文档已重新扫描",
     "validationPassed": "配置校验通过",
@@ -306,6 +308,7 @@
     "autostartRead": "无法读取开机启动状态",
     "autostartUpdate": "无法更新开机启动状态",
     "logsOpen": "无法打开运行日志目录",
+    "auditExport": "无法导出审计记录",
     "refreshTokenStore": "无法将刷新令牌保存到系统安全存储",
     "refreshTokenClear": "无法从系统安全存储删除刷新令牌",
     "sessionRefresh": "原生会话刷新失败，请重新登录",

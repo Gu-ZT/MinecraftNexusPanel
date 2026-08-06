@@ -5,6 +5,7 @@ import {
   IconClockCircle,
   IconCloud,
   IconDashboard,
+  IconDownload,
   IconRight,
   IconSafe,
 } from '@arco-design/web-vue/es/icon';
@@ -20,6 +21,12 @@ const props = defineProps<{
   instances: Instance[];
   auditEvents: PanelAuditEvent[];
   loading: boolean;
+  canExportAudit: boolean;
+  exportingAudit: boolean;
+}>();
+
+const emit = defineEmits<{
+  exportAudit: [];
 }>();
 
 const { locale, t, te } = useI18n();
@@ -148,6 +155,16 @@ function formatClock(): string {
               <h2>{{ t('dashboard.audit') }}</h2>
               <p>{{ t('dashboard.auditHint') }}</p>
             </div>
+            <a-button
+              v-if="canExportAudit"
+              type="text"
+              size="small"
+              :loading="exportingAudit"
+              @click="emit('exportAudit')"
+            >
+              {{ t('dashboard.exportAudit') }}
+              <template #icon><IconDownload /></template>
+            </a-button>
           </header>
           <ol v-if="recentAuditEvents.length" class="audit-list">
             <li v-for="event in recentAuditEvents" :key="event.id">

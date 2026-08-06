@@ -96,7 +96,8 @@ cross-Core scheduling locks remain planned M4 work.
 
 The shared Vue application now provides an operations-focused control panel inspired by the
 information density of MCSManager while remaining an independent implementation. Its routed views
-include a Core/instance/audit dashboard, a searchable instance card catalog with lifecycle actions,
+include a Core/instance/audit dashboard with permission-gated NDJSON export, a searchable instance
+card catalog with lifecycle actions,
 a read-only node catalog with CPU topology inspection, permission-gated user management, local
 client settings, and a full-width instance workspace. Administrators can create users, toggle
 `audit.read`, and delete non-administrators with confirmation. Instance routes expose `overview`,
