@@ -8,4 +8,6 @@ export const desktopPlatform: PlatformAdapter = {
   apiBaseUrl: window.location.origin,
   initialize: () => invoke<DesktopRuntimeInfo>('desktop_runtime'),
   completeInitialAdmin: () => invoke('complete_initial_admin'),
+  isAutostartEnabled: () => invoke<boolean>('desktop_autostart_enabled'),
+  setAutostartEnabled: (enabled) => invoke<boolean>('set_desktop_autostart_enabled', { enabled }),
 };

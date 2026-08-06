@@ -143,7 +143,11 @@
     "runtimeHint": "当前客户端平台和 Panel API 连接信息",
     "platform": "客户端平台",
     "apiBaseUrl": "API 基础地址",
-    "sameOrigin": "与当前页面同源"
+    "sameOrigin": "与当前页面同源",
+    "desktop": "桌面集成",
+    "desktopHint": "管理当前设备的系统集成功能",
+    "autostart": "登录时启动 MCNP",
+    "autostartHint": "开机登录后静默启动并驻留系统托盘"
   },
   "console": {
     "title": "控制台",
@@ -250,6 +254,8 @@
     "killSubmitted": "强制终止任务已提交",
     "resetSubmitted": "异常状态已重置",
     "partialInstances": "{count} 个 Core 的实例列表暂时无法读取，当前页面显示其余可用数据",
+    "autostartEnabled": "已启用登录时启动",
+    "autostartDisabled": "已关闭登录时启动",
     "actionSubmitted": "操作已提交",
     "documentsScanned": "配置文档已重新扫描",
     "validationPassed": "配置校验通过",
@@ -274,6 +280,8 @@
     "uploadFile": "文件上传失败",
     "downloadFile": "文件下载失败",
     "deleteFile": "文件删除失败",
+    "autostartRead": "无法读取开机启动状态",
+    "autostartUpdate": "无法更新开机启动状态",
     "readDocuments": "无法读取配置文档",
     "scanDocuments": "配置扫描失败",
     "readDocument": "无法读取配置文档",

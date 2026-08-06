@@ -80,3 +80,10 @@ pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
     let _ = window.show();
     let _ = window.set_focus();
 }
+
+/// 隐藏主窗口，使开机启动可以无打扰地驻留托盘。
+pub fn hide_main_window<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        let _ = window.hide();
+    }
+}

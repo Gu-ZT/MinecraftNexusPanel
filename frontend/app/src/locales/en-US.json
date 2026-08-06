@@ -143,7 +143,11 @@
     "runtimeHint": "Current client platform and Panel API connection",
     "platform": "Client platform",
     "apiBaseUrl": "API base URL",
-    "sameOrigin": "Same origin as this page"
+    "sameOrigin": "Same origin as this page",
+    "desktop": "Desktop integration",
+    "desktopHint": "Manage operating system integration on this device",
+    "autostart": "Start MCNP at login",
+    "autostartHint": "Start silently and remain in the system tray after sign-in"
   },
   "console": {
     "title": "Console",
@@ -250,6 +254,8 @@
     "killSubmitted": "Kill task submitted",
     "resetSubmitted": "Failed state reset",
     "partialInstances": "Instance lists from {count} Cores are unavailable; other available data is shown",
+    "autostartEnabled": "Start at login enabled",
+    "autostartDisabled": "Start at login disabled",
     "actionSubmitted": "Action submitted",
     "documentsScanned": "Configuration documents rescanned",
     "validationPassed": "Configuration validation passed",
@@ -274,6 +280,8 @@
     "uploadFile": "File upload failed",
     "downloadFile": "File download failed",
     "deleteFile": "File deletion failed",
+    "autostartRead": "Could not read the start-at-login status",
+    "autostartUpdate": "Could not update the start-at-login status",
     "readDocuments": "Could not read configuration documents",
     "scanDocuments": "Configuration scan failed",
     "readDocument": "Could not read the configuration document",

@@ -11,4 +11,6 @@ export interface PlatformAdapter {
   apiBaseUrl: string;
   initialize?: () => Promise<DesktopRuntimeInfo>;
   completeInitialAdmin?: () => Promise<void>;
+  isAutostartEnabled?: () => Promise<boolean>;
+  setAutostartEnabled?: (enabled: boolean) => Promise<boolean>;
 }

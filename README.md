@@ -164,6 +164,8 @@ administrator password, and removes the bootstrap password after the first succe
 Closing the main window keeps the local Core and Panel running in the system tray. Double-clicking
 the tray icon or choosing `Open MCNP` restores the window; `Quit MCNP` explicitly exits and stops
 the sidecar. The tray tooltip reports the active loopback Panel address selected at startup.
+The local settings page can register MCNP for the current user's login; an autostart launch remains
+hidden in the tray until the user opens it.
 See [`apps/desktop/README.md`](apps/desktop/README.md) and
 [`docs/operations/initial-administrator.md`](docs/operations/initial-administrator.md).
 

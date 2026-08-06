@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import { Option as AOption, Radio as ARadio, RadioGroup as ARadioGroup, Select as ASelect } from '@arco-design/web-vue';
-import { IconComputer, IconLanguage, IconMoon, IconSettings, IconSun } from '@arco-design/web-vue/es/icon';
+import {
+  Option as AOption,
+  Radio as ARadio,
+  RadioGroup as ARadioGroup,
+  Select as ASelect,
+  Switch as ASwitch,
+} from '@arco-design/web-vue';
+import { IconComputer, IconLanguage, IconMoon, IconPoweroff, IconSettings, IconSun } from '@arco-design/web-vue/es/icon';
 import { useI18n } from 'vue-i18n';
 
 import type { PlatformKind } from '@mcnp/platform';
@@ -12,6 +18,12 @@ import { availableLocales, localePreference, setLocalePreference } from '../i18n
 defineProps<{
   platformKind: PlatformKind;
   apiBaseUrl: string;
+  autostartEnabled: boolean | null;
+  autostartPending: boolean;
+}>();
+
+const emit = defineEmits<{
+  changeAutostart: [enabled: boolean];
 }>();
 
 const { t } = useI18n();
@@ -26,6 +38,12 @@ function changeTheme(value: string | number | boolean): void {
 function changeLocale(value: unknown): void {
   if (typeof value === 'string') {
     setLocalePreference(value);
+  }
+}
+
+function changeAutostart(value: string | number | boolean): void {
+  if (typeof value === 'boolean') {
+    emit('changeAutostart', value);
   }
 }
 </script>
@@ -58,6 +76,28 @@ function changeLocale(value: unknown): void {
           <a-radio value="light"><IconSun /> {{ t('theme.light') }}</a-radio>
           <a-radio value="dark"><IconMoon /> {{ t('theme.dark') }}</a-radio>
         </a-radio-group>
+      </div>
+    </section>
+
+    <section v-if="platformKind === 'desktop'" class="settings-section">
+      <header>
+        <span><IconPoweroff /></span>
+        <div>
+          <h2>{{ t('settings.desktop') }}</h2>
+          <p>{{ t('settings.desktopHint') }}</p>
+        </div>
+      </header>
+      <div class="settings-control">
+        <div>
+          <strong>{{ t('settings.autostart') }}</strong>
+          <small>{{ t('settings.autostartHint') }}</small>
+        </div>
+        <a-switch
+          :model-value="autostartEnabled ?? false"
+          :loading="autostartPending || autostartEnabled === null"
+          :disabled="autostartPending || autostartEnabled === null"
+          @change="changeAutostart"
+        />
       </div>
     </section>
 

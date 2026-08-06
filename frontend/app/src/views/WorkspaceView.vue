@@ -52,6 +52,8 @@ const auditEvents = ref<PanelAuditEvent[]>([]);
 const loading = ref(false);
 const loginPending = ref(false);
 const actionPending = ref<string | null>(null);
+const autostartEnabled = ref<boolean | null>(null);
+const autostartPending = ref(false);
 const errorMessage = ref('');
 const noticeMessage = ref('');
 const panelApiClient = shallowRef<PanelApiClient>(createClient(application.platform.apiBaseUrl));
@@ -85,6 +87,7 @@ async function restoreSession(): Promise<void> {
       if (!username.value && desktopRuntime.value.initialAdminUsername) {
         username.value = desktopRuntime.value.initialAdminUsername;
       }
+      await loadAutostartStatus();
     }
   } catch (error) {
     if (application.platform.kind === 'desktop') {
@@ -196,6 +199,34 @@ async function runLifecycleAction(
     errorMessage.value = describeError(error, t('error.instanceAction'));
   } finally {
     actionPending.value = null;
+  }
+}
+
+async function loadAutostartStatus(): Promise<void> {
+  if (!application.platform.isAutostartEnabled) {
+    return;
+  }
+  try {
+    autostartEnabled.value = await application.platform.isAutostartEnabled();
+  } catch (error) {
+    errorMessage.value = describeError(error, t('error.autostartRead'));
+  }
+}
+
+async function changeAutostart(enabled: boolean): Promise<void> {
+  if (!application.platform.setAutostartEnabled) {
+    return;
+  }
+  autostartPending.value = true;
+  errorMessage.value = '';
+  noticeMessage.value = '';
+  try {
+    autostartEnabled.value = await application.platform.setAutostartEnabled(enabled);
+    noticeMessage.value = autostartEnabled.value ? t('notice.autostartEnabled') : t('notice.autostartDisabled');
+  } catch (error) {
+    errorMessage.value = describeError(error, t('error.autostartUpdate'));
+  } finally {
+    autostartPending.value = false;
   }
 }
 
@@ -319,6 +350,9 @@ function clearSession(): void {
       v-else-if="route.name === 'settings'"
       :platform-kind="application.platform.kind"
       :api-base-url="effectiveApiBaseUrl"
+      :autostart-enabled="autostartEnabled"
+      :autostart-pending="autostartPending"
+      @change-autostart="changeAutostart"
     />
     <InstanceWorkspace
       v-else-if="selectedCore && selectedInstance"
