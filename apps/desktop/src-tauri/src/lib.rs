@@ -1,6 +1,7 @@
 //! MCNP Desktop Tauri 容器入口。
 
 mod desktop_runtime;
+mod desktop_tray;
 
 use desktop_runtime::DesktopRuntime;
 use desktop_runtime::DesktopRuntimeError;
@@ -21,9 +22,12 @@ pub fn run() -> Result<(), Error> {
         ])
         .setup(|app| {
             let runtime = DesktopRuntime::start(app.handle()).map_err(setup_error)?;
+            let panel_address = runtime.info().map_err(setup_error)?.api_base_url;
             app.manage(runtime);
+            desktop_tray::setup(app, &panel_address)?;
             Ok(())
         })
+        .on_window_event(desktop_tray::handle_window_event)
         .build(generate_context!())?
         .run(|app_handle, event| {
             if matches!(event, RunEvent::Exit) {

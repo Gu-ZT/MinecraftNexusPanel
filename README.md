@@ -161,6 +161,9 @@ the runtime, and the resulting installer is currently about 6.5 MB.
 On first launch, the desktop runtime creates its SQLite data and persistent secrets below
 `%APPDATA%\dev.mcnp.desktop`. The login page displays the randomly generated initial
 administrator password, and removes the bootstrap password after the first successful login.
+Closing the main window keeps the local Core and Panel running in the system tray. Double-clicking
+the tray icon or choosing `Open MCNP` restores the window; `Quit MCNP` explicitly exits and stops
+the sidecar. The tray tooltip reports the active loopback Panel address selected at startup.
 See [`apps/desktop/README.md`](apps/desktop/README.md) and
 [`docs/operations/initial-administrator.md`](docs/operations/initial-administrator.md).
 

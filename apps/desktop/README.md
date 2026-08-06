@@ -37,5 +37,7 @@ target/release/bundle/nsis/MCNP Desktop_0.1.0_x64-setup.exe
 引导密码会从秘密文件删除；Panel 数据库和长期密钥仍会保留。完整说明见
 [`docs/operations/initial-administrator.md`](../../docs/operations/initial-administrator.md)。
 
-应用退出时会停止本地 sidecar。当前版本已交付 Windows x64 独立 sidecar 安装包；托盘、
-开机启动、系统密钥环、Windows 签名、自动更新及 Linux/macOS 安装包仍属于后续发布工作。
+关闭主窗口时应用会隐藏到系统托盘，本地 Core/Panel 继续运行。托盘悬浮提示显示当前动态
+Panel 地址；双击托盘图标或选择 `Open MCNP` 可恢复主窗口，选择 `Quit MCNP` 才会退出应用并停止本地 sidecar。当前版本已交付
+Windows x64 独立 sidecar 安装包；开机启动、系统密钥环、Windows 签名、自动更新及
+Linux/macOS 安装包仍属于后续发布工作。

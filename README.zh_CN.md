@@ -154,7 +154,9 @@ Node.js、Rust、pnpm，也不需要另行下载 MCNP。安装包不内置 WebVi
 实测约 6.5 MB。
 
 首次启动时，桌面运行时会在 `%APPDATA%\dev.mcnp.desktop` 下创建 SQLite 数据和持久化
-秘密。登录页会显示随机生成的首位管理员密码，首次登录成功后删除引导密码。详见
+秘密。登录页会显示随机生成的首位管理员密码，首次登录成功后删除引导密码。
+关闭主窗口后，本地 Core/Panel 会继续在系统托盘中运行；托盘悬浮提示显示启动时选择的动态
+Panel 地址。双击托盘图标或选择 `Open MCNP` 可恢复窗口，选择 `Quit MCNP` 才会显式退出并停止 sidecar。详见
 [`apps/desktop/README.md`](apps/desktop/README.md) 和
 [`docs/operations/initial-administrator.md`](docs/operations/initial-administrator.md)。
 
