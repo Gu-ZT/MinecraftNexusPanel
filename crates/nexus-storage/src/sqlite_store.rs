@@ -300,6 +300,20 @@ impl SqliteStore {
             .map_err(StorageError::Query)
     }
 
+    /// 按稳定用户标识查找用户。
+    pub fn find_user_by_id(&self, user_id: &str) -> Result<Option<StoredUser>, StorageError> {
+        let connection = self.lock_connection()?;
+        connection
+            .query_row(
+                "SELECT id, username, display_name, password_hash, is_admin, permissions_json
+                 FROM users WHERE id = ?1",
+                [user_id],
+                map_user,
+            )
+            .optional()
+            .map_err(StorageError::Query)
+    }
+
     /// 原子创建非管理员用户；用户名冲突时返回 `false`。
     ///
     /// 权限由 Panel 在进入存储层前校验，此处只保存规范化 JSON，避免存储层
@@ -350,6 +364,37 @@ impl SqliteStore {
 
         rows.collect::<SqliteResult<Vec<_>>>()
             .map_err(StorageError::Query)
+    }
+
+    /// 原子更新用户显示名和/或权限 JSON；用户不存在时返回 `false`。
+    pub fn update_user(
+        &self,
+        user_id: &str,
+        display_name: Option<&str>,
+        permissions_json: Option<&str>,
+    ) -> Result<bool, StorageError> {
+        let connection = self.lock_connection()?;
+        let affected = connection
+            .execute(
+                "UPDATE users
+                 SET display_name = COALESCE(?2, display_name),
+                     permissions_json = COALESCE(?3, permissions_json)
+                 WHERE id = ?1",
+                (user_id, display_name, permissions_json),
+            )
+            .map_err(StorageError::Query)?;
+
+        Ok(affected == 1)
+    }
+
+    /// 删除用户；外键级联同时撤销其全部会话。
+    pub fn delete_user(&self, user_id: &str) -> Result<bool, StorageError> {
+        let connection = self.lock_connection()?;
+        let affected = connection
+            .execute("DELETE FROM users WHERE id = ?1", [user_id])
+            .map_err(StorageError::Query)?;
+
+        Ok(affected == 1)
     }
 
     /// 查找未撤销且访问令牌未过期的会话。
@@ -902,6 +947,25 @@ mod tests {
         assert!(!user.is_admin());
         assert!(user.has_permission("audit.read"));
         assert!(!user.has_permission("core.manage"));
+
+        assert!(
+            store
+                .update_user("user-1", Some("Updated Reader"), Some("[]"))
+                .expect("user is updated")
+        );
+        let updated = store
+            .find_user_by_id("user-1")
+            .expect("updated user lookup succeeds")
+            .expect("updated user exists");
+        assert_eq!(updated.display_name(), "Updated Reader");
+        assert!(updated.permissions().is_empty());
+        assert!(store.delete_user("user-1").expect("user is deleted"));
+        assert!(
+            store
+                .find_user_by_id("user-1")
+                .expect("deleted user lookup succeeds")
+                .is_none()
+        );
     }
 
     #[test]

@@ -104,6 +104,11 @@ export interface UserPage {
   items: User[];
 }
 
+export interface UserUpdate {
+  displayName?: string;
+  permissions?: string[];
+}
+
 export interface SessionTokens {
   id: string;
   accessToken: string | null;
@@ -818,6 +823,9 @@ export interface PanelApiClient {
   logout(): Promise<void>;
   listUsers(): Promise<UserPage>;
   createUser(user: UserCreate): Promise<User>;
+  getUser(userId: string): Promise<User>;
+  updateUser(userId: string, user: UserUpdate): Promise<User>;
+  deleteUser(userId: string): Promise<void>;
   listCores(): Promise<CorePage>;
   listAuditEvents(limit?: number): Promise<PanelAuditPage>;
   getCpuTopology(coreId: string): Promise<CpuTopology>;
@@ -1129,6 +1137,22 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     },
     createUser(user) {
       return request<User>('/api/v1/users', { method: 'POST', body: user, csrf: true });
+    },
+    getUser(userId) {
+      return request<User>(`/api/v1/users/${encodeURIComponent(userId)}`);
+    },
+    updateUser(userId, user) {
+      return request<User>(`/api/v1/users/${encodeURIComponent(userId)}`, {
+        method: 'PATCH',
+        body: user,
+        csrf: true,
+      });
+    },
+    deleteUser(userId) {
+      return request<void>(`/api/v1/users/${encodeURIComponent(userId)}`, {
+        method: 'DELETE',
+        csrf: true,
+      });
     },
     listCores() {
       return request<CorePage>('/api/v1/cores?limit=50');

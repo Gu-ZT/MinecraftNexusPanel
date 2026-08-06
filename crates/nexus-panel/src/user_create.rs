@@ -6,7 +6,7 @@ use crate::permissions::is_assignable;
 ///
 /// 密码只在 Argon2 哈希前短暂保存在内存中，不进入响应、审计事件或日志。
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct UserCreate {
     username: String,
     display_name: String,

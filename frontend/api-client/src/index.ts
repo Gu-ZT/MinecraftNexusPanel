@@ -121,6 +121,7 @@ export type {
   User,
   UserCreate,
   UserPage,
+  UserUpdate,
   VersionMetadataProvider,
 } from './panel-api-client';
 export { ApiRequestError, createPanelApiClient } from './panel-api-client';

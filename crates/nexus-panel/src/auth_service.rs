@@ -27,6 +27,7 @@ use crate::ClientType;
 use crate::IssuedSession;
 use crate::LoginRequest;
 use crate::UserCreate;
+use crate::UserUpdate;
 
 const ACCESS_TOKEN_LIFETIME_SECONDS: i64 = 15 * 60;
 const ACCOUNT_LOGIN_ATTEMPT_LIMIT: usize = 5;
@@ -115,6 +116,39 @@ impl AuthService {
     /// 返回所有 Panel 用户，供受保护的用户管理路由使用。
     pub(crate) fn list_users(&self) -> Result<Vec<StoredUser>, AuthError> {
         self.store.list_users().map_err(AuthError::from)
+    }
+
+    /// 按用户 ID 读取当前用户记录。
+    pub(crate) fn find_user(&self, user_id: &str) -> Result<Option<StoredUser>, AuthError> {
+        self.store.find_user_by_id(user_id).map_err(AuthError::from)
+    }
+
+    /// 更新非管理员用户请求中声明的字段，并返回更新后记录。
+    ///
+    /// 管理员保护由路由在调用前检查；本方法只负责哈希之外的资料持久化。
+    pub(crate) fn update_user(
+        &self,
+        user_id: &str,
+        request: &UserUpdate,
+    ) -> Result<Option<StoredUser>, AuthError> {
+        let permissions = request.normalized_permissions();
+        let permissions_json = permissions
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+        if !self
+            .store
+            .update_user(user_id, request.display_name(), permissions_json.as_deref())?
+        {
+            return Ok(None);
+        }
+
+        self.find_user(user_id)
+    }
+
+    /// 删除用户及其会话。
+    pub(crate) fn delete_user(&self, user_id: &str) -> Result<bool, AuthError> {
+        self.store.delete_user(user_id).map_err(AuthError::from)
     }
 
     /// 校验登录请求并创建浏览器或原生客户端会话。

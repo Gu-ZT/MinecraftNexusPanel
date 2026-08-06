@@ -444,6 +444,86 @@ paths:
           $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/ServiceUnavailable'
+  /users/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    get:
+      tags: [ Users ]
+      operationId: getUser
+      summary: Get one Panel user
+      responses:
+        '200':
+          description: User details and effective permission names
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [ Users ]
+      operationId: updateUser
+      summary: Update a non-administrator user
+      description: |
+        Administrators can change a non-administrator display name or assignable
+        permissions. Permission changes apply to existing sessions immediately.
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [ Users ]
+      operationId: deleteUser
+      summary: Delete a non-administrator user and revoke its sessions
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      responses:
+        '204':
+          description: User deleted and sessions revoked
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /audit-events:
     get:
       tags: [ Audit ]
@@ -2900,6 +2980,14 @@ components:
         minimum: 1
         maximum: 200
         default: 50
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
     CoreId:
       name: coreId
       in: path
@@ -3270,6 +3358,21 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/User'
+    UserUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 128
+        permissions:
+          type: array
+          maxItems: 16
+          items:
+            type: string
+            enum: [ audit.read ]
     WebSocketTicket:
       type: object
       required: [ ticket, expiresAt ]

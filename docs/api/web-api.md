@@ -320,7 +320,7 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 | POST             | `/tasks/{taskId}/actions/cancel` | 对应写权限         | 尽力取消           |
 | GET              | `/users`                         | 管理员             | 用户列表           |
 | POST             | `/users`                         | 管理员             | 创建非管理员用户   |
-| GET/PATCH/DELETE | `/users/{userId}`                | 对应用户权限       | 用户管理           |
+| GET/PATCH/DELETE | `/users/{userId}`                | 管理员             | 查询、更新或删除非管理员 |
 | GET              | `/roles`                         | `user.read`        | 角色列表           |
 | POST             | `/roles`                         | `user.manage`      | 创建角色           |
 | GET/PATCH/DELETE | `/roles/{roleId}`                | 对应用户权限       | 角色管理           |
@@ -330,8 +330,9 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 | PUT              | `/groups/{groupId}/grants`       | `user.manage`      | 设置权限和实例范围 |
 | GET              | `/audit-events`                  | `audit.read`       | 只读 Panel 请求审计事件 |
 
-当前已实现 `GET/POST /users`，管理员可列出用户或创建非管理员用户；现阶段仅允许授予已经完成
-服务端检查的 `audit.read`，未知或尚未执行的权限名会被拒绝。权限变更、删除、用户组和资源 scope
+当前已实现 `/users` 列表、创建、单项查询、更新和删除。管理员可管理非管理员的显示名与权限，
+权限变更对现有会话立即生效，删除会级联撤销目标用户会话；管理员账户和自删除受到保护。现阶段仅
+允许授予已经完成服务端检查的 `audit.read`，未知或尚未执行的权限名会被拒绝。用户组和资源 scope
 仍属于后续实现。`GET /audit-events` 接受管理员或显式持有 `audit.read` 的用户，并支持可选
 `limit`（1-200，默认 100），按最新优先返回 Panel 请求元数据。
 事件最多保留 10,000 条，且不允许通过 API 修改或删除。记录包含用户 ID、请求 ID、来源 IP、HTTP 方法、

@@ -234,6 +234,10 @@ async fn grants_audit_read_without_granting_administrator_access() {
     let admin_token = admin_login.body["session"]["accessToken"]
         .as_str()
         .expect("administrator access token is returned");
+    let admin_id = admin_login.body["user"]["id"]
+        .as_str()
+        .expect("administrator user ID is returned")
+        .to_owned();
     let admin_authorization = format!("Bearer {admin_token}");
 
     let unsupported_permission = send_json_request(
@@ -270,6 +274,10 @@ async fn grants_audit_read_without_granting_administrator_access() {
     .await;
     assert_eq!(audit_reader.status, 201);
     assert_eq!(audit_reader.body["permissions"], json!(["audit.read"]));
+    let audit_reader_id = audit_reader.body["id"]
+        .as_str()
+        .expect("audit reader ID is returned")
+        .to_owned();
 
     let ordinary_user = send_json_request(
         listen_address,
@@ -285,6 +293,10 @@ async fn grants_audit_read_without_granting_administrator_access() {
     )
     .await;
     assert_eq!(ordinary_user.status, 201);
+    let ordinary_user_id = ordinary_user.body["id"]
+        .as_str()
+        .expect("ordinary user ID is returned")
+        .to_owned();
 
     let users = send_json_request(
         listen_address,
@@ -296,6 +308,17 @@ async fn grants_audit_read_without_granting_administrator_access() {
     .await;
     assert_eq!(users.status, 200);
     assert_eq!(users.body["items"].as_array().map(Vec::len), Some(3));
+
+    let listed_reader = send_json_request(
+        listen_address,
+        "GET",
+        &format!("/api/v1/users/{audit_reader_id}"),
+        &[("Authorization", admin_authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(listed_reader.status, 200);
+    assert_eq!(listed_reader.body["username"], "auditor");
 
     let reader_login = login(listen_address, "auditor", "auditor secure password").await;
     let reader_token = reader_login.body["session"]["accessToken"]
@@ -311,6 +334,31 @@ async fn grants_audit_read_without_granting_administrator_access() {
     )
     .await;
     assert_eq!(reader_audit.status, 200);
+
+    let updated_reader = send_json_request(
+        listen_address,
+        "PATCH",
+        &format!("/api/v1/users/{audit_reader_id}"),
+        &[("Authorization", admin_authorization.as_str())],
+        Some(json!({
+            "displayName": "Former Audit Reader",
+            "permissions": [],
+        })),
+    )
+    .await;
+    assert_eq!(updated_reader.status, 200);
+    assert_eq!(updated_reader.body["displayName"], "Former Audit Reader");
+    assert_eq!(updated_reader.body["permissions"], json!([]));
+
+    let revoked_reader_audit = send_json_request(
+        listen_address,
+        "GET",
+        "/api/v1/audit-events",
+        &[("Authorization", reader_authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(revoked_reader_audit.status, 403);
 
     let rejected_user_management = send_json_request(
         listen_address,
@@ -337,6 +385,39 @@ async fn grants_audit_read_without_granting_administrator_access() {
     .await;
     assert_eq!(rejected_audit.status, 403);
     assert_eq!(rejected_audit.body["error"]["code"], "FORBIDDEN");
+
+    let deleted_user = send_json_request(
+        listen_address,
+        "DELETE",
+        &format!("/api/v1/users/{ordinary_user_id}"),
+        &[("Authorization", admin_authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(deleted_user.status, 204);
+    let deleted_user_session = send_json_request(
+        listen_address,
+        "GET",
+        "/api/v1/auth/me",
+        &[("Authorization", operator_authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(deleted_user_session.status, 401);
+
+    let protected_admin = send_json_request(
+        listen_address,
+        "DELETE",
+        &format!("/api/v1/users/{admin_id}"),
+        &[("Authorization", admin_authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(protected_admin.status, 409);
+    assert_eq!(
+        protected_admin.body["error"]["code"],
+        "USER_SELF_DELETE_FORBIDDEN"
+    );
 
     stop_panel(server_task).await;
 }
