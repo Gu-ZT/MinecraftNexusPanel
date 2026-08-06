@@ -113,7 +113,7 @@
   - [x] JSON/YAML/TOML provider 为嵌套对象和数组生成递归 JSON Schema/UI Schema，前端可按字段层级选择 group、array、number 和 checkbox 控件。
   - [x] WebUI 提供配置文档列表、重新扫描、实例级校验、revision 保存和有损写回确认；按 Schema/UI Schema 渲染递归对象、布尔、数字、枚举、敏感文本和 Schema 明确的同构数组。
   - [ ] 异构数组编辑、版本专用 Schema 和更多跨文件规则；元组、`oneOf`/`anyOf` 或未声明数组项 Schema 当前保持只读。
-- [ ] 实例文件浏览、上传、下载、移动、删除与路径逃逸防护。
+- [x] 实例文件浏览、上传、下载、移动、删除与路径逃逸防护。
   - [x] Core 文件沙箱：目录列表、分页游标、32 KiB 分块读取、SHA-256 和 1 MiB 内原子写入。
   - [x] Panel REST 与 TypeScript Client：二进制读取、ETag/If-Match、幂等写入和路径错误映射。
   - [x] 目录创建和同一实例内移动，包含递归目录、覆盖选项和非空目录保护。
@@ -122,6 +122,7 @@
   - [x] Core/Panel 会话化分块上传：临时文件、固定 1 MiB 分片、顺序 offset、重复分片重试、摘要校验、创建会话时的目标 SHA-256 并发校验、4 GiB 单文件上限、16 会话配额、原子提交和放弃。
   - [x] Core/Panel 会话化分块下载：固定 1 MiB 分片、完整文件/分片 SHA-256、顺序 offset、已读分片重试、完成校验、放弃和二进制 HTTP 响应。
   - [x] Core/Panel 异步 ZIP 下载归档准备：最多 128 个源路径、16,384 个递归条目和 4 GiB 未压缩源数据，覆盖文件、目录、空目录和实例根目录，按条目报告进度并原子生成归档。
+  - [x] WebUI 文件管理器：目录导航与筛选、新建文件/目录、UTF-8 小文件编辑、重命名、增量 SHA-256 与会话化分块上传/下载、异步递归删除、任务轮询和传输进度。
   - [ ] 跨 Core 重启续传、快照、差异比较和统一任务中心进度。
 - [ ] 模组/插件搜索、解析、安装、更新、删除与兼容性提示。
   - [x] `InstallTemplate` 可按独立的 `ExtensionKind` 展开一个或多个声明目录，并保留插件/模组共用目录的类型边界。
@@ -177,8 +178,9 @@
 
 - [ ] 由 OpenAPI 生成共享 TypeScript API Client。
 - [ ] 完成 WebUI 全部管理页面和权限驱动交互。
-  - [x] 实例工作区采用参考 MCSManager 信息密度的独立实现，提供紧凑顶栏、Core/实例列表、控制台和结构化配置视图。
-  - [x] 使用 Vue Router 将 Core、实例及 `console`/`config` 视图写入 URL，并支持前进、后退和直接访问恢复选择。
+  - [x] 采用参考 MCSManager 信息密度的独立实现，提供概览仪表盘、实例卡片目录、只读节点目录与 CPU 拓扑、本地设置和全宽实例工作区。
+  - [x] 使用 Vue Router 将控制台页面、Core、实例及 `overview`/`console`/`config`/`files` 视图写入 URL，并支持前进、后退和直接访问恢复上下文。
+  - [x] 实例工作区提供运行概览、生命周期控制、定时刷新的终端、结构化配置和完整文件管理入口；节点页不伪造尚无 API 的新增、编辑或删除操作。
   - [x] 接入 Arco Design 控件和图标；支持跟随系统、浅色、深色三种主题偏好及手动持久化切换。
   - [x] 接入 Vue I18n，并从 `frontend/app/src/locales/<语言代码>.json` 自动发现语言包；新增 JSON 文件无需修改注册代码。
 - [ ] Desktop sidecar、托盘、开机启动和安全 WebUI 暴露。

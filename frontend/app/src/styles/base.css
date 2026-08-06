@@ -110,3 +110,161 @@ select:focus-visible {
 .arco-dropdown-option {
   letter-spacing: 0;
 }
+
+.console-page {
+  width: min(100%, 108rem);
+  margin: 0 auto;
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.page-heading {
+  display: flex;
+  min-height: 4.2rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.page-heading > div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.page-heading h1,
+.page-heading p {
+  margin: 0;
+}
+
+.page-heading h1 {
+  color: var(--mcnp-text);
+  font-size: 1.18rem;
+  font-weight: 650;
+}
+
+.page-heading > p {
+  max-width: 34rem;
+  color: var(--mcnp-text-faint);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.page-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--mcnp-primary);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.form-error,
+.notice {
+  border-radius: 4px;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.74rem;
+}
+
+.form-error {
+  background: var(--mcnp-danger-soft);
+  color: var(--mcnp-danger);
+}
+
+.notice {
+  background: var(--mcnp-success-soft);
+  color: var(--mcnp-success);
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 0.35rem;
+  color: var(--mcnp-text-muted);
+  font-size: 0.64rem;
+  font-style: normal;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status > span {
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-online,
+.status-running {
+  color: var(--mcnp-success);
+}
+
+.status-starting,
+.status-stopping,
+.status-degraded {
+  color: var(--mcnp-warning);
+}
+
+.status-auth-failed,
+.status-incompatible,
+.status-failed {
+  color: var(--mcnp-danger);
+}
+
+.status-offline,
+.status-stopped,
+.status-created,
+.status-unknown {
+  color: var(--mcnp-text-faint);
+}
+
+.instance-card__mark.status-running,
+.instance-heading__mark.status-running,
+.instance-card__mark.status-online,
+.instance-heading__mark.status-online {
+  background: var(--mcnp-success);
+}
+
+.instance-card__mark.status-starting,
+.instance-heading__mark.status-starting,
+.instance-card__mark.status-stopping,
+.instance-heading__mark.status-stopping,
+.instance-card__mark.status-degraded,
+.instance-heading__mark.status-degraded {
+  background: var(--mcnp-warning);
+}
+
+.instance-card__mark.status-failed,
+.instance-heading__mark.status-failed,
+.instance-card__mark.status-auth-failed,
+.instance-heading__mark.status-auth-failed,
+.instance-card__mark.status-incompatible,
+.instance-heading__mark.status-incompatible {
+  background: var(--mcnp-danger);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 44rem) {
+  .console-page {
+    padding: 1rem 0.75rem;
+  }
+
+  .page-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .page-heading > p {
+    text-align: left;
+  }
+}
