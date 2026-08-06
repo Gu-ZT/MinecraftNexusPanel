@@ -178,6 +178,11 @@
 - [ ] 由 OpenAPI 生成共享 TypeScript API Client。
 - [ ] 完成 WebUI 全部管理页面和权限驱动交互。
 - [ ] Desktop sidecar、托盘、开机启动和安全 WebUI 暴露。
+  - [x] Windows x64 Tauri NSIS 安装包内置共享 Vue 前端和 release `mcnp all` sidecar，最终用户无需安装 Node.js、Rust、pnpm 或单独下载 MCNP。
+  - [x] Desktop 首次启动生成并持久化 Panel 主密钥、Core PSK 和随机首位管理员密码，登录页显示引导凭据，成功登录后删除引导密码。
+  - [x] Desktop 通过动态 loopback API 地址和原生 Bearer Token 连接内置 Panel；Panel 仅允许 Tauri 本地来源的受限 CORS。
+  - [x] Desktop 退出时停止本地 sidecar；数据和秘密保存于 `%APPDATA%\dev.mcnp.desktop`。
+  - [ ] 托盘、开机启动、系统密钥环/Refresh Token 安全存储、运行日志收集、签名和自动更新。
 - [ ] Mobile 设备登录、安全存储、生物识别保护和移动控制台。
 - [ ] Browser/Tauri 平台适配器与共享状态、表单、实时事件 SDK。
 
@@ -192,6 +197,8 @@
 ## M7：发布与生态
 
 - [ ] Windows、Linux、macOS 安装包、校验和、签名和自动更新。
+  - [x] Windows x64 NSIS 安装包已能构建，包含 `mcnp.exe` sidecar；WebView2 使用系统运行时，当前精简产物约 6.5 MB。
+  - [ ] Linux/macOS 安装包、发布校验和、代码签名和自动更新。
 - [ ] Android/iOS 构建、签名、商店发布与设备兼容性验证。
 - [ ] Docker 镜像、多架构清单和部署示例。
 - [ ] Paper、Velocity、Fabric 模板市场与扩展元数据生态。

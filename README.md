@@ -122,4 +122,26 @@ pnpm build
 pnpm dev
 ```
 
+## Desktop Packaging
+
+Build the independent Windows x64 desktop installer from the repository root:
+
+```powershell
+pnpm install
+pnpm desktop:build
+```
+
+The build compiles the shared Vue application, builds the release `mcnp` executable, and
+bundles it as the local Core/Panel sidecar. The installer is written to
+`target/release/bundle/nsis/MCNP Desktop_0.1.0_x64-setup.exe`; end users do not need
+Node.js, Rust, pnpm, or a separate MCNP download. The installer uses the system-provided
+Microsoft Edge WebView2 Runtime instead of embedding it; Windows 10/11 normally includes
+the runtime, and the resulting installer is currently about 6.5 MB.
+
+On first launch, the desktop runtime creates its SQLite data and persistent secrets below
+`%APPDATA%\dev.mcnp.desktop`. The login page displays the randomly generated initial
+administrator password, and removes the bootstrap password after the first successful login.
+See [`apps/desktop/README.md`](apps/desktop/README.md) and
+[`docs/operations/initial-administrator.md`](docs/operations/initial-administrator.md).
+
 See [PLAN.md](PLAN.md) and the [API documentation](docs/api/README.md) for the protocol design and product scope.

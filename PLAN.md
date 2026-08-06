@@ -37,7 +37,7 @@ flowchart LR
 - Core 只信任持有节点连接密钥的 Panel，不处理终端用户身份。
 - Panel 是用户、权限、审计、Core 注册信息和公开 Web API 的唯一权威来源。
 - Mobile 永远只连接 Panel，避免把 Core 密钥或节点拓扑暴露到移动设备。
-- Desktop 运行本地 Panel/Core，并用与浏览器相同的 WebUI；Tauri 仅提供系统集成和生命周期管理，不复制业务 API。
+- Desktop 已能运行本地 Panel/Core，并用与浏览器相同的 WebUI；Windows x64 安装包会内置 release `mcnp all` sidecar。Tauri 仅提供系统集成、首启秘密生成、Bearer 登录引导和 sidecar 生命周期管理，不复制业务 API。
 - `all` 与 `desktop` 不使用私有捷径绕过协议，Panel 仍通过 loopback TCP 连接内置 Core，以降低分离模式与合并模式的行为差异。
 
 ## 3. 建议目录结构
@@ -85,7 +85,7 @@ MinecraftNexusPanel/
 - Panel WebUI、Desktop 和 Mobile 统一使用 Vue 3、TypeScript、Vite、Vue Router、Pinia 与 TanStack Vue Query。
 - 三端复用同一套页面、领域 store、API Client、表单校验和实时事件 SDK；平台差异只能通过 `platform` 适配器访问。
 - Panel 托管 Vue 构建产物；Tauri Desktop/Mobile 加载同一应用构建，不复制业务页面。
-- 浏览器适配器使用 Cookie/CSRF；Tauri 适配器使用系统安全存储中的 Access/Refresh Token。
+- 浏览器适配器使用 Cookie/CSRF；当前 Desktop 适配器使用原生 Bearer Access Token，系统密钥环持久化、Refresh Token 安全存储仍需补齐。
 - 浏览器使用 `HttpOnly + Secure + SameSite` 会话 Cookie，并通过 CSRF Token 保护写操作。
 - Desktop/Mobile 使用短期 Access Token 与可轮换 Refresh Token，Token 必须绑定设备会话。
 - 实时日志、指标、节点状态和任务进度统一通过 WebSocket 推送。
@@ -277,7 +277,8 @@ stateDiagram-v2
 ### M5：统一 Vue 3 客户端
 
 - Vue 3 WebUI 完成全部管理页面，并由 Panel 托管。
-- Tauri Desktop：sidecar、托盘、开机启动和安全暴露 WebUI。
+- Tauri Desktop：已交付 Windows x64 独立安装包；安装包包含共享 Vue 构建产物和 release `mcnp all` sidecar。首启自动生成 Panel 主密钥、Core PSK 和随机管理员密码，登录页展示引导凭据，Panel 仅对 Tauri 本地来源开放跨源请求，退出时停止 sidecar。
+- Tauri Desktop 后续：托盘、开机启动、系统密钥环/Refresh Token 安全存储、运行日志收集、签名和自动更新。
 - Tauri Mobile：设备登录、生物识别保护 Refresh Token、移动终端与任务页面。
 - 验收：三端使用同一个 Vue 功能模块和生成 API Client，不存在独立维护的业务页面副本。
 
@@ -290,7 +291,7 @@ stateDiagram-v2
 
 ### M7：发布与生态
 
-- Windows/Linux/macOS 安装包、Docker 镜像、自动更新和签名。
+- Windows x64 NSIS 安装包已可构建并包含 Core/Panel sidecar，WebView2 使用目标系统运行时而不进入安装包；Linux/macOS 安装包、Docker 镜像、自动更新、校验和发布流程及签名仍待完成。
 - Vanilla/Paper/Velocity/Fabric/NeoForge/Forge/Purpur/Pufferfish/Folia/Leaf/Magma/Sponge/Arclight/CatServer/Waterfall/BungeeCord/Lightfall/Geyser/Bedrock Dedicated Server/PocketMine-MP/Nukkit/Cloudburst Nukkit 常用模板和版本元数据提供方。
 - 导入/导出、迁移、灾难恢复和兼容性矩阵。
 

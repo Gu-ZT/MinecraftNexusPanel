@@ -120,4 +120,25 @@ pnpm build
 pnpm dev
 ```
 
+## Desktop 安装包
+
+在仓库根目录构建 Windows x64 独立桌面安装包：
+
+```powershell
+pnpm install
+pnpm desktop:build
+```
+
+构建过程会编译共享 Vue 应用、构建 release `mcnp` 二进制，并将它作为本地 Core/Panel
+sidecar 封装进安装包。产物位于
+`target/release/bundle/nsis/MCNP Desktop_0.1.0_x64-setup.exe`；最终用户不需要安装
+Node.js、Rust、pnpm，也不需要另行下载 MCNP。安装包不内置 WebView2 Runtime，而是使用
+系统已有的 Microsoft Edge WebView2；Windows 10/11 通常已预装该运行时，精简安装包当前
+实测约 6.5 MB。
+
+首次启动时，桌面运行时会在 `%APPDATA%\dev.mcnp.desktop` 下创建 SQLite 数据和持久化
+秘密。登录页会显示随机生成的首位管理员密码，首次登录成功后删除引导密码。详见
+[`apps/desktop/README.md`](apps/desktop/README.md) 和
+[`docs/operations/initial-administrator.md`](docs/operations/initial-administrator.md)。
+
 协议设计和产品范围参见 [PLAN.md](PLAN.md) 与 [API 文档](docs/api/README.md)。
