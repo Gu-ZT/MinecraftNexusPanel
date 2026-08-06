@@ -28,6 +28,7 @@ import InstanceWorkspace from '../components/InstanceWorkspace.vue';
 import LocalSettingsView from '../components/LocalSettingsView.vue';
 import NodeListView from '../components/NodeListView.vue';
 import PreferenceControls from '../components/PreferenceControls.vue';
+import UserListView from '../components/UserListView.vue';
 import { useApplicationStore } from '../stores/application';
 import { describeError } from '../utils/presentation';
 
@@ -518,6 +519,11 @@ function clearSession(): void {
       :logs-pending="logsPending"
       @change-autostart="changeAutostart"
       @open-logs="openLogs"
+    />
+    <UserListView
+      v-else-if="route.name === 'users' && currentUser.permissions.includes('user.manage')"
+      :client="panelApiClient"
+      :current-user="currentUser"
     />
     <InstanceWorkspace
       v-else-if="selectedCore && selectedInstance"

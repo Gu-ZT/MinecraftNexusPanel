@@ -86,7 +86,7 @@ MinecraftNexusPanel/
 - 标准表单、按钮、菜单和图标统一使用 Arco Design；运维工作区参考 MCSManager 的紧凑信息层级，但不复制其源码或制造尚无后端能力的入口。
 - Core、实例和实例子视图必须由 Vue Router 地址表达，使浏览器历史、刷新和直接链接恢复同一工作上下文。
 - 主题提供 `system`、`light`、`dark` 三种偏好并监听系统配色变化；国际化语言包按 `frontend/app/src/locales/<语言代码>.json` 自动发现，文件内 `$meta.name` 提供语言显示名。
-- 当前共享应用已提供 `/dashboard`、`/instances`、`/nodes`、`/settings` 和路由化实例详情；仪表盘聚合 Core、实例和授权审计，节点页提供只读连接信息与 CPU 拓扑，实例页提供生命周期控制、终端、结构化配置和文件管理。用户、Core 编辑、镜像与 Panel 全局设置在后端 API 交付前不制造虚假控制入口。
+- 当前共享应用已提供 `/dashboard`、`/instances`、`/nodes`、`/users`、`/settings` 和路由化实例详情；仪表盘聚合 Core、实例和授权审计，节点页提供只读连接信息与 CPU 拓扑，实例页提供生命周期控制、终端、结构化配置和文件管理。管理员用户页提供列表、创建、`audit.read` 授权/撤销和删除确认，无 `user.manage` 时隐藏入口。Core 编辑、镜像与 Panel 全局设置在后端 API 交付前不制造虚假控制入口。
 - 三端复用同一套页面、领域 store、API Client、表单校验和实时事件 SDK；平台差异只能通过 `platform` 适配器访问。
 - Panel 托管 Vue 构建产物；Tauri Desktop/Mobile 加载同一应用构建，不复制业务页面。
 - 浏览器适配器使用 Cookie/CSRF；Windows Desktop 使用 Windows Credential Manager、macOS Desktop 使用系统 Keychain、Linux Desktop 使用 keyutils 与 Secret Service 持久组合后端保存原生 Refresh Token，重启后及短期 Access Token 到期前 60 秒通过 refresh 轮换会话。
@@ -281,7 +281,7 @@ stateDiagram-v2
 ### M5：统一 Vue 3 客户端
 
 - Vue 3 WebUI 完成全部管理页面，并由 Panel 托管。
-- 当前共享 WebUI 已交付 MCSManager 风格的紧凑控制台外壳、概览、实例目录、只读节点与 CPU 拓扑、本地主题/语言设置，以及包含概览、终端、配置和文件管理的全宽实例详情；后续页面继续按后端权限与 API 能力增量开放。
+- 当前共享 WebUI 已交付 MCSManager 风格的紧凑控制台外壳、概览、实例目录、只读节点与 CPU 拓扑、管理员用户管理、本地主题/语言设置，以及包含概览、终端、配置和文件管理的全宽实例详情；后续页面继续按后端权限与 API 能力增量开放。
 - Tauri Desktop：已交付 Windows x64 独立安装包；安装包包含共享 Vue 构建产物和 release `mcnp all` sidecar。首启自动生成 Panel 主密钥、Core PSK 和随机管理员密码，登录页展示引导凭据，Panel 仅对 Tauri 本地来源开放跨源请求，退出时停止 sidecar。
 - Tauri Desktop 已提供显示动态 Panel 地址的系统托盘、关闭到托盘、主窗口恢复、显式退出、单实例重复启动唤醒、sidecar stdout/stderr 逐行 JSON 日志收集、结构化秘密字段遮盖和日志目录入口、Windows Credential Manager/macOS Keychain/Linux Secret Service Refresh Token 存储，以及可在设置页管理的当前用户开机启动；登录项启动时静默驻留托盘。后续补齐日志文件加密、签名和自动更新。
 - Tauri Mobile：设备登录、生物识别保护 Refresh Token、移动终端与任务页面。

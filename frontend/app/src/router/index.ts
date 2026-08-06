@@ -35,6 +35,11 @@ export const router = createRouter({
       component: WorkspaceView,
     },
     {
+      path: '/users',
+      name: 'users',
+      component: WorkspaceView,
+    },
+    {
       path: '/settings',
       name: 'settings',
       component: WorkspaceView,

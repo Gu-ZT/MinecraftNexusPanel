@@ -7,6 +7,7 @@ import {
   IconPoweroff,
   IconRefresh,
   IconSettings,
+  IconUser,
 } from '@arco-design/web-vue/es/icon';
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -61,6 +62,14 @@ function isActive(section: string): boolean {
         <RouterLink :class="['control-nav__item', { active: isActive('nodes') }]" :to="{ name: 'nodes' }">
           <IconCloud />
           <span>{{ t('nav.nodes') }}</span>
+        </RouterLink>
+        <RouterLink
+          v-if="user.permissions.includes('user.manage')"
+          :class="['control-nav__item', { active: isActive('users') }]"
+          :to="{ name: 'users' }"
+        >
+          <IconUser />
+          <span>{{ t('nav.users') }}</span>
         </RouterLink>
         <RouterLink :class="['control-nav__item', { active: isActive('settings') }]" :to="{ name: 'settings' }">
           <IconSettings />

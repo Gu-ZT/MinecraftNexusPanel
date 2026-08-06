@@ -36,6 +36,7 @@
     "dashboard": "概览",
     "instances": "应用实例",
     "nodes": "节点",
+    "users": "用户",
     "settings": "设置",
     "workspace": "实例工作区",
     "controlPanel": "控制面板",
@@ -126,6 +127,24 @@
     "detection": "探测来源",
     "isolated": "已隔离",
     "shared": "共享"
+  },
+  "users": {
+    "eyebrow": "访问控制",
+    "title": "用户管理",
+    "create": "创建用户",
+    "createTitle": "创建非管理员用户",
+    "account": "账号",
+    "displayName": "显示名称",
+    "auditRead": "读取审计记录",
+    "empty": "暂无用户",
+    "created": "用户已创建",
+    "updated": "用户权限已更新",
+    "deleted": "用户已删除",
+    "deleteConfirm": "确认删除用户 {name}？其登录会话将立即失效。",
+    "loadError": "无法加载用户列表",
+    "createError": "无法创建用户",
+    "updateError": "无法更新用户权限",
+    "deleteError": "无法删除用户"
   },
   "settings": {
     "eyebrow": "客户端偏好",
