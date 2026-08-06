@@ -15,6 +15,8 @@ use nexus_domain::CpuLogicalProcessor;
 use nexus_domain::CpuPerformanceClass;
 use nexus_domain::CpuTopology;
 use nexus_domain::CpuTopologyDetection;
+#[cfg(windows)]
+use nexus_windows_topology::processor_cores;
 use sysinfo::System;
 
 const MAX_CPU_RANGE_SPAN: u32 = 65_536;
@@ -29,7 +31,77 @@ pub(crate) fn detect_cpu_topology() -> CpuTopology {
         return topology;
     }
 
+    #[cfg(windows)]
+    if let Some(topology) = detect_windows_cpu_topology() {
+        return topology;
+    }
+
     detect_system_cpu_topology()
+}
+
+/// 使用 Windows Processor Relationship 探测物理核心、逻辑处理器和性能层级。
+///
+/// Windows 的 `EfficiencyClass` 数值越大越偏向性能。只有宿主机明确报告至少
+/// 两个层级时才把最高/最低值映射为性能核/能效核，中间层级继续保持未知。
+#[cfg(windows)]
+fn detect_windows_cpu_topology() -> Option<CpuTopology> {
+    let mut cores = processor_cores()?;
+    cores.sort_by_key(|core| {
+        core.logical_processor_ids()
+            .first()
+            .copied()
+            .unwrap_or(u32::MAX)
+    });
+    let performance_classes = classify_efficiency_classes(
+        &cores
+            .iter()
+            .map(|core| core.efficiency_class())
+            .collect::<Vec<_>>(),
+    );
+    let has_performance_classes = performance_classes
+        .iter()
+        .any(|class| *class != CpuPerformanceClass::Unknown);
+
+    let mut seen_ids = BTreeSet::new();
+    let mut logical_cpus = Vec::new();
+    for (core_index, core) in cores.iter().enumerate() {
+        let class = performance_classes[core_index];
+        for id in core.logical_processor_ids() {
+            if !seen_ids.insert(*id) {
+                return None;
+            }
+            logical_cpus.push(CpuLogicalProcessor::new(
+                *id,
+                Some(format!("windows:{core_index}")),
+                class,
+                true,
+                None,
+                None,
+            ));
+        }
+    }
+    logical_cpus.sort_by_key(CpuLogicalProcessor::id);
+    if logical_cpus.is_empty() {
+        return None;
+    }
+
+    let source = if has_performance_classes {
+        "WINDOWS_PROCESSOR_RELATIONSHIP_EFFICIENCY_CLASS"
+    } else {
+        "WINDOWS_PROCESSOR_RELATIONSHIP"
+    };
+    let confidence = if has_performance_classes {
+        "HIGH"
+    } else {
+        "MEDIUM"
+    };
+    Some(CpuTopology::new(
+        env::consts::ARCH.to_owned(),
+        logical_cpus.clone(),
+        Some(cores.len()),
+        availability(&logical_cpus),
+        CpuTopologyDetection::new(source.to_owned(), confidence.to_owned()),
+    ))
 }
 
 /// 使用 Linux sysfs 和进程 cpuset 探测 CPU 拓扑。
@@ -286,6 +358,16 @@ fn classify_capacities(capacities: &[Option<u64>]) -> Vec<CpuPerformanceClass> {
         .collect()
 }
 
+/// 按 Windows 文档规定的 EfficiencyClass 数值方向分类核心层级。
+#[cfg(any(windows, test))]
+fn classify_efficiency_classes(classes: &[u8]) -> Vec<CpuPerformanceClass> {
+    let capacities = classes
+        .iter()
+        .map(|value| Some(u64::from(*value)))
+        .collect::<Vec<_>>();
+    classify_capacities(&capacities)
+}
+
 fn read_number(path: &Path) -> Option<u64> {
     read_trimmed(path)?.parse::<u64>().ok()
 }
@@ -327,6 +409,7 @@ mod tests {
 
     use nexus_domain::CpuPerformanceClass;
 
+    use super::classify_efficiency_classes;
     use super::detect_cpu_topology;
     use super::detect_linux_cpu_topology;
     use super::parse_cpu_list;
@@ -429,6 +512,23 @@ mod tests {
     }
 
     #[test]
+    fn classifies_windows_efficiency_extremes_without_guessing_middle_levels() {
+        assert_eq!(
+            classify_efficiency_classes(&[8, 8, 4, 0]),
+            vec![
+                CpuPerformanceClass::Performance,
+                CpuPerformanceClass::Performance,
+                CpuPerformanceClass::Unknown,
+                CpuPerformanceClass::Efficiency,
+            ]
+        );
+        assert_eq!(
+            classify_efficiency_classes(&[0, 0]),
+            vec![CpuPerformanceClass::Unknown, CpuPerformanceClass::Unknown]
+        );
+    }
+
+    #[test]
     fn returns_a_nonempty_snapshot_without_inventing_cpu_ids() {
         let topology = detect_cpu_topology();
         let mut ids = topology
@@ -441,6 +541,26 @@ mod tests {
 
         assert!(!ids.is_empty());
         assert_eq!(ids.len(), topology.logical_cpu_count());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn uses_windows_processor_relationships_on_windows() {
+        let topology = detect_cpu_topology();
+
+        assert!(
+            topology
+                .detection()
+                .source()
+                .starts_with("WINDOWS_PROCESSOR_RELATIONSHIP")
+        );
+        assert!(topology.physical_core_count().is_some());
+        assert!(
+            topology
+                .logical_cpus()
+                .iter()
+                .all(|cpu| cpu.physical_core_id().is_some())
+        );
     }
 
     fn write_value(path: &Path, value: &str) {

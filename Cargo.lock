@@ -2579,6 +2579,7 @@ dependencies = [
  "nexus-config",
  "nexus-domain",
  "nexus-protocol",
+ "nexus-windows-topology",
  "rcgen",
  "reqwest",
  "rustls",
@@ -2668,6 +2669,13 @@ dependencies = [
  "rusqlite",
  "tempfile",
  "thiserror 2.0.19",
+]
+
+[[package]]
+name = "nexus-windows-topology"
+version = "0.1.0"
+dependencies = [
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

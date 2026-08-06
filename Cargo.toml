@@ -16,6 +16,7 @@ nexus-domain = { path = "crates/nexus-domain" }
 nexus-panel = { path = "crates/nexus-panel" }
 nexus-protocol = { path = "crates/nexus-protocol" }
 nexus-storage = { path = "crates/nexus-storage" }
+nexus-windows-topology = { path = "crates/nexus-windows-topology" }
 axum = { version = "0.8.9", features = ["ws"] }
 base64 = "0.23.0"
 getrandom = "0.3.4"
@@ -52,6 +53,7 @@ tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt", "jso
 url = "2.5.7"
 uuid = { version = "1.18.1", features = ["serde", "v7"] }
 webpki-roots = "1.0.4"
+windows-sys = "0.61.2"
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
 [workspace.lints.rust]

@@ -274,7 +274,7 @@ stateDiagram-v2
 
 - 镜像拉取、更新、删除、构建和实时构建日志。
 - 实例容器化启动、端口、网络、挂载、环境变量、CPU/内存限制和 cpuset。
-- Core/实例大核调度：自动性能核、手动核集合、独占预留、NUMA 绑定和降级状态；当前已交付 Linux sysfs/进程 cpuset CPU 拓扑快照、ARM capacity/NUMA/隔离信息探测、只读 CPU policy 候选解析，以及 Core/Panel `CpuReservation` 的实例 revision 校验、冲突检查、列表、释放和 `cpu-reservations.json` 跨重启恢复。`CpuPolicy` 已纳入实例创建、部分更新和 `instances.json` 持久化，旧存档缺失时回退默认 AUTO/SHARED。预留登记和实例 policy 都不代表宿主机 affinity、Docker cpuset 或跨 Core 调度锁已应用；性能类别未知时不允许按编号猜测。
+- Core/实例大核调度：自动性能核、手动核集合、独占预留、NUMA 绑定和降级状态；当前已交付 Linux sysfs/进程 cpuset CPU 拓扑快照、ARM capacity/NUMA/隔离信息探测，以及 Windows Processor Relationship 物理核心、处理器组和 EfficiencyClass 层级探测。Windows 仅在系统报告多个层级时把最高/最低值映射为性能核/能效核，中间层级及未报告的隔离、NUMA 信息保持未知。Core/Panel 已提供只读 CPU policy 候选解析和 `CpuReservation` 的实例 revision 校验、冲突检查、列表、释放及 `cpu-reservations.json` 跨重启恢复。`CpuPolicy` 已纳入实例创建、部分更新和 `instances.json` 持久化，旧存档缺失时回退默认 AUTO/SHARED。预留登记和实例 policy 都不代表宿主机 affinity、Docker cpuset 或跨 Core 调度锁已应用；性能类别未知时不允许按编号猜测。
 - 容器安全策略、磁盘配额、镜像垃圾回收和凭据管理。
 - 验收：同一实例可在停机状态下从 HOST 切换到 CONTAINER，并在容器/宿主机上应用同一 CPU policy；配置经校验且不会产生越界挂载。
 
