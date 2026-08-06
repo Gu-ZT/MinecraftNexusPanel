@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "dev.mcnp.desktop",
   "build": {
-    "beforeDevCommand": "pnpm --dir ../../../frontend/app dev",
-    "beforeBuildCommand": "pnpm --dir ../../../frontend/app build",
+    "beforeDevCommand": "pnpm --dir ../../frontend/app dev",
+    "beforeBuildCommand": "pnpm --dir ../../frontend/app build",
     "devUrl": "http://127.0.0.1:1420",
     "frontendDist": "../../../frontend/app/dist"
   },
@@ -21,6 +21,6 @@
     ]
   },
   "bundle": {
-    "active": false
+    "active": true
   }
 }
