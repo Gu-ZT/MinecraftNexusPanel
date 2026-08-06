@@ -318,8 +318,8 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 | GET              | `/tasks`                         | 已登录             | 按可见资源过滤任务 |
 | GET              | `/tasks/{taskId}`                | 已登录             | 任务状态           |
 | POST             | `/tasks/{taskId}/actions/cancel` | 对应写权限         | 尽力取消           |
-| GET              | `/users`                         | `user.read`        | 用户列表           |
-| POST             | `/users`                         | `user.manage`      | 创建用户           |
+| GET              | `/users`                         | 管理员             | 用户列表           |
+| POST             | `/users`                         | 管理员             | 创建非管理员用户   |
 | GET/PATCH/DELETE | `/users/{userId}`                | 对应用户权限       | 用户管理           |
 | GET              | `/roles`                         | `user.read`        | 角色列表           |
 | POST             | `/roles`                         | `user.manage`      | 创建角色           |
@@ -328,12 +328,15 @@ SHA-256 的 `ETag`，并通过 `X-MCNP-File-Eof: true|false` 表示是否到达�
 | GET/PATCH/DELETE | `/groups/{groupId}`              | `user.read/manage` | 用户组管理         |
 | PUT              | `/groups/{groupId}/members`      | `user.manage`      | 设置用户组成员     |
 | PUT              | `/groups/{groupId}/grants`       | `user.manage`      | 设置权限和实例范围 |
-| GET              | `/audit-events`                  | 管理员             | 只读 Panel 请求审计事件 |
+| GET              | `/audit-events`                  | `audit.read`       | 只读 Panel 请求审计事件 |
 
-`GET /audit-events` 当前接受可选 `limit`（1-200，默认 100），按最新优先返回 Panel 请求元数据。
+当前已实现 `GET/POST /users`，管理员可列出用户或创建非管理员用户；现阶段仅允许授予已经完成
+服务端检查的 `audit.read`，未知或尚未执行的权限名会被拒绝。权限变更、删除、用户组和资源 scope
+仍属于后续实现。`GET /audit-events` 接受管理员或显式持有 `audit.read` 的用户，并支持可选
+`limit`（1-200，默认 100），按最新优先返回 Panel 请求元数据。
 事件最多保留 10,000 条，且不允许通过 API 修改或删除。记录包含用户 ID、请求 ID、来源 IP、HTTP 方法、
 不含查询参数的路径、状态码和权限判定；请求体、查询参数、Cookie、Token 与密码不会写入审计库。
-细粒度 `audit.read` RBAC、资源范围筛选和审计导出仍属于后续 TODO。
+资源范围筛选、审计导出和可配置保留策略仍属于后续 TODO。
 
 ## 6. 资源示例
 

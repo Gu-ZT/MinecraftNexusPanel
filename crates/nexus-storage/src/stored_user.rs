@@ -8,6 +8,7 @@ pub struct StoredUser {
     display_name: String,
     password_hash: String,
     is_admin: bool,
+    permissions: Vec<String>,
 }
 
 impl StoredUser {
@@ -17,6 +18,7 @@ impl StoredUser {
         display_name: String,
         password_hash: String,
         is_admin: bool,
+        permissions: Vec<String>,
     ) -> Self {
         Self {
             id,
@@ -24,6 +26,7 @@ impl StoredUser {
             display_name,
             password_hash,
             is_admin,
+            permissions,
         }
     }
 
@@ -55,5 +58,20 @@ impl StoredUser {
     #[must_use]
     pub const fn is_admin(&self) -> bool {
         self.is_admin
+    }
+
+    /// 返回显式授予非管理员的权限名。
+    ///
+    /// 管理员的隐式全权不写入该数组，调用方应通过 [`Self::has_permission`]
+    /// 统一判断，避免遗漏管理员旁路。
+    #[must_use]
+    pub fn permissions(&self) -> &[String] {
+        &self.permissions
+    }
+
+    /// 判断用户是否具有指定权限；管理员始终通过权限检查。
+    #[must_use]
+    pub fn has_permission(&self, permission: &str) -> bool {
+        self.is_admin || self.permissions.iter().any(|value| value == permission)
     }
 }

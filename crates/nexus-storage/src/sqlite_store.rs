@@ -10,6 +10,8 @@ use rusqlite::OptionalExtension;
 use rusqlite::Result as SqliteResult;
 use rusqlite::Row;
 use rusqlite::TransactionBehavior;
+use rusqlite::types::Type;
+use serde_json::from_str;
 
 use crate::NewAuditEvent;
 use crate::NewCore;
@@ -289,12 +291,64 @@ impl SqliteStore {
         let connection = self.lock_connection()?;
         connection
             .query_row(
-                "SELECT id, username, display_name, password_hash, is_admin
+                "SELECT id, username, display_name, password_hash, is_admin, permissions_json
                  FROM users WHERE username = ?1",
                 [username],
                 map_user,
             )
             .optional()
+            .map_err(StorageError::Query)
+    }
+
+    /// 原子创建非管理员用户；用户名冲突时返回 `false`。
+    ///
+    /// 权限由 Panel 在进入存储层前校验，此处只保存规范化 JSON，避免存储层
+    /// 与不断演进的权限目录重复维护规则。
+    pub fn create_user(
+        &self,
+        user_id: &str,
+        username: &str,
+        display_name: &str,
+        password_hash: &str,
+        permissions_json: &str,
+        created_at: &str,
+    ) -> Result<bool, StorageError> {
+        let connection = self.lock_connection()?;
+        let affected = connection
+            .execute(
+                "INSERT INTO users (
+                    id, username, display_name, password_hash, is_admin,
+                    permissions_json, created_at
+                 ) VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6)
+                 ON CONFLICT(username) DO NOTHING",
+                (
+                    user_id,
+                    username,
+                    display_name,
+                    password_hash,
+                    permissions_json,
+                    created_at,
+                ),
+            )
+            .map_err(StorageError::Query)?;
+
+        Ok(affected == 1)
+    }
+
+    /// 按用户名稳定排序返回所有 Panel 用户。
+    pub fn list_users(&self) -> Result<Vec<StoredUser>, StorageError> {
+        let connection = self.lock_connection()?;
+        let mut statement = connection
+            .prepare(
+                "SELECT id, username, display_name, password_hash, is_admin, permissions_json
+                 FROM users ORDER BY username COLLATE NOCASE, id",
+            )
+            .map_err(StorageError::Query)?;
+        let rows = statement
+            .query_map([], map_user)
+            .map_err(StorageError::Query)?;
+
+        rows.collect::<SqliteResult<Vec<_>>>()
             .map_err(StorageError::Query)
     }
 
@@ -500,7 +554,8 @@ impl SqliteStore {
         let connection = self.lock_connection()?;
         let query = format!(
             "SELECT s.id, s.client_type, s.csrf_token_hash,
-                    u.id, u.username, u.display_name, u.password_hash, u.is_admin
+                    u.id, u.username, u.display_name, u.password_hash, u.is_admin,
+                    u.permissions_json
              FROM sessions s
              INNER JOIN users u ON u.id = s.user_id
              WHERE {token_predicate} AND s.revoked_at IS NULL"
@@ -532,6 +587,7 @@ fn migrate(connection: &mut Connection) -> Result<(), StorageError> {
                 display_name TEXT NOT NULL,
                 password_hash TEXT NOT NULL,
                 is_admin INTEGER NOT NULL CHECK (is_admin IN (0, 1)),
+                permissions_json TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL
             );
             ",
@@ -542,6 +598,15 @@ fn migrate(connection: &mut Connection) -> Result<(), StorageError> {
         connection
             .execute(
                 "ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT 'Administrator'",
+                [],
+            )
+            .map_err(StorageError::Migrate)?;
+    }
+
+    if !column_exists(connection, "users", "permissions_json")? {
+        connection
+            .execute(
+                "ALTER TABLE users ADD COLUMN permissions_json TEXT NOT NULL DEFAULT '[]'",
                 [],
             )
             .map_err(StorageError::Migrate)?;
@@ -631,7 +696,7 @@ fn migrate(connection: &mut Connection) -> Result<(), StorageError> {
             CREATE INDEX IF NOT EXISTS panel_audit_events_user_id_idx
                 ON panel_audit_events(user_id, occurred_at DESC);
 
-            PRAGMA user_version = 4;
+            PRAGMA user_version = 5;
             ",
         )
         .map_err(StorageError::Migrate)
@@ -659,6 +724,7 @@ fn map_user(row: &Row<'_>) -> SqliteResult<StoredUser> {
         row.get(2)?,
         row.get(3)?,
         row.get(4)?,
+        parse_permissions(row, 5)?,
     ))
 }
 
@@ -716,8 +782,16 @@ fn map_session(row: &Row<'_>) -> SqliteResult<StoredSession> {
             row.get(5)?,
             row.get(6)?,
             row.get(7)?,
+            parse_permissions(row, 8)?,
         ),
     ))
+}
+
+fn parse_permissions(row: &Row<'_>, index: usize) -> SqliteResult<Vec<String>> {
+    let encoded = row.get::<_, String>(index)?;
+    from_str(&encoded).map_err(|source| {
+        rusqlite::Error::FromSqlConversionFailure(index, Type::Text, Box::new(source))
+    })
 }
 
 #[cfg(test)]
@@ -789,6 +863,45 @@ mod tests {
             .expect("migrated user exists");
 
         assert_eq!(user.display_name(), "Administrator");
+        assert!(user.permissions().is_empty());
+    }
+
+    #[test]
+    fn creates_and_lists_non_administrator_permissions() {
+        let data_directory = tempdir().expect("temporary Panel data directory is created");
+        let store = SqliteStore::open(data_directory.path()).expect("Panel database opens");
+
+        assert!(
+            store
+                .create_user(
+                    "user-1",
+                    "auditor",
+                    "Audit Reader",
+                    "password-hash",
+                    "[\"audit.read\"]",
+                    "2026-08-07T00:00:00Z",
+                )
+                .expect("non-administrator is created")
+        );
+        assert!(
+            !store
+                .create_user(
+                    "user-2",
+                    "AUDITOR",
+                    "Duplicate Reader",
+                    "password-hash",
+                    "[]",
+                    "2026-08-07T00:00:01Z",
+                )
+                .expect("duplicate username is rejected")
+        );
+
+        let users = store.list_users().expect("users are listed");
+        let user = users.first().expect("created user is returned");
+        assert_eq!(users.len(), 1);
+        assert!(!user.is_admin());
+        assert!(user.has_permission("audit.read"));
+        assert!(!user.has_permission("core.manage"));
     }
 
     #[test]

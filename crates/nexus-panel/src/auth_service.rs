@@ -26,6 +26,7 @@ use crate::AuthError;
 use crate::ClientType;
 use crate::IssuedSession;
 use crate::LoginRequest;
+use crate::UserCreate;
 
 const ACCESS_TOKEN_LIFETIME_SECONDS: i64 = 15 * 60;
 const ACCOUNT_LOGIN_ATTEMPT_LIMIT: usize = 5;
@@ -81,6 +82,39 @@ impl AuthService {
     /// 判断数据库是否已经存在用户。
     pub fn has_users(&self) -> Result<bool, AuthError> {
         self.store.has_users().map_err(AuthError::from)
+    }
+
+    /// 创建经过校验的非管理员用户；用户名冲突时返回 `None`。
+    pub(crate) fn create_user(
+        &self,
+        request: &UserCreate,
+    ) -> Result<Option<StoredUser>, AuthError> {
+        let password_hash = hash_password(request.password())?;
+        let permissions = request.normalized_permissions();
+        let permissions_json = serde_json::to_string(&permissions)?;
+        let created_at = OffsetDateTime::now_utc()
+            .format(&Rfc3339)
+            .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_owned());
+        let created = self.store.create_user(
+            &Uuid::now_v7().to_string(),
+            request.username(),
+            request.display_name(),
+            &password_hash,
+            &permissions_json,
+            &created_at,
+        )?;
+        if !created {
+            return Ok(None);
+        }
+
+        self.store
+            .find_user_by_username(request.username())
+            .map_err(AuthError::from)
+    }
+
+    /// 返回所有 Panel 用户，供受保护的用户管理路由使用。
+    pub(crate) fn list_users(&self) -> Result<Vec<StoredUser>, AuthError> {
+        self.store.list_users().map_err(AuthError::from)
     }
 
     /// 校验登录请求并创建浏览器或原生客户端会话。

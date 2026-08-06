@@ -28,19 +28,14 @@ use nexus_storage::StoredSession;
 use serde_json::Value;
 use tracing::error;
 
-use crate::AuthError;
 use crate::CoreConnectionError;
 use crate::CoreCreate;
 use crate::CoreRegistryError;
 use crate::CpuReservationRequest;
 use crate::PanelState;
-use crate::auth_routes::RequestCredential;
-use crate::auth_routes::auth_error_response;
-use crate::auth_routes::authenticate;
+use crate::auth_routes::authorize_session;
 use crate::auth_routes::error_response;
 use crate::auth_routes::header_text;
-use crate::auth_routes::request_credential;
-use crate::auth_routes::run_blocking;
 
 pub(crate) fn core_routes() -> Router<PanelState> {
     Router::new()
@@ -303,25 +298,7 @@ pub(crate) async fn authorize(
     write: bool,
     request_id: RequestId,
 ) -> Result<StoredSession, Response> {
-    let credential = request_credential(headers)
-        .ok_or_else(|| auth_error_response(AuthError::InvalidSession, request_id))?;
-    let browser_session = matches!(&credential, RequestCredential::Browser(_));
-    let csrf_token = header_text(headers, "x-csrf-token").map(str::to_owned);
-    let auth = state.auth().clone();
-    let session = run_blocking(move || authenticate(&auth, &credential))
-        .await
-        .map_err(|error| auth_error_response(error, request_id))?;
-    if write && browser_session {
-        state
-            .auth()
-            .verify_csrf(
-                &session,
-                csrf_token
-                    .as_deref()
-                    .ok_or_else(|| auth_error_response(AuthError::InvalidCsrfToken, request_id))?,
-            )
-            .map_err(|error| auth_error_response(error, request_id))?;
-    }
+    let session = authorize_session(state, headers, write, request_id).await?;
     if !session.user().is_admin() {
         return Err(error_response(
             StatusCode::FORBIDDEN,

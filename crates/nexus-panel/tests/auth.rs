@@ -227,6 +227,121 @@ async fn persists_authenticated_request_audit_with_connection_context() {
 }
 
 #[tokio::test]
+async fn grants_audit_read_without_granting_administrator_access() {
+    let data_directory = tempdir().expect("temporary Panel data directory is created");
+    let (listen_address, server_task) = start_panel(&data_directory, "admin", ADMIN_PASSWORD).await;
+    let admin_login = login(listen_address, "admin", ADMIN_PASSWORD).await;
+    let admin_token = admin_login.body["session"]["accessToken"]
+        .as_str()
+        .expect("administrator access token is returned");
+    let admin_authorization = format!("Bearer {admin_token}");
+
+    let unsupported_permission = send_json_request(
+        listen_address,
+        "POST",
+        "/api/v1/users",
+        &[("Authorization", admin_authorization.as_str())],
+        Some(json!({
+            "username": "unsafe-grant",
+            "displayName": "Unsupported Grant",
+            "password": "unsupported secure password",
+            "permissions": ["core.manage"],
+        })),
+    )
+    .await;
+    assert_eq!(unsupported_permission.status, 400);
+    assert_eq!(
+        unsupported_permission.body["error"]["details"]["field"],
+        "permissions"
+    );
+
+    let audit_reader = send_json_request(
+        listen_address,
+        "POST",
+        "/api/v1/users",
+        &[("Authorization", admin_authorization.as_str())],
+        Some(json!({
+            "username": "auditor",
+            "displayName": "Audit Reader",
+            "password": "auditor secure password",
+            "permissions": ["audit.read", "audit.read"],
+        })),
+    )
+    .await;
+    assert_eq!(audit_reader.status, 201);
+    assert_eq!(audit_reader.body["permissions"], json!(["audit.read"]));
+
+    let ordinary_user = send_json_request(
+        listen_address,
+        "POST",
+        "/api/v1/users",
+        &[("Authorization", admin_authorization.as_str())],
+        Some(json!({
+            "username": "operator",
+            "displayName": "Server Operator",
+            "password": "operator secure password",
+            "permissions": [],
+        })),
+    )
+    .await;
+    assert_eq!(ordinary_user.status, 201);
+
+    let users = send_json_request(
+        listen_address,
+        "GET",
+        "/api/v1/users",
+        &[("Authorization", admin_authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(users.status, 200);
+    assert_eq!(users.body["items"].as_array().map(Vec::len), Some(3));
+
+    let reader_login = login(listen_address, "auditor", "auditor secure password").await;
+    let reader_token = reader_login.body["session"]["accessToken"]
+        .as_str()
+        .expect("audit reader access token is returned");
+    let reader_authorization = format!("Bearer {reader_token}");
+    let reader_audit = send_json_request(
+        listen_address,
+        "GET",
+        "/api/v1/audit-events",
+        &[("Authorization", reader_authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(reader_audit.status, 200);
+
+    let rejected_user_management = send_json_request(
+        listen_address,
+        "GET",
+        "/api/v1/users",
+        &[("Authorization", reader_authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(rejected_user_management.status, 403);
+
+    let operator_login = login(listen_address, "operator", "operator secure password").await;
+    let operator_token = operator_login.body["session"]["accessToken"]
+        .as_str()
+        .expect("ordinary user access token is returned");
+    let operator_authorization = format!("Bearer {operator_token}");
+    let rejected_audit = send_json_request(
+        listen_address,
+        "GET",
+        "/api/v1/audit-events",
+        &[("Authorization", operator_authorization.as_str())],
+        None,
+    )
+    .await;
+    assert_eq!(rejected_audit.status, 403);
+    assert_eq!(rejected_audit.body["error"]["code"], "FORBIDDEN");
+
+    stop_panel(server_task).await;
+}
+
+#[tokio::test]
 async fn initial_administrator_is_not_replaced_on_restart() {
     let data_directory = tempdir().expect("temporary Panel data directory is created");
     let (first_address, first_task) =

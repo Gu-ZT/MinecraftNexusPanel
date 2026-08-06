@@ -18,6 +18,9 @@ pub enum AuthError {
     /// Argon2 密码哈希处理失败。
     #[error("failed to process a password hash")]
     PasswordHash(#[from] PasswordHashError),
+    /// 用户权限集合无法序列化为持久化 JSON。
+    #[error("failed to encode user permissions")]
+    PermissionEncoding(#[from] serde_json::Error),
     /// 系统安全随机数生成失败。
     #[error("failed to generate a secure credential")]
     Random(#[from] getrandom::Error),

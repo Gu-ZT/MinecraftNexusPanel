@@ -119,6 +119,8 @@ export type {
   RawConfigResult,
   TaskAccepted,
   User,
+  UserCreate,
+  UserPage,
   VersionMetadataProvider,
 } from './panel-api-client';
 export { ApiRequestError, createPanelApiClient } from './panel-api-client';

@@ -159,6 +159,39 @@ pub(crate) fn authenticate(
     }
 }
 
+/// 验证请求会话，并在浏览器写操作中同时校验 CSRF。
+///
+/// 本函数只建立用户身份，不授予业务权限；具体路由必须随后检查管理员标记或
+/// 显式权限，避免把“已登录”误当成“已授权”。
+pub(crate) async fn authorize_session(
+    state: &PanelState,
+    headers: &HeaderMap,
+    write: bool,
+    request_id: RequestId,
+) -> Result<StoredSession, Response> {
+    let credential = request_credential(headers)
+        .ok_or_else(|| auth_error_response(AuthError::InvalidSession, request_id))?;
+    let browser_session = matches!(&credential, RequestCredential::Browser(_));
+    let csrf_token = header_text(headers, "x-csrf-token").map(str::to_owned);
+    let auth = state.auth().clone();
+    let session = run_blocking(move || authenticate(&auth, &credential))
+        .await
+        .map_err(|error| auth_error_response(error, request_id))?;
+    if write && browser_session {
+        state
+            .auth()
+            .verify_csrf(
+                &session,
+                csrf_token
+                    .as_deref()
+                    .ok_or_else(|| auth_error_response(AuthError::InvalidCsrfToken, request_id))?,
+            )
+            .map_err(|error| auth_error_response(error, request_id))?;
+    }
+
+    Ok(session)
+}
+
 pub(crate) async fn run_blocking<T, F>(operation: F) -> Result<T, AuthError>
 where
     T: Send + 'static,

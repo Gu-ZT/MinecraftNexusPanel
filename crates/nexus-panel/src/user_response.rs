@@ -1,14 +1,7 @@
 use nexus_storage::StoredUser;
 use serde::Serialize;
 
-const ADMIN_PERMISSIONS: [&str; 6] = [
-    "core.read",
-    "core.manage",
-    "instance.read",
-    "instance.create",
-    "instance.control",
-    "instance.console",
-];
+use crate::permissions::ADMIN_PERMISSIONS;
 
 /// 对外返回的用户身份、权限和资源范围。
 #[derive(Serialize)]
@@ -26,7 +19,7 @@ impl From<&StoredUser> for UserResponse {
         let permissions = if user.is_admin() {
             ADMIN_PERMISSIONS.iter().map(ToString::to_string).collect()
         } else {
-            Vec::new()
+            user.permissions().to_vec()
         };
 
         Self {

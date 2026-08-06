@@ -93,6 +93,17 @@ export interface User {
   resourceScopes?: string[];
 }
 
+export interface UserCreate {
+  username: string;
+  displayName: string;
+  password: string;
+  permissions?: string[];
+}
+
+export interface UserPage {
+  items: User[];
+}
+
 export interface SessionTokens {
   id: string;
   accessToken: string | null;
@@ -805,6 +816,8 @@ export interface PanelApiClient {
   refreshNative(refreshToken: string): Promise<SessionTokens>;
   getCurrentUser(): Promise<User>;
   logout(): Promise<void>;
+  listUsers(): Promise<UserPage>;
+  createUser(user: UserCreate): Promise<User>;
   listCores(): Promise<CorePage>;
   listAuditEvents(limit?: number): Promise<PanelAuditPage>;
   getCpuTopology(coreId: string): Promise<CpuTopology>;
@@ -1110,6 +1123,12 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     },
     logout() {
       return request<void>('/api/v1/auth/logout', { method: 'POST', csrf: true });
+    },
+    listUsers() {
+      return request<UserPage>('/api/v1/users');
+    },
+    createUser(user) {
+      return request<User>('/api/v1/users', { method: 'POST', body: user, csrf: true });
     },
     listCores() {
       return request<CorePage>('/api/v1/cores?limit=50');

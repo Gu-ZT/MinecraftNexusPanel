@@ -48,6 +48,7 @@ use crate::install_template_routes::install_template_routes;
 use crate::instance_routes::instance_routes;
 use crate::provision_routes::provision_routes;
 use crate::proxy_routes::proxy_routes;
+use crate::user_routes::user_routes;
 use crate::websocket_routes::websocket_routes;
 
 /// Panel HTTP/TCP 服务入口。
@@ -136,6 +137,7 @@ fn router(state: PanelState) -> Router {
         .route("/api/v1/health/ready", get(readiness))
         .merge(audit_routes())
         .merge(auth_routes())
+        .merge(user_routes())
         .merge(core_routes())
         .merge(bedrock_routes())
         .merge(config_routes())

@@ -1,6 +1,6 @@
 //! Panel 用户级审计查询路由。
 //!
-//! 审计事件由 HTTP 中间件统一写入 SQLite；本模块只提供管理员只读查询，避免
+//! 审计事件由 HTTP 中间件统一写入 SQLite；本模块只提供受权用户只读查询，避免
 //! 让具体业务路由重复实现审计分页和敏感字段过滤。
 
 use std::collections::HashMap;
@@ -19,8 +19,9 @@ use serde_json::json;
 use tokio::task::spawn_blocking;
 
 use crate::PanelState;
+use crate::auth_routes::authorize_session;
 use crate::auth_routes::error_response;
-use crate::core_routes::authorize;
+use crate::permissions::AUDIT_READ;
 
 /// 注册 Panel 审计查询端点。
 pub(crate) fn audit_routes() -> Router<PanelState> {
@@ -33,8 +34,17 @@ async fn list_audit_events(
     Query(query): Query<HashMap<String, String>>,
     headers: axum::http::HeaderMap,
 ) -> Response {
-    if let Err(response) = authorize(&state, &headers, false, request_id).await {
-        return response;
+    let session = match authorize_session(&state, &headers, false, request_id).await {
+        Ok(session) => session,
+        Err(response) => return response,
+    };
+    if !session.user().has_permission(AUDIT_READ) {
+        return error_response(
+            StatusCode::FORBIDDEN,
+            "FORBIDDEN",
+            "The requested operation is not permitted",
+            request_id,
+        );
     }
     let Some(limit) = parse_limit(&query) else {
         return error_response(
