@@ -1,2 +1,3 @@
 export { browserPlatform } from './browser-platform';
-export type { PlatformAdapter, PlatformKind } from './platform-adapter';
+export { desktopPlatform } from './desktop-platform';
+export type { DesktopRuntimeInfo, PlatformAdapter, PlatformKind } from './platform-adapter';

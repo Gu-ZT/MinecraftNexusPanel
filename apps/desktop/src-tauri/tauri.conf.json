@@ -5,7 +5,7 @@
   "identifier": "dev.mcnp.desktop",
   "build": {
     "beforeDevCommand": "pnpm --dir ../../frontend/app dev",
-    "beforeBuildCommand": "pnpm --dir ../../frontend/app build",
+    "beforeBuildCommand": "node ../../scripts/build-desktop.mjs",
     "devUrl": "http://127.0.0.1:1420",
     "frontendDist": "../../../frontend/app/dist"
   },
@@ -21,6 +21,12 @@
     ]
   },
   "bundle": {
-    "active": true
+    "active": true,
+    "resources": ["binaries/*"],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "skip"
+      }
+    }
   }
 }

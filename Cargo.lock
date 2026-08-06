@@ -2006,8 +2006,13 @@ dependencies = [
 name = "mcnp-desktop"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.0",
+ "getrandom 0.3.4",
+ "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
+ "thiserror 2.0.19",
 ]
 
 [[package]]

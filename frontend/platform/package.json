@@ -7,6 +7,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0"
+  },
   "devDependencies": {
     "typescript": "catalog:"
   }

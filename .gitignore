@@ -3,6 +3,8 @@
 /frontend/*/node_modules/
 /frontend/app/dist/
 /apps/*/src-tauri/gen/
+/apps/desktop/src-tauri/binaries/*
+!/apps/desktop/src-tauri/binaries/.gitkeep
 /data/
 
 .env

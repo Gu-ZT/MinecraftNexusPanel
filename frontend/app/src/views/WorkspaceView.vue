@@ -1,19 +1,24 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, shallowRef } from 'vue';
 
 import { ApiRequestError, createPanelApiClient } from '@mcnp/api-client';
 import type { Core, Instance, InstanceState, LogLine, User } from '@mcnp/api-client';
+import type { PanelApiClient } from '@mcnp/api-client';
 import { McnpEmptyState } from '@mcnp/ui';
+import type { DesktopRuntimeInfo } from '@mcnp/platform';
 
 import ConfigEditor from '../components/ConfigEditor.vue';
 import { useApplicationStore } from '../stores/application';
 
 const CSRF_STORAGE_KEY = 'mcnp.csrfToken';
+const ACCESS_TOKEN_STORAGE_KEY = 'mcnp.accessToken';
 
 const application = useApplicationStore();
 const username = ref('');
 const password = ref('');
 const csrfToken = ref(sessionStorage.getItem(CSRF_STORAGE_KEY) ?? '');
+const accessToken = ref(sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) ?? '');
+const desktopRuntime = ref<DesktopRuntimeInfo | null>(null);
 const currentUser = ref<User | null>(null);
 const cores = ref<Core[]>([]);
 const selectedCoreId = ref('');
@@ -27,10 +32,11 @@ const actionPending = ref<string | null>(null);
 const errorMessage = ref('');
 const noticeMessage = ref('');
 const activeView = ref<'console' | 'config'>('console');
-const panelApiClient = createPanelApiClient({
+const panelApiClient = shallowRef<PanelApiClient>(createPanelApiClient({
   baseUrl: application.platform.apiBaseUrl,
+  getAccessToken: () => accessToken.value || undefined,
   getCsrfToken: () => csrfToken.value || undefined,
-});
+}));
 
 const selectedCore = computed(() => cores.value.find((core) => core.id === selectedCoreId.value) ?? null);
 const selectedInstance = computed(
@@ -45,6 +51,23 @@ onMounted(() => {
 
 async function restoreSession(): Promise<void> {
   try {
+    if (application.platform.initialize) {
+      desktopRuntime.value = await application.platform.initialize();
+      panelApiClient.value = createPanelApiClient({
+        baseUrl: desktopRuntime.value.apiBaseUrl,
+        getAccessToken: () => accessToken.value || undefined,
+        getCsrfToken: () => csrfToken.value || undefined,
+      });
+    }
+  } catch (error) {
+    if (application.platform.kind === 'desktop') {
+      errorMessage.value = describeError(error, '无法启动本地 MCNP 服务');
+    }
+    clearSession();
+    return;
+  }
+
+  try {
     currentUser.value = await api().getCurrentUser();
     await loadWorkspace();
   } catch {
@@ -56,12 +79,31 @@ async function signIn(): Promise<void> {
   loginPending.value = true;
   errorMessage.value = '';
   try {
-    const response = await api().login(username.value.trim(), password.value, 'BROWSER');
+    const clientType = application.platform.kind === 'desktop' ? 'NATIVE' : 'BROWSER';
+    const response = await api().login(username.value.trim(), password.value, clientType);
     currentUser.value = response.user;
+    accessToken.value = response.session.accessToken ?? '';
+    if (accessToken.value) {
+      sessionStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken.value);
+    } else {
+      sessionStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+    }
     csrfToken.value = response.session.csrfToken ?? '';
     sessionStorage.setItem(CSRF_STORAGE_KEY, csrfToken.value);
     password.value = '';
-    await loadWorkspace();
+    if (desktopRuntime.value?.initialAdminPassword && application.platform.completeInitialAdmin) {
+      try {
+        await application.platform.completeInitialAdmin();
+        desktopRuntime.value = { ...desktopRuntime.value, initialAdminPassword: null };
+      } catch (error) {
+        noticeMessage.value = describeError(error, '引导凭据清理失败，请稍后重试');
+      }
+    }
+    try {
+      await loadWorkspace();
+    } catch (error) {
+      errorMessage.value = describeError(error, '登录成功，但加载工作区失败');
+    }
   } catch (error) {
     errorMessage.value = describeError(error, '登录失败');
   } finally {
@@ -203,12 +245,14 @@ async function runInstanceAction(action: string, operation: () => Promise<unknow
 }
 
 function api() {
-  return panelApiClient;
+  return panelApiClient.value;
 }
 
 function clearSession(): void {
   sessionStorage.removeItem(CSRF_STORAGE_KEY);
+  sessionStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
   csrfToken.value = '';
+  accessToken.value = '';
   currentUser.value = null;
   cores.value = [];
   instances.value = [];
@@ -276,6 +320,12 @@ function statusClass(status: string): string {
       <div>
         <p class="eyebrow">MCNP Panel</p>
         <h1>登录控制台</h1>
+      </div>
+      <div v-if="desktopRuntime?.initialAdminPassword" class="bootstrap-credentials">
+        <strong>首次启动管理员凭据</strong>
+        <p>请先使用以下凭据登录，成功后引导密码会从本机配置中删除。</p>
+        <code>用户名：{{ desktopRuntime.initialAdminUsername }}</code>
+        <code>密码：{{ desktopRuntime.initialAdminPassword }}</code>
       </div>
       <label>
         <span>用户名</span>
@@ -468,6 +518,26 @@ function statusClass(status: string): string {
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 18px 45px rgba(24, 32, 27, 0.08);
+}
+
+.bootstrap-credentials {
+  display: grid;
+  gap: 0.35rem;
+  border-left: 3px solid #2f7d4a;
+  padding: 0.7rem 0.8rem;
+  background: #eef7f1;
+  color: #31523d;
+  font-size: 0.78rem;
+}
+
+.bootstrap-credentials p {
+  line-height: 1.4;
+}
+
+.bootstrap-credentials code {
+  overflow-wrap: anywhere;
+  color: #1f6239;
+  font-family: "Cascadia Mono", Consolas, monospace;
 }
 
 .eyebrow {

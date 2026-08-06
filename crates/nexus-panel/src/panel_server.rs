@@ -7,6 +7,7 @@ use axum::extract::Request;
 use axum::extract::State;
 use axum::http::HeaderName;
 use axum::http::HeaderValue;
+use axum::http::Method;
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::middleware::Next;
@@ -149,6 +150,78 @@ fn router(state: PanelState) -> Router {
         .with_state(state)
         .layer(middleware::from_fn_with_state(audit_state, audit_request))
         .layer(middleware::from_fn(assign_request_id))
+        .layer(middleware::from_fn(desktop_cors))
+}
+
+/// 为打包后的 Tauri WebView 开放受限的本地跨源请求。
+///
+/// Panel 默认仍不向任意来源开放 CORS；只接受 Tauri 本地协议映射的来源，避免把
+/// 管理 API 的跨源访问范围扩展到局域网或公网。原生 Desktop 使用 Bearer 令牌，
+/// 因此不依赖跨源 Cookie。
+async fn desktop_cors(request: Request, next: Next) -> Response {
+    let origin = request
+        .headers()
+        .get("origin")
+        .and_then(|value| value.to_str().ok())
+        .filter(|origin| is_desktop_origin(origin))
+        .and_then(|origin| HeaderValue::from_str(origin).ok());
+
+    if request.method() == Method::OPTIONS {
+        if let Some(origin) = origin {
+            let mut response = StatusCode::NO_CONTENT.into_response();
+            add_desktop_cors_headers(&mut response, origin);
+            return response;
+        }
+        return next.run(request).await;
+    }
+
+    let mut response = next.run(request).await;
+    if let Some(origin) = origin {
+        add_desktop_cors_headers(&mut response, origin);
+    }
+    response
+}
+
+fn is_desktop_origin(origin: &str) -> bool {
+    matches!(
+        origin,
+        "http://tauri.localhost"
+            | "https://tauri.localhost"
+            | "http://asset.localhost"
+            | "https://asset.localhost"
+    )
+}
+
+fn add_desktop_cors_headers(response: &mut Response, origin: HeaderValue) {
+    let headers = response.headers_mut();
+    headers.insert(
+        HeaderName::from_static("access-control-allow-origin"),
+        origin,
+    );
+    headers.insert(
+        HeaderName::from_static("access-control-allow-credentials"),
+        HeaderValue::from_static("true"),
+    );
+    headers.insert(
+        HeaderName::from_static("access-control-allow-methods"),
+        HeaderValue::from_static("GET, POST, PUT, PATCH, DELETE, OPTIONS"),
+    );
+    headers.insert(
+        HeaderName::from_static("access-control-allow-headers"),
+        HeaderValue::from_static(
+            "Accept, Authorization, Content-Type, X-CSRF-Token, Idempotency-Key, If-Match, Content-SHA256",
+        ),
+    );
+    headers.insert(
+        HeaderName::from_static("access-control-expose-headers"),
+        HeaderValue::from_static(
+            "ETag, Content-SHA256, X-MCNP-File-Transfer-Offset, X-MCNP-File-Transfer-Next-Offset, X-MCNP-File-Transfer-Size, X-MCNP-File-EOF",
+        ),
+    );
+    headers.insert(
+        HeaderName::from_static("vary"),
+        HeaderValue::from_static("Origin"),
+    );
 }
 
 /// 在请求完成后写入不含敏感请求体的 Panel 审计事件。
@@ -273,4 +346,30 @@ fn current_timestamp() -> String {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_desktop_origin;
+
+    #[test]
+    fn limits_desktop_cors_to_tauri_local_origins() {
+        for origin in [
+            "http://tauri.localhost",
+            "https://tauri.localhost",
+            "http://asset.localhost",
+            "https://asset.localhost",
+        ] {
+            assert!(is_desktop_origin(origin));
+        }
+
+        for origin in [
+            "null",
+            "http://localhost",
+            "http://tauri.localhost.example.com",
+            "https://example.com",
+        ] {
+            assert!(!is_desktop_origin(origin));
+        }
+    }
 }
