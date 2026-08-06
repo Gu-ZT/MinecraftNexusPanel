@@ -167,7 +167,8 @@ the sidecar. A second launch is forwarded to the existing process and restores i
 starting another sidecar. The tray tooltip reports the active loopback Panel address selected at startup.
 The local settings page can register MCNP for the current user's login; an autostart launch remains
 hidden in the tray until the user opens it. Sidecar stdout/stderr is collected under the application
-data `logs` directory with one rotated file, and the settings page can open that directory.
+data `logs` directory with one rotated file, and the settings page can open that directory. Desktop
+requests line-delimited JSON logs and redacts known structured secret fields before writing them.
 Native refresh tokens are stored in Windows Credential Manager on Windows and the system Keychain
 on macOS, then rotated through the Panel refresh endpoint after restart; the short-lived access
 token remains session-scoped and is refreshed 60 seconds before expiry. Linux uses the persistent

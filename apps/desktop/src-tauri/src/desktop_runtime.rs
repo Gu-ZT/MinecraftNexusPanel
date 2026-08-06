@@ -38,6 +38,7 @@ use thiserror::Error;
 
 use crate::desktop_logs::LOG_DIRECTORY_NAME;
 use crate::desktop_logs::prepare_sidecar_log;
+use crate::desktop_logs::redact_sensitive_fields;
 
 const DATA_DIRECTORY_NAME: &str = "data";
 const SECRETS_FILE_NAME: &str = "desktop-secrets.json";
@@ -301,6 +302,7 @@ fn spawn_sidecar(
         .env("MCNP_CORE_PSK", &secrets.core_psk)
         .env("MCNP_PANEL_MASTER_KEY", &secrets.panel_master_key)
         .env("MCNP_LOG_FILTER", "info")
+        .env("MCNP_LOG_FORMAT", "json")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -364,6 +366,7 @@ fn spawn_log_reader<R: Read + Send + 'static>(
                 let Ok(mut file) = log_file.lock() else {
                     break;
                 };
+                let line = redact_sensitive_fields(&line);
                 let _ = writeln!(file, "[{stream_name}] {line}");
                 let _ = file.flush();
             }

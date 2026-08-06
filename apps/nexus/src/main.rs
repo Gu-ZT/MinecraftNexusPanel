@@ -17,6 +17,9 @@ use nexus_domain::PRODUCT_NAME;
 use nexus_domain::PRODUCT_VERSION;
 use tracing_subscriber::EnvFilter;
 
+const LOG_FORMAT_ENVIRONMENT: &str = "MCNP_LOG_FORMAT";
+const JSON_LOG_FORMAT: &str = "json";
+
 #[tokio::main]
 /// 解析配置并启动 MCNP 服务。
 async fn main() {
@@ -36,7 +39,7 @@ async fn main() {
         }
     };
 
-    initialize_logging(config.logging().filter());
+    initialize_logging(config.logging().filter(), json_logging_enabled());
     tracing::info!(
         product = PRODUCT_NAME,
         version = PRODUCT_VERSION,
@@ -110,18 +113,38 @@ fn loopback_address(address: SocketAddr) -> SocketAddr {
     }
 }
 
-/// 初始化结构化日志过滤器；非法过滤器回退到 `info`。
-fn initialize_logging(filter: &str) {
+/// 判断当前进程是否显式请求逐行 JSON 日志。
+fn json_logging_enabled() -> bool {
+    std::env::var(LOG_FORMAT_ENVIRONMENT)
+        .is_ok_and(|format| format.eq_ignore_ascii_case(JSON_LOG_FORMAT))
+}
+
+/// 初始化日志过滤器；Desktop 使用逐行 JSON，其他运行方式保持紧凑文本。
+fn initialize_logging(filter: &str, json: bool) {
     let filter = EnvFilter::try_new(filter).unwrap_or_else(|error| {
         eprintln!("Invalid log filter; falling back to info: {error}");
         EnvFilter::new("info")
     });
 
-    if let Err(error) = tracing_subscriber::fmt()
+    let subscriber = tracing_subscriber::fmt()
         .with_env_filter(filter)
-        .with_target(false)
-        .try_init()
-    {
+        .with_target(false);
+    let result = if json {
+        subscriber.json().try_init()
+    } else {
+        subscriber.try_init()
+    };
+    if let Err(error) = result {
         eprintln!("Unable to initialize structured logging: {error}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::JSON_LOG_FORMAT;
+
+    #[test]
+    fn desktop_json_log_format_name_is_stable() {
+        assert_eq!(JSON_LOG_FORMAT, "json");
     }
 }

@@ -196,7 +196,8 @@
   - [x] macOS Desktop 使用系统 Keychain 保存原生 refresh token。
   - [x] Linux Desktop 使用 keyutils 与 Secret Service 的持久组合后端保存 refresh token，采用 Rust 加密实现并静态构建 DBus 依赖；凭据服务不可用时拒绝操作，不回退 mock。
   - [x] Desktop 根据 `accessExpiresAt` 在短期 access token 到期前 60 秒轮换系统凭据中的 refresh token；休眠恢复后补刷新，失败时清理本地凭据并返回登录页。
-  - [ ] 日志加密/敏感字段策略、签名和自动更新。
+  - [x] Desktop sidecar 使用逐行 JSON 日志，Tauri 写盘前递归遮盖 password、token、PSK、authorization、cookie 和 master key 等结构化秘密字段；非 JSON 诊断文本不做不可靠的字符串替换。
+  - [ ] 日志文件加密、签名和自动更新。
 - [ ] Mobile 设备登录、安全存储、生物识别保护和移动控制台。
 - [ ] Browser/Tauri 平台适配器与共享状态、表单、实时事件 SDK。
 
