@@ -1,6 +1,7 @@
 //! MCNP Desktop Tauri 容器入口。
 
 mod desktop_autostart;
+mod desktop_credentials;
 mod desktop_instance;
 mod desktop_logs;
 mod desktop_runtime;
@@ -27,7 +28,10 @@ pub fn run() -> Result<(), Error> {
             complete_initial_admin,
             desktop_autostart::desktop_autostart_enabled,
             desktop_autostart::set_desktop_autostart_enabled,
-            desktop_logs::open_desktop_log_directory
+            desktop_logs::open_desktop_log_directory,
+            desktop_credentials::get_desktop_refresh_token,
+            desktop_credentials::set_desktop_refresh_token,
+            desktop_credentials::clear_desktop_refresh_token
         ])
         .setup(|app| {
             let runtime = DesktopRuntime::start(app.handle()).map_err(setup_error)?;

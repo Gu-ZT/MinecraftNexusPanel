@@ -287,6 +287,8 @@
     "autostartRead": "Could not read the start-at-login status",
     "autostartUpdate": "Could not update the start-at-login status",
     "logsOpen": "Could not open the runtime log directory",
+    "refreshTokenStore": "Could not store the refresh token in secure storage",
+    "refreshTokenClear": "Could not clear the refresh token from secure storage",
     "readDocuments": "Could not read configuration documents",
     "scanDocuments": "Configuration scan failed",
     "readDocument": "Could not read the configuration document",

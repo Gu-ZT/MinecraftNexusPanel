@@ -287,6 +287,8 @@
     "autostartRead": "无法读取开机启动状态",
     "autostartUpdate": "无法更新开机启动状态",
     "logsOpen": "无法打开运行日志目录",
+    "refreshTokenStore": "无法将刷新令牌保存到系统安全存储",
+    "refreshTokenClear": "无法从系统安全存储删除刷新令牌",
     "readDocuments": "无法读取配置文档",
     "scanDocuments": "配置扫描失败",
     "readDocument": "无法读取配置文档",

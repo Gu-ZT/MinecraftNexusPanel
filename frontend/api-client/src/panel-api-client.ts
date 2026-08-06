@@ -802,6 +802,7 @@ export interface CommandAccepted {
 
 export interface PanelApiClient {
   login(username: string, password: string, clientType: ClientType): Promise<LoginResponse>;
+  refreshNative(refreshToken: string): Promise<SessionTokens>;
   getCurrentUser(): Promise<User>;
   logout(): Promise<void>;
   listCores(): Promise<CorePage>;
@@ -1096,6 +1097,12 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
       return request<LoginResponse>('/api/v1/auth/login', {
         method: 'POST',
         body: { username, password, clientType },
+      });
+    },
+    refreshNative(refreshToken) {
+      return request<SessionTokens>('/api/v1/auth/refresh', {
+        method: 'POST',
+        body: { refreshToken },
       });
     },
     getCurrentUser() {

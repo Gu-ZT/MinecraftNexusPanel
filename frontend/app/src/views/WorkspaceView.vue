@@ -16,6 +16,7 @@ import type {
   Instance,
   PanelApiClient,
   PanelAuditEvent,
+  SessionTokens,
   User,
 } from '@mcnp/api-client';
 import type { DesktopRuntimeInfo } from '@mcnp/platform';
@@ -89,6 +90,7 @@ async function restoreSession(): Promise<void> {
         username.value = desktopRuntime.value.initialAdminUsername;
       }
       await loadAutostartStatus();
+      await restoreDesktopSession();
     }
   } catch (error) {
     if (application.platform.kind === 'desktop') {
@@ -118,6 +120,18 @@ async function signIn(): Promise<void> {
     storeSession();
     password.value = '';
 
+    let refreshStoreError: unknown;
+    try {
+      await persistDesktopRefreshToken(response.session.refreshToken);
+    } catch (error) {
+      refreshStoreError = error;
+      try {
+        await clearDesktopRefreshToken();
+      } catch {
+        // 原错误已经用于提示用户；这里仅尽力清除可能属于上一会话的旧令牌。
+      }
+    }
+
     if (desktopRuntime.value?.initialAdminPassword && application.platform.completeInitialAdmin) {
       try {
         await application.platform.completeInitialAdmin();
@@ -128,6 +142,9 @@ async function signIn(): Promise<void> {
     }
 
     await loadWorkspace();
+    if (refreshStoreError) {
+      noticeMessage.value = describeError(refreshStoreError, t('error.refreshTokenStore'));
+    }
   } catch (error) {
     errorMessage.value = describeError(error, t('error.login'));
     currentUser.value = null;
@@ -138,14 +155,23 @@ async function signIn(): Promise<void> {
 
 async function signOut(): Promise<void> {
   actionPending.value = 'logout';
+  let refreshTokenError: unknown;
   try {
     await api().logout();
   } catch {
     // Panel 失联时仍清理本机会话，避免用户无法退出当前设备。
   } finally {
+    try {
+      await clearDesktopRefreshToken();
+    } catch (error) {
+      refreshTokenError = error;
+    }
     actionPending.value = null;
     clearSession();
     await router.replace({ name: 'dashboard' });
+  }
+  if (refreshTokenError) {
+    errorMessage.value = describeError(refreshTokenError, t('error.refreshTokenClear'));
   }
 }
 
@@ -211,6 +237,54 @@ async function loadAutostartStatus(): Promise<void> {
     autostartEnabled.value = await application.platform.isAutostartEnabled();
   } catch (error) {
     errorMessage.value = describeError(error, t('error.autostartRead'));
+  }
+}
+
+async function restoreDesktopSession(): Promise<void> {
+  if (application.platform.kind !== 'desktop' || !application.platform.getRefreshToken) {
+    return;
+  }
+  let refreshToken: string | null;
+  try {
+    refreshToken = await application.platform.getRefreshToken();
+  } catch {
+    return;
+  }
+  if (!refreshToken) {
+    return;
+  }
+
+  try {
+    const session = await api().refreshNative(refreshToken);
+    applyNativeSession(session);
+    await persistDesktopRefreshToken(session.refreshToken);
+    storeSession();
+  } catch {
+    try {
+      await clearDesktopRefreshToken();
+    } catch {
+      // 令牌已经失效时，清理失败也不能阻止本地会话回到登录页。
+    }
+    clearSession();
+  }
+}
+
+function applyNativeSession(session: SessionTokens): void {
+  accessToken.value = session.accessToken ?? '';
+  csrfToken.value = session.csrfToken ?? '';
+}
+
+async function persistDesktopRefreshToken(refreshToken: string | null): Promise<void> {
+  if (refreshToken && application.platform.setRefreshToken) {
+    await application.platform.setRefreshToken(refreshToken);
+  } else if (!refreshToken && application.platform.clearRefreshToken) {
+    await application.platform.clearRefreshToken();
+  }
+}
+
+async function clearDesktopRefreshToken(): Promise<void> {
+  if (application.platform.clearRefreshToken) {
+    await application.platform.clearRefreshToken();
   }
 }
 

@@ -89,7 +89,7 @@ MinecraftNexusPanel/
 - 当前共享应用已提供 `/dashboard`、`/instances`、`/nodes`、`/settings` 和路由化实例详情；仪表盘聚合 Core、实例和授权审计，节点页提供只读连接信息与 CPU 拓扑，实例页提供生命周期控制、终端、结构化配置和文件管理。用户、Core 编辑、镜像与 Panel 全局设置在后端 API 交付前不制造虚假控制入口。
 - 三端复用同一套页面、领域 store、API Client、表单校验和实时事件 SDK；平台差异只能通过 `platform` 适配器访问。
 - Panel 托管 Vue 构建产物；Tauri Desktop/Mobile 加载同一应用构建，不复制业务页面。
-- 浏览器适配器使用 Cookie/CSRF；当前 Desktop 适配器使用原生 Bearer Access Token，系统密钥环持久化、Refresh Token 安全存储仍需补齐。
+- 浏览器适配器使用 Cookie/CSRF；Windows Desktop 适配器使用原生 Bearer Access Token，并把 Refresh Token 保存于 Windows Credential Manager，重启后通过 refresh 换取短期访问令牌；其他平台安全存储仍需补齐。
 - 浏览器使用 `HttpOnly + Secure + SameSite` 会话 Cookie，并通过 CSRF Token 保护写操作。
 - Desktop/Mobile 使用短期 Access Token 与可轮换 Refresh Token，Token 必须绑定设备会话。
 - 实时日志、指标、节点状态和任务进度统一通过 WebSocket 推送。
@@ -283,7 +283,7 @@ stateDiagram-v2
 - Vue 3 WebUI 完成全部管理页面，并由 Panel 托管。
 - 当前共享 WebUI 已交付 MCSManager 风格的紧凑控制台外壳、概览、实例目录、只读节点与 CPU 拓扑、本地主题/语言设置，以及包含概览、终端、配置和文件管理的全宽实例详情；后续页面继续按后端权限与 API 能力增量开放。
 - Tauri Desktop：已交付 Windows x64 独立安装包；安装包包含共享 Vue 构建产物和 release `mcnp all` sidecar。首启自动生成 Panel 主密钥、Core PSK 和随机管理员密码，登录页展示引导凭据，Panel 仅对 Tauri 本地来源开放跨源请求，退出时停止 sidecar。
-- Tauri Desktop 已提供显示动态 Panel 地址的系统托盘、关闭到托盘、主窗口恢复、显式退出、单实例重复启动唤醒、sidecar stdout/stderr 运行日志收集和日志目录入口，以及可在设置页管理的当前用户开机启动；登录项启动时静默驻留托盘。后续补齐系统密钥环/Refresh Token 安全存储、日志加密/敏感字段策略、签名和自动更新。
+- Tauri Desktop 已提供显示动态 Panel 地址的系统托盘、关闭到托盘、主窗口恢复、显式退出、单实例重复启动唤醒、sidecar stdout/stderr 运行日志收集和日志目录入口、Windows Credential Manager Refresh Token 存储，以及可在设置页管理的当前用户开机启动；登录项启动时静默驻留托盘。后续补齐其他平台安全存储、日志加密/敏感字段策略、签名和自动更新。
 - Tauri Mobile：设备登录、生物识别保护 Refresh Token、移动终端与任务页面。
 - 验收：三端使用同一个 Vue 功能模块和生成 API Client，不存在独立维护的业务页面副本。
 

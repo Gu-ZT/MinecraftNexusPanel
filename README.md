@@ -168,6 +168,8 @@ starting another sidecar. The tray tooltip reports the active loopback Panel add
 The local settings page can register MCNP for the current user's login; an autostart launch remains
 hidden in the tray until the user opens it. Sidecar stdout/stderr is collected under the application
 data `logs` directory with one rotated file, and the settings page can open that directory.
+Native refresh tokens are stored in Windows Credential Manager and rotated through the Panel
+refresh endpoint after restart; the short-lived access token remains session-scoped.
 See [`apps/desktop/README.md`](apps/desktop/README.md) and
 [`docs/operations/initial-administrator.md`](docs/operations/initial-administrator.md).
 

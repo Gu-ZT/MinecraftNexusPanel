@@ -11,4 +11,7 @@ export const desktopPlatform: PlatformAdapter = {
   isAutostartEnabled: () => invoke<boolean>('desktop_autostart_enabled'),
   setAutostartEnabled: (enabled) => invoke<boolean>('set_desktop_autostart_enabled', { enabled }),
   openLogDirectory: () => invoke('open_desktop_log_directory'),
+  getRefreshToken: () => invoke<string | null>('get_desktop_refresh_token'),
+  setRefreshToken: (refreshToken) => invoke('set_desktop_refresh_token', { refreshToken }),
+  clearRefreshToken: () => invoke('clear_desktop_refresh_token'),
 };

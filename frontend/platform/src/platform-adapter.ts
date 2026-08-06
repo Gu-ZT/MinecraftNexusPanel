@@ -14,4 +14,7 @@ export interface PlatformAdapter {
   isAutostartEnabled?: () => Promise<boolean>;
   setAutostartEnabled?: (enabled: boolean) => Promise<boolean>;
   openLogDirectory?: () => Promise<void>;
+  getRefreshToken?: () => Promise<string | null>;
+  setRefreshToken?: (refreshToken: string) => Promise<void>;
+  clearRefreshToken?: () => Promise<void>;
 }
