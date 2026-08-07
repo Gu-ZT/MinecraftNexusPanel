@@ -3,17 +3,21 @@ import {
   Button as AButton,
   Empty as AEmpty,
   Input as AInput,
+  InputNumber as AInputNumber,
+  Modal as AModal,
   Option as AOption,
   Pagination as APagination,
   Popconfirm as APopconfirm,
   Select as ASelect,
   Spin as ASpin,
+  Textarea as ATextarea,
   Tooltip as ATooltip,
 } from '@arco-design/web-vue';
 import {
   IconApps,
   IconCode,
   IconPlayArrow,
+  IconPlus,
   IconRefresh,
   IconSearch,
   IconStop,
@@ -22,19 +26,28 @@ import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 
-import type { Core, Instance, InstanceState } from '@mcnp/api-client';
+import type {
+  Core,
+  Instance,
+  InstanceCreate,
+  InstanceKind,
+  InstanceState,
+  PanelApiClient,
+} from '@mcnp/api-client';
 
-import { canStartInstance, canStopInstance, statusClass } from '../utils/presentation';
+import { canStartInstance, canStopInstance, describeError, statusClass } from '../utils/presentation';
 
 const props = defineProps<{
   cores: Core[];
   instances: Instance[];
+  client: PanelApiClient;
   loading: boolean;
   actionPending: string | null;
 }>();
 
 const emit = defineEmits<{
   action: [action: 'start' | 'stop' | 'kill' | 'reset', coreId: string, instanceId: string];
+  created: [instance: Instance];
 }>();
 
 const { t, te } = useI18n();
@@ -43,6 +56,18 @@ const router = useRouter();
 const query = ref('');
 const stateFilter = ref('');
 const currentPage = ref(1);
+const createVisible = ref(false);
+const createPending = ref(false);
+const createError = ref('');
+const createCoreId = ref('');
+const createId = ref('');
+const createName = ref('');
+const createKind = ref<InstanceKind>('PAPER');
+const createDirectory = ref('');
+const createExecutable = ref('java');
+const createArguments = ref('-jar\nserver.jar\nnogui');
+const createStopCommand = ref('stop');
+const createStopTimeoutSeconds = ref(30);
 const pageSize = 12;
 const coreFilter = ref(routeCoreId());
 const stateOptions: InstanceState[] = [
@@ -53,6 +78,38 @@ const stateOptions: InstanceState[] = [
   'FAILED',
   'UNKNOWN',
   'CREATED',
+];
+const instanceKindOptions: { label: string; value: InstanceKind }[] = [
+  { label: 'Vanilla', value: 'VANILLA' },
+  { label: 'NeoForge', value: 'NEO_FORGE' },
+  { label: 'Forge', value: 'FORGE' },
+  { label: 'Fabric', value: 'FABRIC' },
+  { label: 'Bukkit', value: 'BUKKIT' },
+  { label: 'Spigot', value: 'SPIGOT' },
+  { label: 'Paper', value: 'PAPER' },
+  { label: 'Purpur', value: 'PURPUR' },
+  { label: 'Pufferfish', value: 'PUFFERFISH' },
+  { label: 'Folia', value: 'FOLIA' },
+  { label: 'Leaf', value: 'LEAF' },
+  { label: 'Mohist', value: 'MOHIST' },
+  { label: 'Magma', value: 'MAGMA' },
+  { label: 'Sponge', value: 'SPONGE' },
+  { label: 'Arclight', value: 'ARCLIGHT' },
+  { label: 'Youer', value: 'YOUER' },
+  { label: 'AsyncYouer', value: 'ASYNC_YOUER' },
+  { label: 'Silkard', value: 'SILKARD' },
+  { label: 'CatServer', value: 'CAT_SERVER' },
+  { label: 'Lingshu', value: 'LINGSHU' },
+  { label: 'Velocity', value: 'VELOCITY' },
+  { label: 'Waterfall', value: 'WATERFALL' },
+  { label: 'BungeeCord', value: 'BUNGEE_CORD' },
+  { label: 'Lightfall', value: 'LIGHTFALL' },
+  { label: 'Geyser', value: 'GEYSER' },
+  { label: 'Bedrock Dedicated Server', value: 'BEDROCK_DEDICATED_SERVER' },
+  { label: 'PocketMine-MP', value: 'POCKET_MINE_MP' },
+  { label: 'Nukkit', value: 'NUKKIT' },
+  { label: 'Cloudburst Nukkit', value: 'CLOUDBURST_NUKKIT' },
+  { label: 'Custom', value: 'CUSTOM' },
 ];
 
 const filteredInstances = computed(() => {
@@ -77,6 +134,17 @@ const pagedInstances = computed(() => {
   const offset = (currentPage.value - 1) * pageSize;
   return filteredInstances.value.slice(offset, offset + pageSize);
 });
+const canCreateInstance = computed(
+  () =>
+    /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(createId.value) &&
+    createName.value.trim().length > 0 &&
+    createDirectory.value.trim().length > 0 &&
+    createExecutable.value.trim().length > 0 &&
+    createStopCommand.value.trim().length > 0 &&
+    createStopTimeoutSeconds.value >= 1 &&
+    createStopTimeoutSeconds.value <= 300 &&
+    createCoreId.value.length > 0,
+);
 
 watch(
   () => route.params.coreId,
@@ -88,6 +156,62 @@ watch(
 watch([query, stateFilter, coreFilter], () => {
   currentPage.value = 1;
 });
+
+watch(createId, (value, previousValue) => {
+  if (!createDirectory.value || createDirectory.value === `instances/${previousValue}`) {
+    createDirectory.value = value ? `instances/${value}` : '';
+  }
+});
+
+function openCreate(): void {
+  createCoreId.value = routeCoreId() || props.cores[0]?.id || '';
+  createId.value = '';
+  createName.value = '';
+  createKind.value = 'PAPER';
+  createDirectory.value = '';
+  createExecutable.value = 'java';
+  createArguments.value = '-jar\nserver.jar\nnogui';
+  createStopCommand.value = 'stop';
+  createStopTimeoutSeconds.value = 30;
+  createError.value = '';
+  createVisible.value = true;
+}
+
+async function createInstance(): Promise<void> {
+  if (!canCreateInstance.value) {
+    return;
+  }
+  createPending.value = true;
+  createError.value = '';
+  const request: InstanceCreate = {
+    id: createId.value,
+    name: createName.value.trim(),
+    kind: createKind.value,
+    directory: createDirectory.value.trim(),
+    launch: {
+      executable: createExecutable.value.trim(),
+      args: createArguments.value
+        .split(/\r?\n/u)
+        .map((argument) => argument.trim())
+        .filter(Boolean),
+      environment: {},
+      stopCommand: createStopCommand.value.trim(),
+      stopTimeoutSeconds: createStopTimeoutSeconds.value,
+      runtimeMode: 'HOST',
+      supervisorMode: 'DIRECT',
+      mcdr: null,
+    },
+  };
+  try {
+    const instance = await props.client.createInstance(createCoreId.value, request);
+    createVisible.value = false;
+    emit('created', instance);
+  } catch (error) {
+    createError.value = describeError(error, t('error.instanceCreate'));
+  } finally {
+    createPending.value = false;
+  }
+}
 
 async function changeCoreFilter(value: unknown): Promise<void> {
   const coreId = typeof value === 'string' ? value : '';
@@ -128,7 +252,13 @@ function canReset(state: InstanceState): boolean {
         <p class="page-eyebrow"><IconApps /> {{ t('instances.eyebrow') }}</p>
         <h1>{{ t('instances.title') }}</h1>
       </div>
-      <p>{{ t('instances.summary', { filtered: filteredInstances.length, total: instances.length }) }}</p>
+      <div class="instance-page-actions">
+        <p>{{ t('instances.summary', { filtered: filteredInstances.length, total: instances.length }) }}</p>
+        <a-button type="primary" :disabled="cores.length === 0" @click="openCreate">
+          <template #icon><IconPlus /></template>
+          {{ t('instances.create') }}
+        </a-button>
+      </div>
     </header>
 
     <section class="filter-bar">
@@ -256,10 +386,123 @@ function canReset(state: InstanceState): boolean {
     <footer v-if="filteredInstances.length > pageSize" class="page-pagination">
       <a-pagination v-model:current="currentPage" :page-size="pageSize" :total="filteredInstances.length" />
     </footer>
+
+    <a-modal
+      v-model:visible="createVisible"
+      :title="t('instances.createTitle')"
+      :footer="false"
+      :width="640"
+      unmount-on-close
+    >
+      <form class="instance-create-form" @submit.prevent="createInstance">
+        <div class="instance-create-form__grid">
+          <label>
+            <span>{{ t('instances.core') }}</span>
+            <a-select v-model="createCoreId">
+              <a-option v-for="core in cores" :key="core.id" :value="core.id">
+                {{ core.name }} · {{ core.status }}
+              </a-option>
+            </a-select>
+          </label>
+          <label>
+            <span>{{ t('instances.kind') }}</span>
+            <a-select v-model="createKind" allow-search>
+              <a-option v-for="kind in instanceKindOptions" :key="kind.value" :value="kind.value">
+                {{ kind.label }}
+              </a-option>
+            </a-select>
+          </label>
+          <label>
+            <span>{{ t('instances.instanceId') }}</span>
+            <a-input v-model="createId" :max-length="64" allow-clear />
+          </label>
+          <label>
+            <span>{{ t('instances.name') }}</span>
+            <a-input v-model="createName" :max-length="128" allow-clear />
+          </label>
+        </div>
+        <label>
+          <span>{{ t('instances.directory') }}</span>
+          <a-input v-model="createDirectory" :max-length="1024" allow-clear />
+        </label>
+        <label>
+          <span>{{ t('instances.executable') }}</span>
+          <a-input v-model="createExecutable" :max-length="4096" allow-clear />
+        </label>
+        <label>
+          <span>{{ t('instances.arguments') }}</span>
+          <a-textarea v-model="createArguments" :auto-size="{ minRows: 3, maxRows: 7 }" />
+          <small>{{ t('instances.argumentsHint') }}</small>
+        </label>
+        <div class="instance-create-form__grid">
+          <label>
+            <span>{{ t('instances.stopCommand') }}</span>
+            <a-input v-model="createStopCommand" :max-length="8192" allow-clear />
+          </label>
+          <label>
+            <span>{{ t('instances.stopTimeout') }}</span>
+            <a-input-number v-model="createStopTimeoutSeconds" :min="1" :max="300" />
+          </label>
+        </div>
+        <p v-if="createError" class="form-error" role="alert">{{ createError }}</p>
+        <div class="instance-create-form__actions">
+          <a-button @click="createVisible = false">{{ t('common.cancel') }}</a-button>
+          <a-button
+            type="primary"
+            html-type="submit"
+            :loading="createPending"
+            :disabled="!canCreateInstance"
+          >
+            {{ t('instances.create') }}
+          </a-button>
+        </div>
+      </form>
+    </a-modal>
   </main>
 </template>
 
 <style scoped>
+.instance-page-actions,
+.instance-create-form__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.instance-page-actions p {
+  margin: 0;
+}
+
+.instance-create-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.instance-create-form__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.instance-create-form label {
+  display: grid;
+  min-width: 0;
+  gap: 0.4rem;
+  color: var(--mcnp-text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.instance-create-form small {
+  color: var(--mcnp-text-faint);
+  font-weight: 400;
+}
+
+.instance-create-form__actions {
+  justify-content: flex-end;
+  padding-top: 0.25rem;
+}
+
 .page-spinner {
   display: block;
   min-height: 18rem;
@@ -391,6 +634,15 @@ function canReset(state: InstanceState): boolean {
 }
 
 @media (max-width: 46rem) {
+  .instance-page-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .instance-create-form__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .filter-bar,
   .instance-card-grid {
     grid-template-columns: 1fr;

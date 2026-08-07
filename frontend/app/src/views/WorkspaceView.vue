@@ -4,6 +4,7 @@ import {
   Empty as AEmpty,
   Input as AInput,
   InputPassword as AInputPassword,
+  Spin as ASpin,
 } from '@arco-design/web-vue';
 import { IconLock, IconUser } from '@arco-design/web-vue/es/icon';
 import { computed, onMounted, ref, shallowRef } from 'vue';
@@ -57,6 +58,7 @@ const cores = ref<Core[]>([]);
 const instances = ref<Instance[]>([]);
 const auditEvents = ref<PanelAuditEvent[]>([]);
 const loading = ref(false);
+const sessionRestoring = ref(true);
 const loginPending = ref(false);
 const actionPending = ref<string | null>(null);
 const autostartEnabled = ref<boolean | null>(null);
@@ -85,7 +87,9 @@ const effectiveApiBaseUrl = computed(
 );
 
 onMounted(() => {
-  void restoreSession();
+  void restoreSession().finally(() => {
+    sessionRestoring.value = false;
+  });
 });
 
 async function restoreSession(): Promise<void> {
@@ -93,11 +97,10 @@ async function restoreSession(): Promise<void> {
     if (application.platform.initialize) {
       desktopRuntime.value = await application.platform.initialize();
       panelApiClient.value = createClient(desktopRuntime.value.apiBaseUrl);
-      if (!username.value && desktopRuntime.value.initialAdminUsername) {
-        username.value = desktopRuntime.value.initialAdminUsername;
-      }
       await loadAutostartStatus();
-      await restoreDesktopSession();
+      if (await restoreDesktopSession()) {
+        return;
+      }
     }
   } catch (error) {
     if (application.platform.kind === 'desktop') {
@@ -137,15 +140,6 @@ async function signIn(): Promise<void> {
         // 原错误已经用于提示用户；这里仅尽力清除可能属于上一会话的旧令牌。
       }
       throw error;
-    }
-
-    if (desktopRuntime.value?.initialAdminPassword && application.platform.completeInitialAdmin) {
-      try {
-        await application.platform.completeInitialAdmin();
-        desktopRuntime.value = { ...desktopRuntime.value, initialAdminPassword: null };
-      } catch (error) {
-        noticeMessage.value = describeError(error, t('error.bootstrapCleanup'));
-      }
     }
 
     await loadWorkspace();
@@ -249,11 +243,43 @@ async function loadAutostartStatus(): Promise<void> {
   }
 }
 
-async function restoreDesktopSession(): Promise<void> {
-  if (application.platform.kind !== 'desktop' || !application.platform.getRefreshToken) {
+async function restoreDesktopSession(): Promise<boolean> {
+  if (application.platform.kind !== 'desktop') {
+    return false;
+  }
+  if (application.platform.getRefreshToken && (await refreshDesktopSession())) {
+    return false;
+  }
+  if (!application.platform.createDesktopSession) {
+    errorMessage.value = t('error.desktopSession');
+    return true;
+  }
+
+  await createTrustedDesktopSession();
+  return true;
+}
+
+async function createTrustedDesktopSession(): Promise<void> {
+  if (!application.platform.createDesktopSession) {
+    errorMessage.value = t('error.desktopSession');
     return;
   }
-  await refreshDesktopSession();
+  try {
+    const response = await application.platform.createDesktopSession();
+    currentUser.value = response.user;
+    applySession(response.session);
+    await persistDesktopRefreshToken(response.session.refreshToken);
+    storeSession();
+    await loadWorkspace();
+  } catch (error) {
+    try {
+      await clearDesktopRefreshToken();
+    } catch {
+      // 设备会话创建失败时保留原错误，令牌清理只做尽力处理。
+    }
+    clearSession();
+    errorMessage.value = describeError(error, t('error.desktopSession'));
+  }
 }
 
 function refreshDesktopSession(required = false): Promise<boolean> {
@@ -334,7 +360,13 @@ function scheduleNativeRefresh(accessExpiresAt: string): void {
   // 浏览器休眠会延迟 timer；恢复后延迟值已经到期，回调会尽快执行一次安全轮换。
   const requestedDelay = Math.max(0, expirationTimestamp - Date.now() - NATIVE_REFRESH_SKEW_MS);
   nativeRefreshTimer = setTimeout(
-    () => void refreshDesktopSession(true),
+    () => {
+      void refreshDesktopSession(true).then((refreshed) => {
+        if (!refreshed) {
+          void createTrustedDesktopSession();
+        }
+      });
+    },
     Math.min(requestedDelay, MAX_TIMER_DELAY_MS),
   );
 }
@@ -357,6 +389,16 @@ async function persistDesktopRefreshToken(refreshToken: string | null): Promise<
 async function clearDesktopRefreshToken(): Promise<void> {
   if (application.platform.clearRefreshToken) {
     await application.platform.clearRefreshToken();
+  }
+}
+
+async function retryDesktopSession(): Promise<void> {
+  sessionRestoring.value = true;
+  errorMessage.value = '';
+  try {
+    await restoreSession();
+  } finally {
+    sessionRestoring.value = false;
   }
 }
 
@@ -421,6 +463,20 @@ async function refreshCoreInstances(coreId: string): Promise<void> {
   instances.value = [...instances.value.filter((instance) => instance.coreId !== coreId), ...page.items];
 }
 
+async function handleInstanceCreated(instance: Instance): Promise<void> {
+  instances.value = [
+    ...instances.value.filter(
+      (item) => item.coreId !== instance.coreId || item.id !== instance.id,
+    ),
+    instance,
+  ];
+  noticeMessage.value = t('notice.instanceCreated', { name: instance.name });
+  await router.push({
+    name: 'instance-workspace',
+    params: { coreId: instance.coreId, instanceId: instance.id, view: 'overview' },
+  });
+}
+
 function createClient(baseUrl: string): PanelApiClient {
   return createPanelApiClient({
     baseUrl,
@@ -461,7 +517,22 @@ function clearSession(): void {
 </script>
 
 <template>
-  <form v-if="!currentUser" class="login-shell" @submit.prevent="signIn">
+  <main v-if="sessionRestoring" class="session-restoring" :aria-label="t('auth.restoring')">
+    <a-spin :loading="true" :tip="t('auth.restoring')" />
+  </main>
+
+  <main
+    v-else-if="application.platform.kind === 'desktop' && !currentUser"
+    class="session-restoring"
+  >
+    <section class="desktop-session-error">
+      <strong>{{ t('auth.desktopSessionTitle') }}</strong>
+      <p class="form-error" role="alert">{{ errorMessage || t('error.desktopSession') }}</p>
+      <a-button type="primary" @click="retryDesktopSession">{{ t('common.retry') }}</a-button>
+    </section>
+  </main>
+
+  <form v-else-if="!currentUser" class="login-shell" @submit.prevent="signIn">
     <div class="login-utilities"><PreferenceControls /></div>
     <section class="login-panel">
       <div class="login-brand">
@@ -471,12 +542,6 @@ function clearSession(): void {
       <div class="login-heading">
         <p>{{ t('auth.eyebrow') }}</p>
         <h1>{{ t('auth.title') }}</h1>
-      </div>
-      <div v-if="desktopRuntime?.initialAdminPassword" class="bootstrap-credentials">
-        <strong>{{ t('auth.bootstrapTitle') }}</strong>
-        <p>{{ t('auth.bootstrapHint') }}</p>
-        <code>{{ t('auth.username') }}: {{ desktopRuntime.initialAdminUsername }}</code>
-        <code>{{ t('auth.password') }}: {{ desktopRuntime.initialAdminPassword }}</code>
       </div>
       <label class="login-field">
         <span>{{ t('auth.username') }}</span>
@@ -503,6 +568,7 @@ function clearSession(): void {
       :cores="cores"
       :loading="loading"
       :signing-out="actionPending === 'logout'"
+      :show-sign-out="application.platform.kind !== 'desktop'"
       @refresh="loadWorkspace"
       @sign-out="signOut"
     />
@@ -526,9 +592,11 @@ function clearSession(): void {
       v-else-if="route.name === 'instances' || route.name === 'core-instances'"
       :cores="cores"
       :instances="instances"
+      :client="panelApiClient"
       :loading="loading"
       :action-pending="actionPending"
       @action="runLifecycleAction"
+      @created="handleInstanceCreated"
     />
     <NodeListView
       v-else-if="route.name === 'nodes'"
@@ -565,6 +633,23 @@ function clearSession(): void {
 </template>
 
 <style scoped>
+.session-restoring {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  background: var(--mcnp-bg);
+}
+
+.desktop-session-error {
+  display: grid;
+  width: min(24rem, calc(100% - 2rem));
+  gap: 1rem;
+  padding: 1.5rem;
+  border: 1px solid var(--mcnp-border);
+  border-radius: var(--mcnp-radius);
+  background: var(--mcnp-surface);
+}
+
 .login-shell {
   display: grid;
   min-height: 100vh;

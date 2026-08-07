@@ -176,6 +176,21 @@ impl AuthService {
         Ok(issued)
     }
 
+    /// 为已经通过本机设备秘密校验的 Desktop 用户创建原生会话。
+    ///
+    /// 本方法不验证密码，调用方必须先同时确认请求来自 loopback 且设备秘密匹配；
+    /// 普通浏览器和远程 Panel 请求不能进入此路径。
+    pub(crate) fn login_trusted_native(&self, username: &str) -> Result<IssuedSession, AuthError> {
+        let user = self
+            .store
+            .find_user_by_username(username)?
+            .ok_or(AuthError::InvalidCredentials)?;
+        let (issued, record) = build_session(user, ClientType::Native, None)?;
+        self.store.create_session(&record)?;
+
+        Ok(issued)
+    }
+
     /// 轮换原生客户端刷新令牌。
     pub fn refresh_native(&self, refresh_token: &str) -> Result<IssuedSession, AuthError> {
         let token_hash = hash_token(refresh_token);

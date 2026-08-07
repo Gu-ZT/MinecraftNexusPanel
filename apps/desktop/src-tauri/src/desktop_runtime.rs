@@ -58,20 +58,19 @@ const PANEL_STARTUP_INTERVAL: Duration = Duration::from_millis(100);
 pub struct DesktopRuntimeInfo {
     /// 本地 Panel HTTP API 地址。
     pub api_base_url: String,
-    /// 首次初始化管理员的用户名。
-    pub initial_admin_username: String,
-    /// 尚未完成首次登录时显示的一次性引导密码。
-    pub initial_admin_password: Option<String>,
 }
 
 /// Desktop 首次启动生成并持久化的本地秘密。
 ///
-/// Panel 主密钥和 Core PSK 必须跨进程重启保持不变，否则已有 Core 注册信息无法解密。
-/// 引导密码只在首位管理员完成首次登录前保留，完成后会从文件中删除。
+/// Panel 主密钥、Core PSK 和 Desktop 设备秘密必须跨进程重启保持不变，否则已有 Core
+/// 注册信息无法解密，Desktop 也无法通过本地受信任路径恢复会话。引导密码只在首位管理员
+/// 完成首次会话创建前保留，完成后会从文件中删除。
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct DesktopSecrets {
     panel_master_key: String,
     core_psk: String,
+    #[serde(default)]
+    desktop_session_secret: String,
     initial_admin_username: String,
     initial_admin_password: Option<String>,
 }
@@ -129,8 +128,6 @@ impl DesktopRuntime {
 
         let info = DesktopRuntimeInfo {
             api_base_url: format!("http://{panel_address}"),
-            initial_admin_username: secrets.initial_admin_username.clone(),
-            initial_admin_password: secrets.initial_admin_password.clone(),
         };
 
         Ok(Self {
@@ -149,7 +146,23 @@ impl DesktopRuntime {
             .map_err(|_| DesktopRuntimeError::StatePoisoned)
     }
 
-    /// 标记首位管理员已完成登录，并删除引导密码。
+    /// 返回 Tauri 用于向本地 Panel 请求受信任原生会话的地址和设备秘密。
+    pub fn desktop_session_request(&self) -> Result<(String, String), DesktopRuntimeError> {
+        let info = self
+            .info
+            .lock()
+            .map_err(|_| DesktopRuntimeError::StatePoisoned)?;
+        let secrets = self
+            .secrets
+            .lock()
+            .map_err(|_| DesktopRuntimeError::StatePoisoned)?;
+        Ok((
+            format!("{}/api/v1/auth/desktop-session", info.api_base_url),
+            secrets.desktop_session_secret.clone(),
+        ))
+    }
+
+    /// 标记首位管理员已建立受信任会话，并删除引导密码。
     pub fn complete_initial_admin(&self) -> Result<(), DesktopRuntimeError> {
         let mut secrets = self
             .secrets
@@ -165,11 +178,6 @@ impl DesktopRuntime {
             return Err(error);
         }
 
-        let mut info = self
-            .info
-            .lock()
-            .map_err(|_| DesktopRuntimeError::StatePoisoned)?;
-        info.initial_admin_password = None;
         Ok(())
     }
 
@@ -199,7 +207,11 @@ impl DesktopSecrets {
                 path: path.to_path_buf(),
                 source,
             })?;
-            let secrets: Self = serde_json::from_slice(&content)?;
+            let mut secrets: Self = serde_json::from_slice(&content)?;
+            if secrets.desktop_session_secret.is_empty() {
+                secrets.desktop_session_secret = random_base64url(32)?;
+                secrets.persist(path)?;
+            }
             secrets.validate()?;
             return Ok(secrets);
         }
@@ -207,6 +219,7 @@ impl DesktopSecrets {
         let secrets = Self {
             panel_master_key: random_base64url(32)?,
             core_psk: random_base64url(32)?,
+            desktop_session_secret: random_base64url(32)?,
             initial_admin_username: ADMIN_USERNAME.to_owned(),
             initial_admin_password: Some(random_base64url(24)?),
         };
@@ -225,6 +238,7 @@ impl DesktopSecrets {
     fn validate(&self) -> Result<(), DesktopRuntimeError> {
         if self.panel_master_key.is_empty()
             || self.core_psk.is_empty()
+            || self.desktop_session_secret.is_empty()
             || self.initial_admin_username.is_empty()
             || self
                 .initial_admin_password
@@ -312,6 +326,14 @@ fn spawn_sidecar(
         .env("MCNP_CORE_LISTEN", core_address.to_string())
         .env("MCNP_CORE_PSK", &secrets.core_psk)
         .env("MCNP_PANEL_MASTER_KEY", &secrets.panel_master_key)
+        .env(
+            "MCNP_DESKTOP_SESSION_USERNAME",
+            &secrets.initial_admin_username,
+        )
+        .env(
+            "MCNP_DESKTOP_SESSION_SECRET",
+            &secrets.desktop_session_secret,
+        )
         .env("MCNP_LOG_FILTER", "info")
         .env("MCNP_LOG_FORMAT", "json")
         .stdin(Stdio::null())
@@ -468,4 +490,36 @@ pub enum DesktopRuntimeError {
     /// 运行时状态锁被异常中毒。
     #[error("Desktop runtime state is unavailable")]
     StatePoisoned,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::tempdir;
+
+    use super::DesktopSecrets;
+
+    #[test]
+    fn adds_a_device_secret_to_legacy_desktop_secrets() {
+        let directory = tempdir().expect("temporary Desktop data directory is created");
+        let path = directory.path().join("desktop-secrets.json");
+        fs::write(
+            &path,
+            br#"{
+  "panel_master_key": "panel-key",
+  "core_psk": "core-key",
+  "initial_admin_username": "admin",
+  "initial_admin_password": null
+}"#,
+        )
+        .expect("legacy Desktop secrets are written");
+
+        let secrets =
+            DesktopSecrets::load_or_create(&path).expect("legacy Desktop secrets are migrated");
+        assert!(secrets.desktop_session_secret.len() >= 32);
+
+        let persisted = fs::read_to_string(path).expect("migrated Desktop secrets are readable");
+        assert!(persisted.contains("desktop_session_secret"));
+    }
 }

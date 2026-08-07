@@ -56,6 +56,7 @@ export type {
   ExtensionVersion,
   ExtensionVersionResult,
   Instance,
+  InstanceCreate,
   InstanceAuditAction,
   InstanceAuditOutcome,
   InstanceAuditPage,

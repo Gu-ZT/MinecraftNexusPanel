@@ -39,12 +39,18 @@ pub enum ConfigError {
     /// 初始管理员用户名为空或超出长度限制。
     #[error("initial administrator username must contain between 1 and 64 characters")]
     InvalidInitialAdminUsername,
+    /// Desktop 会话引导用户名为空或超出长度限制。
+    #[error("Desktop session username must contain between 1 and 64 characters")]
+    InvalidDesktopSessionUsername,
     /// Core TLS 证书和私钥没有成对配置。
     #[error("Core TLS certificate and private key must be configured together")]
     IncompleteCoreTlsIdentity,
     /// 初始管理员用户名和密码只配置了其中一项。
     #[error("initial administrator username and password must be configured together")]
     IncompleteInitialAdminCredentials,
+    /// Desktop 会话引导用户名和设备秘密只配置了其中一项。
+    #[error("Desktop session username and secret must be configured together")]
+    IncompleteDesktopSessionCredentials,
     /// 日志过滤器为空或只包含空白字符。
     #[error("logging filter cannot be empty")]
     EmptyLogFilter,
@@ -66,4 +72,7 @@ pub enum ConfigError {
     /// 初始管理员密码不满足长度要求。
     #[error("initial administrator password must contain between 12 and 1024 bytes")]
     WeakInitialAdminPassword,
+    /// Desktop 设备秘密不足以抵抗穷举攻击。
+    #[error("Desktop session secret must contain between 32 and 1024 bytes")]
+    WeakDesktopSessionSecret,
 }

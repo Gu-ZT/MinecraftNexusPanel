@@ -332,6 +332,27 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '429':
           $ref: '#/components/responses/RateLimited'
+  /auth/desktop-session:
+    post:
+      tags: [ Auth ]
+      operationId: createDesktopSession
+      summary: Create a trusted local Desktop native session
+      description: |
+        Internal Tauri-to-sidecar endpoint. It is disabled unless the Panel
+        process receives a Desktop session username and device secret, and it
+        accepts only loopback requests with the matching authorization value.
+        The device secret must never be exposed to the WebView.
+      security:
+        - desktopSessionAuth: [ ]
+      responses:
+        '200':
+          description: Trusted native session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
   /auth/refresh:
     post:
       tags: [ Auth ]
@@ -2984,6 +3005,11 @@ components:
       type: http
       scheme: bearer
       bearerFormat: opaque
+    desktopSessionAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: MCNP-Desktop followed by the Tauri-managed device secret
     csrfToken:
       type: apiKey
       in: header

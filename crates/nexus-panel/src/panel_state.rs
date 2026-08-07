@@ -4,12 +4,14 @@ use crate::VersionMetadataClient;
 use crate::WebSocketTicketStore;
 use crate::extension_source_client::ExtensionSourceClient;
 use crate::extension_task_store::ExtensionTaskStore;
+use nexus_config::DesktopSessionConfig;
 use nexus_storage::SqliteStore;
 
 /// 注入所有 Panel 路由共享服务的只读状态句柄集合。
 #[derive(Clone)]
 pub struct PanelState {
     auth: AuthService,
+    desktop_session: Option<DesktopSessionConfig>,
     cores: CoreRegistry,
     store: SqliteStore,
     extension_sources: ExtensionSourceClient,
@@ -23,6 +25,7 @@ impl PanelState {
     #[must_use]
     pub fn new(
         auth: AuthService,
+        desktop_session: Option<DesktopSessionConfig>,
         cores: CoreRegistry,
         store: SqliteStore,
         extension_sources: ExtensionSourceClient,
@@ -30,6 +33,7 @@ impl PanelState {
     ) -> Self {
         Self {
             auth,
+            desktop_session,
             cores,
             store,
             extension_sources,
@@ -43,6 +47,12 @@ impl PanelState {
     #[must_use]
     pub const fn auth(&self) -> &AuthService {
         &self.auth
+    }
+
+    /// 返回仅供本机 Tauri 容器使用的会话引导配置。
+    #[must_use]
+    pub const fn desktop_session(&self) -> Option<&DesktopSessionConfig> {
+        self.desktop_session.as_ref()
     }
 
     /// 返回 Core 注册服务。

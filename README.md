@@ -97,7 +97,7 @@ cross-Core scheduling locks remain planned M4 work.
 The shared Vue application now provides an operations-focused control panel inspired by the
 information density of MCSManager while remaining an independent implementation. Its routed views
 include a Core/instance/audit dashboard with permission-gated NDJSON export, a searchable instance
-card catalog with lifecycle actions,
+card catalog with instance creation and lifecycle actions,
 a read-only node catalog with CPU topology inspection, permission-gated user management, local
 client settings, and a full-width instance workspace. Administrators can create users, edit display
 names, toggle `audit.read`, and delete non-administrators with confirmation. Instance routes expose `overview`,
@@ -165,8 +165,9 @@ Microsoft Edge WebView2 Runtime instead of embedding it; Windows 10/11 normally 
 the runtime, and the resulting installer is currently about 6.5 MB.
 
 On first launch, the desktop runtime creates its SQLite data and persistent secrets below
-`%APPDATA%\dev.mcnp.desktop`. The login page displays the randomly generated initial
-administrator password, and removes the bootstrap password after the first successful login.
+`%APPDATA%\dev.mcnp.desktop`, then Tauri automatically establishes a native session with a random
+device secret. The bootstrap password is removed after the first session is created, while the
+device secret remains outside the WebView in the protected Desktop secrets file.
 Closing the main window keeps the local Core and Panel running in the system tray. Double-clicking
 the tray icon or choosing `Open MCNP` restores the window; `Quit MCNP` explicitly exits and stops
 the sidecar. A second launch is forwarded to the existing process and restores its window instead of
@@ -175,10 +176,11 @@ The local settings page can register MCNP for the current user's login; an autos
 hidden in the tray until the user opens it. Sidecar stdout/stderr is collected under the application
 data `logs` directory with one rotated file, and the settings page can open that directory. Desktop
 requests line-delimited JSON logs and redacts known structured secret fields before writing them.
-Native refresh tokens are stored in Windows Credential Manager on Windows and the system Keychain
-on macOS, then rotated through the Panel refresh endpoint after restart; the short-lived access
-token remains session-scoped and is refreshed 60 seconds before expiry. Linux uses the persistent
-keyutils and Secret Service combination and refuses to fall back to the mock credential store.
+Native refresh tokens are stored in Windows Credential Manager on Windows and the system Keychain on
+macOS. Sessions are rotated through the Panel refresh endpoint after restart; an expired or missing
+refresh token makes Tauri use the loopback-only device-secret bootstrap endpoint. The short-lived
+access token remains session-scoped and is refreshed 60 seconds before expiry. Linux uses
+the persistent keyutils and Secret Service combination and refuses to fall back to the mock credential store.
 See [`apps/desktop/README.md`](apps/desktop/README.md) and
 [`docs/operations/initial-administrator.md`](docs/operations/initial-administrator.md). Windows
 release artifacts and checksum rules are documented in

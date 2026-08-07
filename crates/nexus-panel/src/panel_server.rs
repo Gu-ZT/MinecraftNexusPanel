@@ -106,7 +106,14 @@ impl PanelServer {
         Ok(Self {
             listen_address,
             listener,
-            state: PanelState::new(auth, cores, store, extension_sources, version_metadata),
+            state: PanelState::new(
+                auth,
+                config.desktop_session().cloned(),
+                cores,
+                store,
+                extension_sources,
+                version_metadata,
+            ),
         })
     }
 
@@ -134,6 +141,7 @@ impl PanelServer {
 
 fn router(state: PanelState) -> Router {
     let audit_state = state.clone();
+    let desktop_cors_state = state.clone();
 
     Router::new()
         .route("/api/v1/health/live", get(health))
@@ -155,20 +163,23 @@ fn router(state: PanelState) -> Router {
         .with_state(state)
         .layer(middleware::from_fn_with_state(audit_state, audit_request))
         .layer(middleware::from_fn(assign_request_id))
-        .layer(middleware::from_fn(desktop_cors))
+        .layer(middleware::from_fn_with_state(
+            desktop_cors_state,
+            desktop_cors,
+        ))
 }
 
-/// 为打包后的 Tauri WebView 开放受限的本地跨源请求。
+/// 为 Tauri WebView 开放受限的本地跨源请求。
 ///
 /// Panel 默认仍不向任意来源开放 CORS；只接受 Tauri 本地协议映射的来源，避免把
-/// 管理 API 的跨源访问范围扩展到局域网或公网。原生 Desktop 使用 Bearer 令牌，
-/// 因此不依赖跨源 Cookie。
-async fn desktop_cors(request: Request, next: Next) -> Response {
+/// 管理 API 的跨源访问范围扩展到局域网或公网。开发服务器来源仅在 sidecar 已配置
+/// Desktop 设备会话时开放。原生 Desktop 使用 Bearer 令牌，因此不依赖跨源 Cookie。
+async fn desktop_cors(State(state): State<PanelState>, request: Request, next: Next) -> Response {
     let origin = request
         .headers()
         .get("origin")
         .and_then(|value| value.to_str().ok())
-        .filter(|origin| is_desktop_origin(origin))
+        .filter(|origin| is_desktop_origin(origin, state.desktop_session().is_some()))
         .and_then(|origin| HeaderValue::from_str(origin).ok());
 
     if request.method() == Method::OPTIONS {
@@ -187,14 +198,14 @@ async fn desktop_cors(request: Request, next: Next) -> Response {
     response
 }
 
-fn is_desktop_origin(origin: &str) -> bool {
+fn is_desktop_origin(origin: &str, desktop_session_enabled: bool) -> bool {
     matches!(
         origin,
         "http://tauri.localhost"
             | "https://tauri.localhost"
             | "http://asset.localhost"
             | "https://asset.localhost"
-    )
+    ) || desktop_session_enabled && origin == "http://127.0.0.1:1420"
 }
 
 fn add_desktop_cors_headers(response: &mut Response, origin: HeaderValue) {
@@ -294,6 +305,7 @@ fn is_public_path(path: &str) -> bool {
             | "/api/v1/health/ready"
             | "/api/v1/auth/login"
             | "/api/v1/auth/refresh"
+            | "/api/v1/auth/desktop-session"
     )
 }
 
@@ -358,23 +370,30 @@ mod tests {
     use super::is_desktop_origin;
 
     #[test]
-    fn limits_desktop_cors_to_tauri_local_origins() {
+    fn limits_packaged_desktop_cors_to_tauri_local_origins() {
         for origin in [
             "http://tauri.localhost",
             "https://tauri.localhost",
             "http://asset.localhost",
             "https://asset.localhost",
         ] {
-            assert!(is_desktop_origin(origin));
+            assert!(is_desktop_origin(origin, false));
         }
 
         for origin in [
             "null",
             "http://localhost",
+            "http://127.0.0.1:1420",
             "http://tauri.localhost.example.com",
             "https://example.com",
         ] {
-            assert!(!is_desktop_origin(origin));
+            assert!(!is_desktop_origin(origin, false));
         }
+    }
+
+    #[test]
+    fn allows_the_vite_origin_only_for_desktop_sidecars() {
+        assert!(is_desktop_origin("http://127.0.0.1:1420", true));
+        assert!(!is_desktop_origin("http://127.0.0.1:1421", true));
     }
 }

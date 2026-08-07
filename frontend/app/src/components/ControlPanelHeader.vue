@@ -22,6 +22,7 @@ const props = defineProps<{
   cores: Core[];
   loading: boolean;
   signingOut: boolean;
+  showSignOut: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -99,7 +100,7 @@ function isActive(section: string): boolean {
           <span class="user-avatar">{{ userInitial }}</span>
           <span class="user-name">{{ user.displayName }}</span>
         </div>
-        <a-tooltip :content="t('nav.logout')">
+        <a-tooltip v-if="showSignOut" :content="t('nav.logout')">
           <a-button
             class="header-icon-button"
             type="text"

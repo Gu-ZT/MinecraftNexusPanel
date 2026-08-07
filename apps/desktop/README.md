@@ -45,8 +45,8 @@ target/release/bundle/nsis/MCNP Desktop_0.1.0_x64-setup.exe
 %APPDATA%\dev.mcnp.desktop\desktop-secrets.json
 ```
 
-登录页会直接显示首启用户名和密码，不存在固定的默认密码。首位管理员成功登录后，
-引导密码会从秘密文件删除；Panel 数据库和长期密钥仍会保留。完整说明见
+Desktop 会通过 Tauri 持有的随机设备秘密自动换取原生会话，无需用户手动登录。首次会话
+建立后，引导密码会从秘密文件删除；Panel 数据库、设备秘密和长期密钥仍会保留。完整说明见
 [`docs/operations/initial-administrator.md`](../../docs/operations/initial-administrator.md)。
 
 关闭主窗口时应用会隐藏到系统托盘，本地 Core/Panel 继续运行。托盘悬浮提示显示当前动态
@@ -59,10 +59,11 @@ sidecar。sidecar 的 stdout/stderr 会收集到 `%APPDATA%\dev.mcnp.desktop\log
 Linux/macOS 安装包仍属于后续发布工作。
 
 Windows Desktop 会把原生 refresh token 保存到 Windows Credential Manager，macOS Desktop
-使用系统 Keychain；应用重启时通过 Panel 刷新接口换取短期 access token，登出时删除该凭据。
-Desktop 还会在 access token 到期前 60 秒轮换 refresh token，系统休眠恢复后会尽快补刷新；
-Linux Desktop 使用 keyutils 与 Secret Service 持久组合后端，采用 Rust 加密实现并静态构建
-DBus 依赖；凭据服务不可用时拒绝操作，不回退 mock 或明文文件。
+使用系统 Keychain。应用重启时优先通过 Panel 刷新接口换取短期 access token；refresh token
+失效或缺失时，Tauri 会使用未暴露给 WebView 的设备秘密调用仅限 loopback 的会话引导接口。
+Desktop 还会在 access token 到期前 60 秒轮换 refresh token，系统休眠恢复后会尽快补刷新。Linux Desktop 使用 keyutils 与
+Secret Service 持久组合后端，采用 Rust 加密实现并静态构建 DBus 依赖；凭据服务不可用时拒绝
+操作，不回退 mock 或明文文件。
 
 Windows x64 发布工作流会生成明确标记为 unsigned 的 NSIS 安装包和 `SHA256SUMS.txt`；在
 Authenticode 代码签名完成前不得将其描述为已签名版本。详见

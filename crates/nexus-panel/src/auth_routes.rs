@@ -39,13 +39,40 @@ use crate::UserResponse;
 
 const SESSION_COOKIE_NAME: &str = "mcnp_session";
 const SESSION_COOKIE_MAX_AGE_SECONDS: i64 = 30 * 24 * 60 * 60;
+const DESKTOP_AUTHORIZATION_SCHEME: &str = "MCNP-Desktop ";
 
 pub(crate) fn auth_routes() -> Router<PanelState> {
     Router::new()
         .route("/api/v1/auth/login", post(login))
+        .route("/api/v1/auth/desktop-session", post(desktop_session))
         .route("/api/v1/auth/refresh", post(refresh))
         .route("/api/v1/auth/logout", post(logout))
         .route("/api/v1/auth/me", get(current_user))
+}
+
+async fn desktop_session(
+    State(state): State<PanelState>,
+    ConnectInfo(source_address): ConnectInfo<SocketAddr>,
+    Extension(request_id): Extension<RequestId>,
+    headers: HeaderMap,
+) -> Response {
+    let Some(config) = state.desktop_session() else {
+        return auth_error_response(AuthError::InvalidSession, request_id);
+    };
+    let supplied_secret = header_text(&headers, AUTHORIZATION.as_str())
+        .and_then(|value| value.strip_prefix(DESKTOP_AUTHORIZATION_SCHEME));
+    if !source_address.ip().is_loopback()
+        || !supplied_secret.is_some_and(|secret| secrets_equal(secret, config.secret()))
+    {
+        return auth_error_response(AuthError::InvalidSession, request_id);
+    }
+
+    let username = config.username().to_owned();
+    let auth = state.auth().clone();
+    match run_blocking(move || auth.login_trusted_native(&username)).await {
+        Ok(session) => issued_session_response(&session, true),
+        Err(error) => auth_error_response(error, request_id),
+    }
 }
 
 async fn login(
@@ -251,6 +278,17 @@ fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
 
 pub(crate) fn header_text<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     headers.get(name)?.to_str().ok()
+}
+
+fn secrets_equal(candidate: &str, expected: &str) -> bool {
+    candidate.len() == expected.len()
+        && candidate
+            .bytes()
+            .zip(expected.bytes())
+            .fold(0_u8, |difference, (left, right)| {
+                difference | (left ^ right)
+            })
+            == 0
 }
 
 fn validation_error(request_id: RequestId) -> Response {

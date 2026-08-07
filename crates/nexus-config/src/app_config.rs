@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use crate::ConfigError;
 use crate::CoreConfig;
+use crate::DesktopSessionConfig;
 use crate::InitialAdminConfig;
 use crate::LoggingConfig;
 use crate::PanelConfig;
@@ -41,6 +42,8 @@ impl AppConfig {
         let mut core_tls_private_key = environment_optional("MCNP_CORE_TLS_KEY");
         let initial_admin_username = environment_optional("MCNP_INITIAL_ADMIN_USERNAME");
         let initial_admin_password = environment_optional("MCNP_INITIAL_ADMIN_PASSWORD");
+        let desktop_session_username = environment_optional("MCNP_DESKTOP_SESSION_USERNAME");
+        let desktop_session_secret = environment_optional("MCNP_DESKTOP_SESSION_SECRET");
         let panel_master_key = environment_optional("MCNP_PANEL_MASTER_KEY")
             .map(|value| PanelMasterKey::from_base64url(&value))
             .transpose()?;
@@ -106,6 +109,11 @@ impl AppConfig {
             (None, None) => None,
             _ => return Err(ConfigError::IncompleteInitialAdminCredentials),
         };
+        let desktop_session = match (desktop_session_username, desktop_session_secret) {
+            (Some(username), Some(secret)) => Some(DesktopSessionConfig::new(username, secret)?),
+            (None, None) => None,
+            _ => return Err(ConfigError::IncompleteDesktopSessionCredentials),
+        };
         let audit_retention_events =
             panel_audit_retention_events.parse::<usize>().map_err(|_| {
                 ConfigError::InvalidPanelAuditRetention {
@@ -116,6 +124,9 @@ impl AppConfig {
             .with_audit_retention_events(audit_retention_events)?;
         if let Some(initial_admin) = initial_admin {
             panel = panel.with_initial_admin(initial_admin);
+        }
+        if let Some(desktop_session) = desktop_session {
+            panel = panel.with_desktop_session(desktop_session);
         }
         if let Some(master_key) = panel_master_key {
             panel = panel.with_master_key(master_key);
@@ -157,7 +168,36 @@ impl AppConfig {
     /// 返回命令行帮助文本。
     #[must_use]
     pub const fn usage() -> &'static str {
-        "Usage: mcnp [core|panel|all] [OPTIONS]\n\nOptions:\n  --mode MODE              Run core, panel, or all\n  --core-listen ADDRESS    Core TCP listen address\n  --core-tls-cert PATH     Core TLS certificate chain in PEM format\n  --core-tls-key PATH      Core TLS private key in PEM format\n  --panel-listen ADDRESS   Panel HTTP listen address\n  --panel-audit-retention-events COUNT\n                           Retained Panel audit event count (100-100000)\n  --data-dir PATH          Runtime data directory\n  --log-filter FILTER      tracing filter directive\n  -h, --help               Print help\n  -V, --version            Print version\n\nEnvironment:\n  MCNP_CORE_PSK            Required by core and all; unpadded Base64URL PSK\n  MCNP_CORE_LISTEN          Default Core TCP listen address\n  MCNP_CORE_TLS_CERT        Optional Core TLS certificate chain path\n  MCNP_CORE_TLS_KEY         Optional Core TLS private key path\n  MCNP_PANEL_LISTEN         Default Panel HTTP listen address\n  MCNP_PANEL_MASTER_KEY     Required by panel and all; 32-byte unpadded Base64URL key\n  MCNP_AUDIT_RETENTION_EVENTS  Retained Panel audit event count (default 10000)\n  MCNP_INITIAL_ADMIN_USERNAME  Initial administrator username for an empty database\n  MCNP_INITIAL_ADMIN_PASSWORD  Initial administrator password for an empty database\n  MCNP_DATA_DIR             Default runtime data directory\n  MCNP_LOG_FILTER           Default tracing filter directive\n  MCNP_LOG_FORMAT           Set to json for line-delimited JSON logs"
+        concat!(
+            "Usage: mcnp [core|panel|all] [OPTIONS]\n\n",
+            "Options:\n",
+            "  --mode MODE              Run core, panel, or all\n",
+            "  --core-listen ADDRESS    Core TCP listen address\n",
+            "  --core-tls-cert PATH     Core TLS certificate chain in PEM format\n",
+            "  --core-tls-key PATH      Core TLS private key in PEM format\n",
+            "  --panel-listen ADDRESS   Panel HTTP listen address\n",
+            "  --panel-audit-retention-events COUNT\n",
+            "                           Retained Panel audit event count (100-100000)\n",
+            "  --data-dir PATH          Runtime data directory\n",
+            "  --log-filter FILTER      tracing filter directive\n",
+            "  -h, --help               Print help\n",
+            "  -V, --version            Print version\n\n",
+            "Environment:\n",
+            "  MCNP_CORE_PSK            Required by core and all; unpadded Base64URL PSK\n",
+            "  MCNP_CORE_LISTEN          Default Core TCP listen address\n",
+            "  MCNP_CORE_TLS_CERT        Optional Core TLS certificate chain path\n",
+            "  MCNP_CORE_TLS_KEY         Optional Core TLS private key path\n",
+            "  MCNP_PANEL_LISTEN         Default Panel HTTP listen address\n",
+            "  MCNP_PANEL_MASTER_KEY     Required by panel and all; 32-byte unpadded Base64URL key\n",
+            "  MCNP_AUDIT_RETENTION_EVENTS  Retained Panel audit event count (default 10000)\n",
+            "  MCNP_INITIAL_ADMIN_USERNAME  Initial administrator username for an empty database\n",
+            "  MCNP_INITIAL_ADMIN_PASSWORD  Initial administrator password for an empty database\n",
+            "  MCNP_DESKTOP_SESSION_USERNAME  Local Desktop account for trusted native sessions\n",
+            "  MCNP_DESKTOP_SESSION_SECRET    Local Desktop device secret (32-1024 bytes)\n",
+            "  MCNP_DATA_DIR             Default runtime data directory\n",
+            "  MCNP_LOG_FILTER           Default tracing filter directive\n",
+            "  MCNP_LOG_FORMAT           Set to json for line-delimited JSON logs",
+        )
     }
 }
 

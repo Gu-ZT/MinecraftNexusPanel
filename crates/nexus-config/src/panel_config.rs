@@ -4,6 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::ConfigError;
+use crate::DesktopSessionConfig;
 use crate::InitialAdminConfig;
 use crate::LocalCoreConfig;
 use crate::PanelMasterKey;
@@ -17,6 +18,7 @@ pub struct PanelConfig {
     listen_address: SocketAddr,
     data_directory: PathBuf,
     initial_admin: Option<InitialAdminConfig>,
+    desktop_session: Option<DesktopSessionConfig>,
     local_core: Option<LocalCoreConfig>,
     master_key: Option<PanelMasterKey>,
     audit_retention_events: usize,
@@ -29,6 +31,7 @@ impl fmt::Debug for PanelConfig {
             .field("listen_address", &self.listen_address)
             .field("data_directory", &self.data_directory)
             .field("initial_admin", &self.initial_admin)
+            .field("desktop_session", &self.desktop_session)
             .field("local_core", &self.local_core.as_ref().map(|_| "REDACTED"))
             .field("master_key", &self.master_key)
             .field("audit_retention_events", &self.audit_retention_events)
@@ -60,6 +63,7 @@ impl PanelConfig {
             listen_address,
             data_directory,
             initial_admin: None,
+            desktop_session: None,
             local_core: None,
             master_key: None,
             audit_retention_events: Self::DEFAULT_AUDIT_RETENTION_EVENTS,
@@ -70,6 +74,13 @@ impl PanelConfig {
     #[must_use]
     pub fn with_initial_admin(mut self, initial_admin: InitialAdminConfig) -> Self {
         self.initial_admin = Some(initial_admin);
+        self
+    }
+
+    /// 设置仅供本地 Tauri sidecar 使用的 Desktop 会话引导凭据。
+    #[must_use]
+    pub fn with_desktop_session(mut self, desktop_session: DesktopSessionConfig) -> Self {
+        self.desktop_session = Some(desktop_session);
         self
     }
 
@@ -119,6 +130,12 @@ impl PanelConfig {
     #[must_use]
     pub const fn initial_admin(&self) -> Option<&InitialAdminConfig> {
         self.initial_admin.as_ref()
+    }
+
+    /// 返回 Desktop 本地会话引导配置；普通 Panel 部署为 `None`。
+    #[must_use]
+    pub const fn desktop_session(&self) -> Option<&DesktopSessionConfig> {
+        self.desktop_session.as_ref()
     }
 
     /// 返回本地 Core 配置；未配置时为 `None`。

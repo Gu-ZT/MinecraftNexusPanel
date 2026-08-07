@@ -186,23 +186,24 @@
   - [x] 采用参考 MCSManager 信息密度的独立实现，提供概览仪表盘、实例卡片目录、只读节点目录与 CPU 拓扑、本地设置和全宽实例工作区。
   - [x] 使用 Vue Router 将控制台页面、Core、实例及 `overview`/`console`/`config`/`files` 视图写入 URL，并支持前进、后退和直接访问恢复上下文。
   - [x] 实例工作区提供运行概览、生命周期控制、定时刷新的终端、结构化配置和完整文件管理入口；节点页不伪造尚无 API 的新增、编辑或删除操作。
+  - [x] 实例目录提供创建表单，可选择 Core 和服务端类型并配置实例 ID、目录、启动程序、参数及停止策略；创建成功后直接进入实例工作区。
   - [x] 管理员用户页接入用户列表、创建、显示名称编辑、`audit.read` 授权/撤销和带确认的删除；无 `user.manage` 权限时不显示导航入口。
   - [x] 仪表盘为具备 `audit.read` 的用户提供当前保留窗口 NDJSON 导出，并显示下载进度与结果反馈。
   - [x] 接入 Arco Design 控件和图标；支持跟随系统、浅色、深色三种主题偏好及手动持久化切换。
   - [x] 接入 Vue I18n，并从 `frontend/app/src/locales/<语言代码>.json` 自动发现语言包；新增 JSON 文件无需修改注册代码。
 - [ ] Desktop sidecar、托盘、开机启动和安全 WebUI 暴露。
   - [x] Windows x64 Tauri NSIS 安装包内置共享 Vue 前端和 release `mcnp all` sidecar，最终用户无需安装 Node.js、Rust、pnpm 或单独下载 MCNP。
-  - [x] Desktop 首次启动生成并持久化 Panel 主密钥、Core PSK 和随机首位管理员密码，登录页显示引导凭据，成功登录后删除引导密码。
+  - [x] Desktop 首次启动生成 Panel 主密钥、Core PSK 和随机首位管理员密码，自动换取原生会话后从秘密文件删除引导密码，无需用户手动登录。
   - [x] Desktop 通过动态 loopback API 地址和原生 Bearer Token 连接内置 Panel；Panel 仅允许 Tauri 本地来源的受限 CORS。
   - [x] Desktop 退出时停止本地 sidecar；数据和秘密保存于 `%APPDATA%\dev.mcnp.desktop`。
   - [x] 系统托盘显示动态 Panel 地址，并支持恢复主窗口和显式退出；关闭主窗口时隐藏到托盘并保持本地 Core/Panel 运行，显式退出后停止 sidecar。
   - [x] 使用操作系统当前用户登录项管理开机启动；设置页读取真实状态并可切换，登录项启动时静默驻留托盘。
   - [x] 使用官方 Tauri 单实例插件处理重复启动；第二次启动会唤醒并聚焦首个实例的主窗口，不重复启动 sidecar。
   - [x] sidecar stdout/stderr 由后台线程收集到 `%APPDATA%\dev.mcnp.desktop\logs`，日志文件达到 10 MiB 时保留一个轮转副本；设置页可打开日志目录。
-  - [x] Windows Desktop 使用 Windows Credential Manager 保存原生 refresh token；应用重启时通过 `/api/v1/auth/refresh` 换取短期 access token，登出时删除凭据。
+  - [x] Windows Desktop 使用 Windows Credential Manager 保存原生 refresh token；应用重启时优先刷新会话，刷新凭据失效时通过 Tauri 持有的本地设备秘密重新签发会话。
   - [x] macOS Desktop 使用系统 Keychain 保存原生 refresh token。
   - [x] Linux Desktop 使用 keyutils 与 Secret Service 的持久组合后端保存 refresh token，采用 Rust 加密实现并静态构建 DBus 依赖；凭据服务不可用时拒绝操作，不回退 mock。
-  - [x] Desktop 根据 `accessExpiresAt` 在短期 access token 到期前 60 秒轮换系统凭据中的 refresh token；休眠恢复后补刷新，失败时清理本地凭据并返回登录页。
+  - [x] Desktop 根据 `accessExpiresAt` 在短期 access token 到期前 60 秒轮换系统凭据中的 refresh token；休眠恢复后补刷新，刷新失败时清理失效令牌并通过仅限 loopback 和设备秘密的受信任路径重新建立会话。
   - [x] Desktop sidecar 使用逐行 JSON 日志，Tauri 写盘前递归遮盖 password、token、PSK、authorization、cookie 和 master key 等结构化秘密字段；非 JSON 诊断文本不做不可靠的字符串替换。
   - [ ] 日志文件加密、签名和自动更新。
 - [ ] Mobile 设备登录、安全存储、生物识别保护和移动控制台。

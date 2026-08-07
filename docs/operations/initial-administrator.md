@@ -17,12 +17,16 @@ cargo run -p mcnp -- panel
 Windows x64 Desktop 不要求用户预先配置环境变量。Tauri 首次启动时会在
 `%APPDATA%\dev.mcnp.desktop\desktop-secrets.json` 中生成并保存 `admin` 用户名、
 随机首启密码、Panel 主密钥和 Core PSK，然后把这些凭据注入随安装包发布的 `mcnp all`
-sidecar。登录页通过受限的 Tauri IPC 读取首启用户名和密码，因此不存在固定的默认密码。
+sidecar。首启密码只用于初始化空数据库中的管理员，既不会显示在登录页，也不会通过 Tauri IPC
+下发给共享前端，因此不存在固定或暴露给 WebView 的默认密码。
 
-登录成功后，Desktop 调用 `complete_initial_admin`，只删除秘密文件中的首启密码；SQLite
-数据库、Panel 主密钥、Core PSK 和 Core TLS 身份仍保留。若清理失败，应用会提示重试，
-在清理完成前仍会显示引导密码。不要手动删除整个 `desktop-secrets.json`，否则已有 Panel
-数据可能无法解密，Core 也会失去原有身份关联。
+Tauri 会使用独立随机设备秘密调用仅限 loopback 的会话引导接口，直接建立原生会话，不要求
+用户填写登录表单。设备秘密只保存在 `desktop-secrets.json` 和 Desktop/sidecar 进程内，不会
+下发给 WebView。首次会话建立后，Desktop 删除秘密文件中的首启密码；SQLite 数据库、Panel
+主密钥、Core PSK、设备秘密和 Core TLS 身份仍保留。后续启动优先
+轮换系统凭据库中的 refresh token，失效或缺失时通过设备秘密重新签发会话。若安全存储或清理
+失败，应用会保留可重试状态并显示错误。不要手动删除整个
+`desktop-secrets.json`，否则已有 Panel 数据可能无法解密，Core 也会失去原有身份关联。
 
 Desktop 的本地运行数据位于 `%APPDATA%\dev.mcnp.desktop\data`。安装包升级不会覆盖该目录，
 备份或迁移 Desktop 时必须将 `data` 与 `desktop-secrets.json` 作为一个整体保护；秘密文件

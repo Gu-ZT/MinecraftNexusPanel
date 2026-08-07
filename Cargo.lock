@@ -2448,6 +2448,8 @@ dependencies = [
  "base64 0.23.0",
  "getrandom 0.3.4",
  "keyring",
+ "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "tauri",

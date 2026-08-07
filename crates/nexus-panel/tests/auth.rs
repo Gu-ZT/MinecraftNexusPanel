@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::Path;
 
+use nexus_config::DesktopSessionConfig;
 use nexus_config::InitialAdminConfig;
 use nexus_config::PanelConfig;
 use nexus_config::PanelMasterKey;
@@ -18,6 +19,50 @@ use tokio::net::TcpStream;
 use tokio::task::JoinHandle;
 
 const ADMIN_PASSWORD: &str = "correct horse battery staple";
+const DESKTOP_SESSION_SECRET: &str = "desktop-session-secret-for-panel-tests";
+
+#[tokio::test]
+async fn trusted_desktop_session_requires_the_loopback_device_secret() {
+    let data_directory = tempdir().expect("temporary Panel data directory is created");
+    let desktop_session =
+        DesktopSessionConfig::new("admin".to_owned(), DESKTOP_SESSION_SECRET.to_owned())
+            .expect("Desktop session configuration is valid");
+    let config = panel_config(data_directory.path(), "admin", ADMIN_PASSWORD)
+        .with_desktop_session(desktop_session);
+    let server = PanelServer::bind(&config)
+        .await
+        .expect("Panel listener binds");
+    let listen_address = server.listen_address();
+    let server_task = tokio::spawn(server.serve());
+
+    let rejected = send_json_request(
+        listen_address,
+        "POST",
+        "/api/v1/auth/desktop-session",
+        &[("Authorization", "MCNP-Desktop incorrect-secret")],
+        None,
+    )
+    .await;
+    assert_eq!(rejected.status, 401);
+
+    let accepted = send_json_request(
+        listen_address,
+        "POST",
+        "/api/v1/auth/desktop-session",
+        &[(
+            "Authorization",
+            &format!("MCNP-Desktop {DESKTOP_SESSION_SECRET}"),
+        )],
+        None,
+    )
+    .await;
+    assert_eq!(accepted.status, 200);
+    assert_eq!(accepted.body["user"]["username"], "admin");
+    assert!(accepted.body["session"]["accessToken"].is_string());
+    assert!(accepted.body["session"]["refreshToken"].is_string());
+
+    stop_panel(server_task).await;
+}
 
 #[tokio::test]
 async fn native_session_rotates_credentials_and_rejects_reuse() {

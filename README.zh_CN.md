@@ -94,7 +94,7 @@ Core 现在会在启动时缓存保守的宿主机 CPU 拓扑快照，并通过 
 
 共享 Vue 应用现已提供面向运维的控制台：信息密度和视觉层级参考 MCSManager，但保持
 独立实现。路由页面包括聚合 Core、实例和审计事件并提供权限控制 NDJSON 导出的运行概览、
-带生命周期操作和筛选分页的实例卡片目录、可检查 CPU 拓扑的只读节点目录、按权限显示的用户管理、本地客户端设置，以及
+可创建实例并提供生命周期操作和筛选分页的实例卡片目录、可检查 CPU 拓扑的只读节点目录、按权限显示的用户管理、本地客户端设置，以及
 全宽实例工作区。管理员可创建用户、编辑显示名称、切换 `audit.read` 并在确认后删除非管理员。
 实例详情通过 `overview`、`console`、`config`、`files` 视图表达上下文，刷新、直接链接和
 浏览器前进后退都能恢复同一页面。
@@ -158,7 +158,8 @@ Node.js、Rust、pnpm，也不需要另行下载 MCNP。安装包不内置 WebVi
 实测约 6.5 MB。
 
 首次启动时，桌面运行时会在 `%APPDATA%\dev.mcnp.desktop` 下创建 SQLite 数据和持久化
-秘密。登录页会显示随机生成的首位管理员密码，首次登录成功后删除引导密码。
+秘密，并由 Tauri 使用随机设备秘密自动建立原生会话，无需手动登录。首次会话建立后，
+引导密码从秘密文件删除，设备秘密仍由 Desktop 保管且不会进入 WebView。
 关闭主窗口后，本地 Core/Panel 会继续在系统托盘中运行；托盘悬浮提示显示启动时选择的动态
 Panel 地址。双击托盘图标或选择 `Open MCNP` 可恢复窗口，选择 `Quit MCNP` 才会显式退出并停止
 sidecar。设置页可管理当前用户登录时启动；由登录项启动时会直接驻留托盘，不主动弹出主窗口。
@@ -166,9 +167,10 @@ sidecar。设置页可管理当前用户登录时启动；由登录项启动时�
 会以逐行 JSON 收集到应用数据目录的 `logs` 文件夹，写盘前遮盖已知结构化秘密字段，并保留
 一个轮转副本；设置页可以直接打开该目录。
 Windows Desktop 会将原生刷新令牌保存到 Windows Credential Manager，macOS Desktop 使用系统
-Keychain；重启后及短期 access token 到期前 60 秒通过 Panel 刷新接口轮换会话，access token
-仍只保留在当前 WebView 会话中。Linux Desktop 使用 keyutils 与 Secret Service 持久组合后端，
-凭据服务不可用时拒绝操作，不回退 mock。详见
+Keychain；重启后及短期 access token 到期前 60 秒通过 Panel 刷新接口轮换会话，刷新凭据失效时
+由 Tauri 通过仅限 loopback 和设备秘密的引导接口重新建立会话，access token 仍只保留在当前 WebView
+会话中。Linux Desktop 使用 keyutils 与 Secret Service 持久组合后端，凭据服务不可用时拒绝
+操作，不回退 mock。详见
 [`apps/desktop/README.md`](apps/desktop/README.md) 和
 [`docs/operations/initial-administrator.md`](docs/operations/initial-administrator.md)。Windows 发布产物和
 校验和规则见 [`docs/operations/desktop-release.md`](docs/operations/desktop-release.md)。

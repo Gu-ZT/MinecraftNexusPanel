@@ -733,6 +733,16 @@ export interface Instance {
   revision: number;
 }
 
+/** 创建实例所需的持久化配置；未提供 CPU policy 时由 Core 使用默认策略。 */
+export interface InstanceCreate {
+  id: string;
+  name: string;
+  kind: InstanceKind;
+  directory: string;
+  launch: LaunchConfig;
+  cpuPolicy?: CpuPolicy;
+}
+
 export interface InstanceUpdate {
   name?: string;
   kind?: InstanceKind;
@@ -1023,6 +1033,7 @@ export interface PanelApiClient {
     subserverId: string,
   ): Promise<ProxySubserverHealth>;
   listInstances(coreId: string): Promise<InstancePage>;
+  createInstance(coreId: string, instance: InstanceCreate): Promise<Instance>;
   updateInstance(coreId: string, instanceId: string, update: InstanceUpdate, revision: number): Promise<Instance>;
   listInstanceAudit(coreId: string, instanceId: string, limit?: number): Promise<InstanceAuditPage>;
   getInstanceLogs(coreId: string, instanceId: string): Promise<LogPage>;
@@ -1679,6 +1690,14 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
     },
     listInstances(coreId) {
       return request<InstancePage>(`/api/v1/cores/${encodeURIComponent(coreId)}/instances?limit=50`);
+    },
+    createInstance(coreId, instance) {
+      return request<Instance>(`/api/v1/cores/${encodeURIComponent(coreId)}/instances`, {
+        method: 'POST',
+        body: instance,
+        csrf: true,
+        idempotent: true,
+      });
     },
     updateInstance(coreId, instanceId, update, revision) {
       return request<Instance>(
