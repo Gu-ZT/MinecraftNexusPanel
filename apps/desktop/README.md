@@ -3,6 +3,18 @@
 MCNP Desktop 是带本地 Core/Panel 的独立 Windows x64 桌面版。Tauri 负责系统集成和
 sidecar 生命周期，业务页面仍来自共享的 `frontend/app`，不得在本目录复制业务页面。
 
+## 本地开发
+
+在仓库根目录执行：
+
+```powershell
+pnpm desktop:dev
+```
+
+开发脚本会先执行 `cargo build -p mcnp --locked`，再把本轮生成的 debug sidecar 路径
+显式传给 Tauri。不要直接复用 `target/debug/mcnp`，该文件可能由更早的提交遗留并与
+当前 Desktop 壳不兼容。
+
 ## 构建安装包
 
 在仓库根目录执行：

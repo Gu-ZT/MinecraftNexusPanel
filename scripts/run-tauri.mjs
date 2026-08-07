@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
 const repositoryRoot = resolve(import.meta.dirname, '..');
+const desktopProjectDirectory = resolve(repositoryRoot, 'apps/desktop');
 const [projectDirectoryArgument, ...tauriArguments] = process.argv.slice(2);
 
 if (!projectDirectoryArgument || tauriArguments.length === 0) {
@@ -20,8 +21,14 @@ if (!existsSync(tauriCli)) {
   throw new Error('Tauri CLI is not installed; run pnpm install from the repository root');
 }
 
+const childEnvironment = { ...process.env };
+if (projectDirectory === desktopProjectDirectory && tauriArguments[0] === 'dev') {
+  childEnvironment.MCNP_DESKTOP_DEV_SIDECAR_PATH = prepareDesktopDevelopmentSidecar();
+}
+
 const result = spawnSync(process.execPath, [tauriCli, ...tauriArguments], {
   cwd: projectDirectory,
+  env: childEnvironment,
   stdio: 'inherit',
 });
 
@@ -29,3 +36,30 @@ if (result.error) {
   throw result.error;
 }
 process.exit(result.status ?? 1);
+
+/**
+ * Desktop 开发态不执行 beforeBuildCommand，因此必须在启动 Tauri 前刷新本地 sidecar。
+ * 显式路径可避免运行时误用 target/debug 中由旧提交遗留的同名可执行文件。
+ */
+function prepareDesktopDevelopmentSidecar() {
+  const result = spawnSync('cargo', ['build', '-p', 'mcnp', '--locked'], {
+    cwd: repositoryRoot,
+    stdio: 'inherit',
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
+
+  const cargoTargetRoot = process.env.CARGO_TARGET_DIR
+    ? resolve(repositoryRoot, process.env.CARGO_TARGET_DIR)
+    : resolve(repositoryRoot, 'target');
+  const executableName = process.platform === 'win32' ? 'mcnp.exe' : 'mcnp';
+  const sidecarPath = resolve(cargoTargetRoot, 'debug', executableName);
+  if (!existsSync(sidecarPath)) {
+    throw new Error(`Desktop development sidecar was not produced: ${sidecarPath}`);
+  }
+  return sidecarPath;
+}

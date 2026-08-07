@@ -3,6 +3,7 @@
 //! sidecar 由 Tauri 进程托管，使用动态 loopback 端口和仅存在于当前用户数据目录的秘密
 //! 启动；其输出管道由 `desktop_logs` 模块异步收集，避免桌面壳吞掉故障诊断信息。
 
+use std::env;
 use std::fs;
 use std::io;
 use std::io::BufRead;
@@ -42,6 +43,8 @@ use crate::desktop_logs::redact_sensitive_fields;
 
 const DATA_DIRECTORY_NAME: &str = "data";
 const SECRETS_FILE_NAME: &str = "desktop-secrets.json";
+#[cfg(debug_assertions)]
+const DEVELOPMENT_SIDECAR_PATH_ENVIRONMENT: &str = "MCNP_DESKTOP_DEV_SIDECAR_PATH";
 const ADMIN_USERNAME: &str = "admin";
 const PANEL_PORT_START: u16 = 18_080;
 const CORE_PORT_START: u16 = 25_580;
@@ -253,9 +256,17 @@ fn select_loopback_port(start: u16) -> Result<SocketAddr, DesktopRuntimeError> {
     Err(DesktopRuntimeError::PortUnavailable { start })
 }
 
+/// 定位与当前 Desktop 构建配套的 sidecar。
+///
+/// 开发脚本通过仅在 debug 构建中读取的环境变量固定本轮刚构建的二进制；发布构建仍只
+/// 接受安装包资源目录中的 sidecar，避免外部环境覆盖正式程序的受控资源。
 fn locate_sidecar<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, DesktopRuntimeError> {
     let executable_name = if cfg!(windows) { "mcnp.exe" } else { "mcnp" };
     let mut candidates = Vec::new();
+    #[cfg(debug_assertions)]
+    if let Some(path) = env::var_os(DEVELOPMENT_SIDECAR_PATH_ENVIRONMENT) {
+        candidates.push(PathBuf::from(path));
+    }
     if let Ok(resource_directory) = app.path().resource_dir() {
         candidates.push(resource_directory.join("binaries").join(executable_name));
         candidates.push(resource_directory.join(executable_name));
@@ -265,7 +276,7 @@ fn locate_sidecar<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, DesktopRunt
             .join("binaries")
             .join(executable_name),
     );
-    if let Ok(current_executable) = std::env::current_exe()
+    if let Ok(current_executable) = env::current_exe()
         && let Some(parent) = current_executable.parent()
     {
         candidates.push(parent.join(executable_name));
