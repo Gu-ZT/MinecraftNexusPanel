@@ -15,6 +15,7 @@ import { useRoute } from 'vue-router';
 
 import type { Core, User } from '@mcnp/api-client';
 
+import { projectIconUrl } from '../project-icon';
 import PreferenceControls from './PreferenceControls.vue';
 
 const props = defineProps<{
@@ -47,7 +48,7 @@ function isActive(section: string): boolean {
   <header class="control-header">
     <div class="control-header__content">
       <RouterLink class="control-brand" :to="{ name: 'dashboard' }" :aria-label="t('app.name')">
-        <span class="brand-mark" aria-hidden="true">MN</span>
+        <img class="brand-mark" :src="projectIconUrl" alt="" aria-hidden="true" />
         <strong>{{ t('app.shortName') }}</strong>
       </RouterLink>
 
@@ -155,15 +156,11 @@ function isActive(section: string): boolean {
 }
 
 .brand-mark {
-  display: inline-grid;
   width: 2rem;
   height: 2rem;
+  flex: 0 0 2rem;
   border-radius: 4px;
-  place-items: center;
-  background: var(--mcnp-primary);
-  color: #fff;
-  font-size: 0.7rem;
-  font-weight: 800;
+  object-fit: cover;
 }
 
 .control-brand strong {

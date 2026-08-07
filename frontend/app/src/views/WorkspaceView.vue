@@ -30,6 +30,7 @@ import LocalSettingsView from '../components/LocalSettingsView.vue';
 import NodeListView from '../components/NodeListView.vue';
 import PreferenceControls from '../components/PreferenceControls.vue';
 import UserListView from '../components/UserListView.vue';
+import { projectIconUrl } from '../project-icon';
 import { useApplicationStore } from '../stores/application';
 import { describeError } from '../utils/presentation';
 
@@ -536,7 +537,7 @@ function clearSession(): void {
     <div class="login-utilities"><PreferenceControls /></div>
     <section class="login-panel">
       <div class="login-brand">
-        <span class="brand-mark" aria-hidden="true">MN</span>
+        <img class="brand-mark" :src="projectIconUrl" alt="" aria-hidden="true" />
         <span>{{ t('app.name') }}</span>
       </div>
       <div class="login-heading">
@@ -652,7 +653,9 @@ function clearSession(): void {
 
 .login-shell {
   display: grid;
+  box-sizing: border-box;
   min-height: 100vh;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr;
   padding: 1rem 1.25rem 3rem;
   background: var(--mcnp-bg);
@@ -665,9 +668,11 @@ function clearSession(): void {
 
 .login-panel {
   display: grid;
+  box-sizing: border-box;
   align-self: center;
   justify-self: center;
-  width: min(100%, 25rem);
+  width: min(25rem, calc(100vw - 2.5rem));
+  min-width: 0;
   gap: 1.05rem;
   border: 1px solid var(--mcnp-border);
   border-radius: var(--mcnp-radius);
@@ -686,15 +691,11 @@ function clearSession(): void {
 }
 
 .brand-mark {
-  display: inline-grid;
   width: 2rem;
   height: 2rem;
+  flex: 0 0 2rem;
   border-radius: 4px;
-  place-items: center;
-  background: var(--mcnp-primary);
-  color: #fff;
-  font-size: 0.7rem;
-  font-weight: 800;
+  object-fit: cover;
 }
 
 .login-heading {

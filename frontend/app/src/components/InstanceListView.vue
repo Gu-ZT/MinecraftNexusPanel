@@ -33,17 +33,22 @@ import { useRoute, useRouter } from 'vue-router';
 
 import type {
   Core,
+  InstallTemplateVersion,
   Instance,
   InstanceCreate,
   InstanceKind,
   InstanceState,
+  ManagedRuntime,
   PanelApiClient,
+  ProvisionOperation,
+  TemplateProvisionRequest,
 } from '@mcnp/api-client';
 
 import { canStartInstance, canStopInstance, describeError, statusClass } from '../utils/presentation';
 
 type CreateStep = 1 | 2 | 3;
 type LaunchProfile = 'java' | 'bedrock-native' | 'pocketmine' | 'custom';
+const systemRuntimeValue = '__system__';
 
 interface InstanceKindOption {
   label: string;
@@ -82,6 +87,14 @@ const createCoreId = ref('');
 const createId = ref('');
 const createName = ref('');
 const createKind = ref<InstanceKind | null>(null);
+const createVersions = ref<InstallTemplateVersion[]>([]);
+const createRuntimes = ref<ManagedRuntime[]>([]);
+const createOptionsPending = ref(false);
+const createMinecraftVersion = ref('');
+const createLoaderVersion = ref('');
+const createRuntimeId = ref(systemRuntimeValue);
+const createIdAutomatic = ref(true);
+const createProvisionState = ref<'resolving' | 'installing' | ''>('');
 const createDirectory = ref('');
 const createExecutable = ref('java');
 const createJvmArguments = ref('');
@@ -191,20 +204,52 @@ const selectedCreateCore = computed(
 const createLaunchProfile = computed<LaunchProfile>(() =>
   createKind.value ? launchProfile(createKind.value) : 'custom',
 );
+const createTemplateId = computed(() =>
+  createKind.value ? templateIdForKind(createKind.value) : null,
+);
+const automaticProvision = computed(() => createTemplateId.value === 'neoforge');
+const createGameVersions = computed(() =>
+  createVersions.value
+    .filter((version) => version.kind === 'GAME')
+    .sort((left, right) => compareVersions(right.id, left.id)),
+);
+const createLoaderVersions = computed(() =>
+  createVersions.value
+    .filter(
+      (version) =>
+        version.kind === 'LOADER' &&
+        (!version.gameVersion || version.gameVersion === createMinecraftVersion.value),
+    )
+    .sort((left, right) => compareVersions(right.id, left.id)),
+);
+const createManagedJavaRuntimes = computed(() =>
+  createRuntimes.value.filter(
+    (runtime) => runtime.kind === 'JAVA' && runtime.validation === 'VALID' && runtime.runtimeId,
+  ),
+);
+const createLaunchPreview = computed(() => {
+  if (!automaticProvision.value || !createLoaderVersion.value) {
+    return '';
+  }
+  return `java @user_jvm_args.txt @libraries/net/neoforged/neoforge/${createLoaderVersion.value}/{os}_args.txt nogui`;
+});
 const canCreateInstance = computed(
   () =>
     /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(createId.value) &&
     createName.value.trim().length > 0 &&
     createDirectory.value.trim().length > 0 &&
-    createExecutable.value.trim().length > 0 &&
-    (createLaunchProfile.value === 'bedrock-native' ||
-      createLaunchProfile.value === 'custom' ||
-      createArtifactPath.value.trim().length > 0) &&
+    (automaticProvision.value
+      ? createMinecraftVersion.value.length > 0 && createLoaderVersion.value.length > 0
+      : createExecutable.value.trim().length > 0 &&
+        (createLaunchProfile.value === 'bedrock-native' ||
+          createLaunchProfile.value === 'custom' ||
+          createArtifactPath.value.trim().length > 0)) &&
     createStopCommand.value.trim().length > 0 &&
     createStopTimeoutSeconds.value >= 1 &&
     createStopTimeoutSeconds.value <= 300 &&
     selectedCreateCore.value !== null &&
-    createKind.value !== null,
+    createKind.value !== null &&
+    !createOptionsPending.value,
 );
 
 watch(
@@ -233,6 +278,14 @@ function openCreate(): void {
   createId.value = '';
   createName.value = '';
   createKind.value = null;
+  createVersions.value = [];
+  createRuntimes.value = [];
+  createOptionsPending.value = false;
+  createMinecraftVersion.value = '';
+  createLoaderVersion.value = '';
+  createRuntimeId.value = systemRuntimeValue;
+  createIdAutomatic.value = true;
+  createProvisionState.value = '';
   createDirectory.value = '';
   createExecutable.value = '';
   createJvmArguments.value = '';
@@ -251,38 +304,26 @@ async function createInstance(): Promise<void> {
   }
   createPending.value = true;
   createError.value = '';
-  const request: InstanceCreate = {
-    id: createId.value,
-    name: createName.value.trim(),
-    kind,
-    directory: createDirectory.value.trim(),
-    launch: {
-      executable: createExecutable.value.trim(),
-      args: createLaunchArguments(),
-      environment: {},
-      stopCommand: createStopCommand.value.trim(),
-      stopTimeoutSeconds: createStopTimeoutSeconds.value,
-      runtimeMode: 'HOST',
-      supervisorMode: 'DIRECT',
-      mcdr: null,
-    },
-  };
   try {
-    const instance = await props.client.createInstance(createCoreId.value, request);
+    const instance = automaticProvision.value
+      ? await provisionInstance()
+      : await createConfiguredInstance(kind);
     createVisible.value = false;
     emit('created', instance);
   } catch (error) {
     createError.value = describeError(error, t('error.instanceCreate'));
   } finally {
+    createProvisionState.value = '';
     createPending.value = false;
   }
 }
 
-function continueCreate(): void {
+async function continueCreate(): Promise<void> {
   if (createStep.value === 1 && createCoreId.value) {
     createStep.value = 2;
   } else if (createStep.value === 2 && createKind.value) {
     createStep.value = 3;
+    await loadCreateOptions();
   }
 }
 
@@ -306,6 +347,10 @@ function selectCreateCore(coreId: string): void {
 function selectCreateKind(kind: InstanceKind): void {
   if (createKind.value !== kind) {
     createKind.value = kind;
+    createVersions.value = [];
+    createMinecraftVersion.value = '';
+    createLoaderVersion.value = '';
+    createIdAutomatic.value = true;
     applyKindDefaults(kind);
   }
   createError.value = '';
@@ -319,6 +364,7 @@ function applyKindDefaults(kind: InstanceKind): void {
 
   if (profile === 'java') {
     createExecutable.value = 'java';
+    createJvmArguments.value = '-Xms1G\n-Xmx2G';
     createArtifactPath.value = javaArtifactName(kind);
     createArguments.value = defaultJavaArguments(kind);
   } else if (profile === 'bedrock-native') {
@@ -334,6 +380,148 @@ function applyKindDefaults(kind: InstanceKind): void {
     createArtifactPath.value = '';
     createArguments.value = '';
   }
+}
+
+async function loadCreateOptions(): Promise<void> {
+  if (!automaticProvision.value || !createTemplateId.value || !createCoreId.value) {
+    return;
+  }
+  createOptionsPending.value = true;
+  createError.value = '';
+  try {
+    const [versions, runtimes] = await Promise.all([
+      props.client.listInstallTemplateVersions(createTemplateId.value),
+      props.client.listManagedRuntimes(createCoreId.value),
+    ]);
+    createVersions.value = versions.items;
+    createRuntimes.value = runtimes.items;
+    createMinecraftVersion.value =
+      createGameVersions.value.find((version) => version.stable)?.id ??
+      createGameVersions.value[0]?.id ??
+      '';
+    selectDefaultLoaderVersion();
+    updateSuggestedInstanceIdentity();
+  } catch (error) {
+    createError.value = describeError(error, t('error.instanceVersions'));
+  } finally {
+    createOptionsPending.value = false;
+  }
+}
+
+function selectGameVersion(): void {
+  selectDefaultLoaderVersion();
+  updateSuggestedInstanceIdentity();
+}
+
+function selectLoaderVersion(): void {
+  updateSuggestedInstanceIdentity();
+}
+
+function selectDefaultLoaderVersion(): void {
+  createLoaderVersion.value =
+    createLoaderVersions.value.find((version) => version.stable)?.id ??
+    createLoaderVersions.value[0]?.id ??
+    '';
+}
+
+function markCreateIdEdited(): void {
+  createIdAutomatic.value = false;
+}
+
+function updateSuggestedInstanceIdentity(): void {
+  if (!automaticProvision.value || !createMinecraftVersion.value || !createTemplateId.value) {
+    return;
+  }
+  const prefix = `${createTemplateId.value}-${createMinecraftVersion.value}-server-`;
+  const existingIds = new Set(props.instances.map((instance) => instance.id));
+  let sequence = 1;
+  while (existingIds.has(`${prefix}${String(sequence).padStart(2, '0')}`)) {
+    sequence += 1;
+  }
+  const suffix = String(sequence).padStart(2, '0');
+  if (createIdAutomatic.value) {
+    createId.value = `${prefix}${suffix}`;
+  }
+  if (!createName.value.trim()) {
+    createName.value = `${kindLabel(createKind.value ?? 'NEO_FORGE')} ${createMinecraftVersion.value} Server ${suffix}`;
+  }
+}
+
+async function provisionInstance(): Promise<Instance> {
+  const templateId = createTemplateId.value;
+  if (!templateId) {
+    throw new Error(t('error.instanceCreate'));
+  }
+  const request: TemplateProvisionRequest = {
+    instanceId: createId.value,
+    instanceName: createName.value.trim(),
+    instanceDirectory: createDirectory.value.trim(),
+    minecraftVersion: createMinecraftVersion.value,
+    loaderVersion: createLoaderVersion.value,
+    runtimeId: createRuntimeId.value === systemRuntimeValue ? null : createRuntimeId.value,
+    jvmArguments: argumentLines(createJvmArguments.value),
+    stopCommand: createStopCommand.value.trim(),
+    stopTimeoutSeconds: createStopTimeoutSeconds.value,
+  };
+  createProvisionState.value = 'resolving';
+  const resolution = await props.client.resolveTemplateProvisionPlan(
+    createCoreId.value,
+    templateId,
+    request,
+  );
+  createProvisionState.value = 'installing';
+  const accepted = await props.client.executeProvision(
+    createCoreId.value,
+    resolution.resolvedPlan,
+    resolution.planHash,
+  );
+  const completed = await waitForProvisionTask(createCoreId.value, accepted);
+  if (completed.state === 'FAILED') {
+    throw new Error(completed.error || t('error.instanceProvision'));
+  }
+  if (!completed.instance) {
+    throw new Error(t('error.instanceProvision'));
+  }
+  return completed.instance;
+}
+
+async function createConfiguredInstance(kind: InstanceKind): Promise<Instance> {
+  const request: InstanceCreate = {
+    id: createId.value,
+    name: createName.value.trim(),
+    kind,
+    directory: createDirectory.value.trim(),
+    launch: {
+      executable: createExecutable.value.trim(),
+      args: createLaunchArguments(),
+      environment: {},
+      stopCommand: createStopCommand.value.trim(),
+      stopTimeoutSeconds: createStopTimeoutSeconds.value,
+      runtimeMode: 'HOST',
+      supervisorMode: 'DIRECT',
+      mcdr: null,
+    },
+  };
+  return props.client.createInstance(createCoreId.value, request);
+}
+
+async function waitForProvisionTask(
+  coreId: string,
+  accepted: ProvisionOperation,
+): Promise<ProvisionOperation> {
+  const deadline = Date.now() + 15 * 60 * 1000;
+  while (Date.now() < deadline) {
+    const task = await props.client.getProvisionTask(coreId, accepted.taskId);
+    if (task.state === 'SUCCEEDED' || task.state === 'FAILED') {
+      return task;
+    }
+    await delay(750);
+  }
+  throw new Error(t('error.instanceProvisionTimeout'));
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 function launchProfile(kind: InstanceKind): LaunchProfile {
@@ -369,6 +557,43 @@ function defaultJavaArguments(kind: InstanceKind): string {
     return '';
   }
   return 'nogui';
+}
+
+function templateIdForKind(kind: InstanceKind): string | null {
+  const templateIds: Partial<Record<InstanceKind, string>> = {
+    VANILLA: 'vanilla',
+    PAPER: 'paper',
+    VELOCITY: 'velocity',
+    FABRIC: 'fabric',
+    NEO_FORGE: 'neoforge',
+    FORGE: 'forge',
+    BUKKIT: 'bukkit',
+    SPIGOT: 'spigot',
+    PURPUR: 'purpur',
+    PUFFERFISH: 'pufferfish',
+    FOLIA: 'folia',
+    LEAF: 'leaf',
+    MOHIST: 'mohist',
+    MAGMA: 'magma',
+    SPONGE: 'sponge',
+    ARCLIGHT: 'arclight',
+    YOUER: 'youer',
+    SILKARD: 'silkard',
+    CAT_SERVER: 'catserver',
+    WATERFALL: 'waterfall',
+    BUNGEE_CORD: 'bungeecord',
+    LIGHTFALL: 'lightfall',
+    GEYSER: 'geyser',
+    BEDROCK_DEDICATED_SERVER: 'bedrock-dedicated-server',
+    POCKET_MINE_MP: 'pocketmine-mp',
+    NUKKIT: 'nukkit',
+    CLOUDBURST_NUKKIT: 'cloudburst-nukkit',
+  };
+  return templateIds[kind] ?? null;
+}
+
+function compareVersions(left: string, right: string): number {
+  return left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
 }
 
 function createLaunchArguments(): string[] {
@@ -576,6 +801,9 @@ function canReset(state: InstanceState): boolean {
       v-model:visible="createVisible"
       :title="t('instances.createTitle')"
       :footer="false"
+      :closable="!createPending"
+      :mask-closable="!createPending"
+      :esc-to-close="!createPending"
       width="min(760px, calc(100vw - 2rem))"
       unmount-on-close
     >
@@ -659,12 +887,58 @@ function canReset(state: InstanceState): boolean {
             <span><IconApps /> {{ createKind ? kindLabel(createKind) : '' }}</span>
           </div>
 
+          <section v-if="automaticProvision" class="create-form-section create-version-section">
+            <h3>{{ t('instances.versionSection') }}</h3>
+            <a-spin :loading="createOptionsPending">
+              <div class="instance-create-form__grid">
+                <label>
+                  <span>{{ t('instances.minecraftVersion') }}</span>
+                  <a-select
+                    v-model="createMinecraftVersion"
+                    :placeholder="t('instances.selectMinecraftVersion')"
+                    @change="selectGameVersion"
+                  >
+                    <a-option v-for="version in createGameVersions" :key="version.id" :value="version.id">
+                      {{ version.id }}
+                    </a-option>
+                  </a-select>
+                </label>
+                <label>
+                  <span>{{ t('instances.loaderVersion') }}</span>
+                  <a-select
+                    v-model="createLoaderVersion"
+                    :placeholder="t('instances.selectLoaderVersion')"
+                    :disabled="!createMinecraftVersion"
+                    @change="selectLoaderVersion"
+                  >
+                    <a-option v-for="version in createLoaderVersions" :key="version.id" :value="version.id">
+                      {{ version.id }}
+                    </a-option>
+                  </a-select>
+                </label>
+              </div>
+              <label>
+                <span>{{ t('instances.javaRuntime') }}</span>
+                <a-select v-model="createRuntimeId">
+                  <a-option :value="systemRuntimeValue">{{ t('instances.systemJavaAuto') }}</a-option>
+                  <a-option
+                    v-for="runtime in createManagedJavaRuntimes"
+                    :key="runtime.runtimeId ?? runtime.executable"
+                    :value="runtime.runtimeId ?? ''"
+                  >
+                    {{ runtime.distribution ?? runtime.runtimeId }} · Java {{ runtime.version ?? t('common.unknown') }}
+                  </a-option>
+                </a-select>
+              </label>
+            </a-spin>
+          </section>
+
           <section class="create-form-section">
             <h3>{{ t('instances.detailsSection') }}</h3>
             <div class="instance-create-form__grid">
               <label>
                 <span>{{ t('instances.instanceId') }}</span>
-                <a-input v-model="createId" :max-length="64" allow-clear />
+                <a-input v-model="createId" :max-length="64" allow-clear @input="markCreateIdEdited" />
               </label>
               <label>
                 <span>{{ t('instances.name') }}</span>
@@ -679,7 +953,7 @@ function canReset(state: InstanceState): boolean {
 
           <section class="create-form-section">
             <h3>{{ t('instances.launchSection') }}</h3>
-            <div class="instance-create-form__grid">
+            <div v-if="!automaticProvision" class="instance-create-form__grid">
               <label>
                 <span>
                   {{
@@ -706,7 +980,7 @@ function canReset(state: InstanceState): boolean {
               <a-textarea v-model="createJvmArguments" :auto-size="{ minRows: 2, maxRows: 5 }" />
               <small>{{ t('instances.jvmArgumentsHint') }}</small>
             </label>
-            <label>
+            <label v-if="!automaticProvision">
               <span>
                 {{
                   createLaunchProfile === 'java' || createLaunchProfile === 'pocketmine'
@@ -723,6 +997,10 @@ function canReset(state: InstanceState): boolean {
                 }}
               </small>
             </label>
+            <div v-else class="launch-command-preview">
+              <span>{{ t('instances.launchCommand') }}</span>
+              <code>{{ createLaunchPreview }}</code>
+            </div>
           </section>
 
           <section class="create-form-section">
@@ -741,6 +1019,9 @@ function canReset(state: InstanceState): boolean {
         </section>
 
         <p v-if="createError" class="form-error" role="alert">{{ createError }}</p>
+        <p v-else-if="createProvisionState" class="provision-state" role="status">
+          {{ t(`instances.provisionState.${createProvisionState}`) }}
+        </p>
         <div class="instance-create-form__actions">
           <div>
             <a-button :disabled="createPending" @click="createVisible = false">
@@ -1011,6 +1292,43 @@ function canReset(state: InstanceState): boolean {
 .create-form-section + .create-form-section {
   border-top: 1px solid var(--mcnp-border-subtle);
   padding-top: 0.85rem;
+}
+
+.create-version-section :deep(.arco-spin),
+.create-version-section :deep(.arco-spin-children) {
+  width: 100%;
+}
+
+.create-version-section :deep(.arco-spin-children) {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.launch-command-preview {
+  display: grid;
+  min-width: 0;
+  gap: 0.4rem;
+  color: var(--mcnp-text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.launch-command-preview code {
+  overflow-x: auto;
+  border: 1px solid var(--mcnp-border);
+  border-radius: 4px;
+  padding: 0.7rem 0.8rem;
+  background: var(--mcnp-surface-raised);
+  color: var(--mcnp-text);
+  font-size: 0.68rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.provision-state {
+  margin: 0;
+  color: var(--mcnp-primary);
+  font-size: 0.75rem;
 }
 
 .instance-create-form__grid {
