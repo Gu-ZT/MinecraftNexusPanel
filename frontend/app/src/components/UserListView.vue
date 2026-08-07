@@ -9,7 +9,14 @@ import {
   Popconfirm as APopconfirm,
   Spin as ASpin,
 } from '@arco-design/web-vue';
-import { IconDelete, IconPlus, IconRefresh, IconSafe, IconUserGroup } from '@arco-design/web-vue/es/icon';
+import {
+  IconDelete,
+  IconEdit,
+  IconPlus,
+  IconRefresh,
+  IconSafe,
+  IconUserGroup,
+} from '@arco-design/web-vue/es/icon';
 import { onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
@@ -27,6 +34,10 @@ const users = ref<User[]>([]);
 const loading = ref(false);
 const createVisible = ref(false);
 const createPending = ref(false);
+const editVisible = ref(false);
+const editPending = ref(false);
+const editingUser = ref<User | null>(null);
+const editDisplayName = ref('');
 const actionPending = ref('');
 const username = ref('');
 const displayName = ref('');
@@ -75,6 +86,33 @@ async function createUser(): Promise<void> {
     errorMessage.value = describeError(error, t('users.createError'));
   } finally {
     createPending.value = false;
+  }
+}
+
+function openEdit(user: User): void {
+  editingUser.value = user;
+  editDisplayName.value = user.displayName;
+  errorMessage.value = '';
+  editVisible.value = true;
+}
+
+async function updateDisplayName(): Promise<void> {
+  if (!editingUser.value) {
+    return;
+  }
+  editPending.value = true;
+  errorMessage.value = '';
+  try {
+    const updated = await props.client.updateUser(editingUser.value.id, {
+      displayName: editDisplayName.value.trim(),
+    });
+    users.value = users.value.map((item) => (item.id === updated.id ? updated : item));
+    editVisible.value = false;
+    noticeMessage.value = t('users.profileUpdated');
+  } catch (error) {
+    errorMessage.value = describeError(error, t('users.editError'));
+  } finally {
+    editPending.value = false;
   }
 }
 
@@ -162,6 +200,14 @@ async function deleteUser(user: User): Promise<void> {
                   </a-checkbox>
                 </td>
                 <td>
+                  <a-button
+                    type="text"
+                    :disabled="user.id === currentUser.id"
+                    :aria-label="t('users.edit')"
+                    @click="openEdit(user)"
+                  >
+                    <template #icon><IconEdit /></template>
+                  </a-button>
                   <a-popconfirm
                     :content="t('users.deleteConfirm', { name: user.username })"
                     :ok-text="t('common.delete')"
@@ -206,6 +252,33 @@ async function deleteUser(user: User): Promise<void> {
         </div>
       </form>
     </a-modal>
+
+    <a-modal
+      v-model:visible="editVisible"
+      :title="t('users.editTitle', { name: editingUser?.username ?? '' })"
+      :footer="false"
+      unmount-on-close
+    >
+      <form class="user-form" @submit.prevent="updateDisplayName">
+        <label>
+          <span>{{ t('users.displayName') }}</span>
+          <a-input v-model="editDisplayName" :max-length="128" allow-clear />
+        </label>
+        <div class="user-form__actions">
+          <a-button @click="editVisible = false">{{ t('common.cancel') }}</a-button>
+          <a-button
+            type="primary"
+            html-type="submit"
+            :loading="editPending"
+            :disabled="
+              !editDisplayName.trim() || editDisplayName.trim() === editingUser?.displayName
+            "
+          >
+            {{ t('common.save') }}
+          </a-button>
+        </div>
+      </form>
+    </a-modal>
   </main>
 </template>
 
@@ -227,7 +300,8 @@ async function deleteUser(user: User): Promise<void> {
 }
 
 .user-table td:last-child {
-  width: 4rem;
+  width: 6rem;
+  white-space: nowrap;
   text-align: right;
 }
 
