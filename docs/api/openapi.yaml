@@ -4620,7 +4620,6 @@ components:
       enum: [ DISABLED, UNAVAILABLE, INVALID_RESPONSE, RESPONDED ]
     InstanceKind:
       type: string
-      description: ASYNC_YOUER and LINGSHU are non-public catalog-only hybrid types; no public version provider or installer is promised for them.
       enum:
         - VANILLA
         - PAPER
@@ -4639,10 +4638,8 @@ components:
         - SPONGE
         - ARCLIGHT
         - YOUER
-        - ASYNC_YOUER
         - SILKARD
         - CAT_SERVER
-        - LINGSHU
         - WATERFALL
         - BUNGEE_CORD
         - LIGHTFALL

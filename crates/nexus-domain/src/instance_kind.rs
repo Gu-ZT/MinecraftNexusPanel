@@ -51,14 +51,10 @@ pub enum InstanceKind {
     Arclight,
     /// 同时支持插件和模组的 Java 混合端；版本配方需单独验证。
     Youer,
-    /// 同时支持插件和模组的 Java 混合端；启动和扩展布局可能异步化。
-    AsyncYouer,
     /// 同时支持插件和模组的 Java 混合端；插件与模组保持独立管理空间。
     Silkard,
     /// 同时支持插件和模组的 Java 混合端；具体扩展目录由安装模板决定。
     CatServer,
-    /// 同时支持插件和模组的 Java 混合端；仅表示目录分类，不代表已验证安装器。
-    Lingshu,
     /// Java 一对多反向代理，可管理多个非代理后端实例。
     Waterfall,
     /// Java 一对多反向代理，可管理多个非代理后端实例。
@@ -109,10 +105,8 @@ impl InstanceKind {
             | Self::Sponge
             | Self::Arclight
             | Self::Youer
-            | Self::AsyncYouer
             | Self::Silkard
             | Self::CatServer
-            | Self::Lingshu
             | Self::BedrockDedicatedServer
             | Self::PocketMineMp
             | Self::Nukkit

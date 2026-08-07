@@ -21,7 +21,7 @@
     - Vanilla as the Java vanilla server.
     - NeoForge, Forge, and Fabric as Java modded servers.
     - Bukkit, Spigot, Paper, Purpur, Pufferfish, Folia, and Leaf as Java plugin servers.
-    - Mohist, Magma, Sponge, Arclight, Youer, AsyncYouer, Silkard, CatServer, and Lingshu as hybrid servers.
+    - Mohist, Magma, Sponge, Arclight, Youer, Silkard, and CatServer as hybrid servers.
     - Velocity, Waterfall, BungeeCord, and Lightfall as one-to-many Java proxies, plus Geyser as a one-to-one
       Bedrock-facing proxy.
     - Bedrock Dedicated Server, PocketMine-MP, Nukkit, and Cloudburst Nukkit as Bedrock servers.

@@ -156,7 +156,7 @@ MinecraftNexusPanel/
 | Java 原版端 | Vanilla | Java；无默认扩展布局。 |
 | Java 模组端 | NeoForge、Forge、Fabric | Java；模组独立管理，常见目录为 `mods/`。 |
 | Java 插件端 | Bukkit、Spigot、Paper、Purpur、Pufferfish、Folia、Leaf | Java；插件独立管理，常见目录为 `plugins/`。 |
-| Java 混合端 | Mohist、Magma、Sponge、Arclight、Youer、AsyncYouer、Silkard、CatServer、Lingshu | Java；插件和模组分别建模，目录由 `InstallTemplateExtensionLayout` 按端/版本声明；AsyncYouer/Lingshu 已确认非公开，仅保留目录画像。 |
+| Java 混合端 | Mohist、Magma、Sponge、Arclight、Youer、Silkard、CatServer | Java；插件和模组分别建模，目录由 `InstallTemplateExtensionLayout` 按端/版本声明。 |
 | 一对多代理端 | Velocity、Waterfall、BungeeCord、Lightfall | Java；`ProxyTopology::OneToMany`，通过 `ProxySubserver` 管理多个后端。 |
 | 一对一基岩代理端 | Geyser | Java；`ProxyTopology::OneToOne`，管理一个 Java 后端，同时提供 Bedrock/RakNet 画像。 |
 | 基岩版服务端 | Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit | Native/PHP/Java 运行时按类型决定；默认 RakNet UDP 端口 `19132`，配置与扩展能力按端区分。 |
@@ -166,7 +166,7 @@ MinecraftNexusPanel/
 - 混合端的插件和模组必须使用独立的 `ExtensionKind`、安装记录和兼容性结果。`InstallTemplate` 已能按类型展开一个或多个声明目录；目录不能由 Panel 全局硬编码，同一端可以有多个目录，同一目录也可能承载不同扩展种类（例如当前 Sponge 画像），因此后续扫描和安装必须以模板声明为准。
 - Velocity、Waterfall、BungeeCord、Lightfall 是一对多代理，Geyser 是一对一代理。子服务器关系独立于实例基本设置，目标必须是同一 Core 上已存在的非代理实例；Core 强制拓扑数量上限。
 - Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit 和 Geyser 使用 `BedrockManagementProfile` 描述 RakNet UDP、默认绑定地址、默认端口、配置文件、插件能力和扩展目录；PocketMine-MP/Nukkit 画像声明 `plugins/`，BDS/Geyser 不声明插件目录。画像还声明 `PROPERTIES`/`YAML` 配置格式和 `UNSUPPORTED`/`PLUGIN_MANIFEST` 扩展兼容性策略。Panel 已在写入 Core 前解析 PocketMine-MP PHAR/TAR 与 Nukkit/Cloudburst Nukkit JAR/ZIP 的根 `plugin.yml`，校验基本字段，并在请求提供目标 API 列表时执行精确匹配；自动 API 发现、完整版本矩阵和升级运维仍需接入。Core 已能优先读取 BDS/PocketMine/Nukkit 的 `server.properties:server-ip`/`server-port` 或 Geyser 的 `config.yml:bedrock.address`/`bedrock.port`，只接受 IP 字面量，配置失败时分别回退 `0.0.0.0` 和 `19132`，并区分地址/端口来源及端口可用/占用/绑定失败；现在还可通过专用 RakNet Unconnected Ping/Pong 探针区分响应、超时、无效响应和探测不可用，并把未指定绑定地址映射到本机回环探测地址。基岩端的监听绑定地址、配置、扩展、升级和备份恢复不能假设为 Java 服务端逻辑。
-- 当前已完成类型枚举、内置目录、扩展布局、代理子服务器关系和基岩画像；29 类目录画像中，27 类公开类型已接入官方版本元数据目录，AsyncYouer/Lingshu 因确认非公开而不纳入公开 provider。公开 provider 包括 Vanilla、Paper、Velocity、Fabric、NeoForge、Forge、Bukkit、Spigot、Purpur、Pufferfish、Folia、Leaf、Mohist、Youer、Silkard、Magma、Sponge、Arclight、CatServer、Waterfall、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit。NeoForge 使用官方 Maven XML，Pufferfish 聚合五个官方 Jenkins job，Bukkit/Spigot 使用官方 Jenkins RSS Atom feed，Mohist/Youer 使用 MohistMC 官方 project API，Silkard 使用官方 GitHub branches API，Leaf/Magma/Sponge/Arclight/CatServer/Lightfall/PocketMine 使用官方 GitHub Releases 资产，BDS 使用 Mojang 官方下载链接 API 解析 Windows/Linux 稳定版和 Preview ZIP，Nukkit/Cloudburst Nukkit 使用 OpenCollab Maven 版本 API；Sponge 当前来源是官方历史 SpongeVanilla Releases，Magma 当前主要是开发构建。RSS/Release/Maven/project/branch provider 仍只证明版本目录可读取，归档结构、启动命令和版本化运维配方仍需逐项验证。
+- 当前已完成 27 类公开类型的枚举、内置目录、扩展布局、代理子服务器关系、基岩画像和官方版本元数据目录。公开 provider 包括 Vanilla、Paper、Velocity、Fabric、NeoForge、Forge、Bukkit、Spigot、Purpur、Pufferfish、Folia、Leaf、Mohist、Youer、Silkard、Magma、Sponge、Arclight、CatServer、Waterfall、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit。NeoForge 使用官方 Maven XML，Pufferfish 聚合五个官方 Jenkins job，Bukkit/Spigot 使用官方 Jenkins RSS Atom feed，Mohist/Youer 使用 MohistMC 官方 project API，Silkard 使用官方 GitHub branches API，Leaf/Magma/Sponge/Arclight/CatServer/Lightfall/PocketMine 使用官方 GitHub Releases 资产，BDS 使用 Mojang 官方下载链接 API 解析 Windows/Linux 稳定版和 Preview ZIP，Nukkit/Cloudburst Nukkit 使用 OpenCollab Maven 版本 API；Sponge 当前来源是官方历史 SpongeVanilla Releases，Magma 当前主要是开发构建。RSS/Release/Maven/project/branch provider 仍只证明版本目录可读取，归档结构、启动命令和版本化运维配方仍需逐项验证。
 
 ### 4.7 文件管理边界
 
@@ -180,7 +180,7 @@ MinecraftNexusPanel/
 | 功能域    | 首版能力                                                  | 后续扩展                              |
 |-----------|-----------------------------------------------------------|---------------------------------------|
 | 环境管理  | Java/Node.js/Python 版本发现、安装、校验、删除            | 镜像源、代理、共享缓存、离线包        |
-| 一键搭建  | 29 类服务端/代理/基岩模板目录、版本计划解析与异步安装     | 各类型官方元数据、版本化安装配方、模板市场、自定义签名模板、整包导入 |
+| 一键搭建  | 27 类服务端/代理/基岩模板目录、版本计划解析与异步安装     | 各类型官方元数据、版本化安装配方、模板市场、自定义签名模板、整包导入 |
 | 配置识别  | `server.properties` 无损标量补丁、JSON/YAML/TOML Schema/UI Schema 和 raw 编辑 | 插件贡献 Schema、跨文件校验、配置差异 |
 | 模组/插件 | 按模板目录扫描、写入/更新已准备产物、持久化本地安装记录并在声明目录内异步删除；已接入 Modrinth MOD/PLUGIN 搜索、版本详情、依赖元数据、受限依赖计划解析、HTTPS 归档校验、异步任务进度、幂等任务复用、通过 Core `transfer-v1` 的计划安装和新安装失败补偿回滚；共享 TypeScript Client 已接入 | Core 统一任务、更多来源、整合包、批量升级 |
 | 终端      | 实时 stdout/stderr、stdin 命令、历史游标                  | 搜索、导出、命令片段、多人协作提示    |
@@ -256,7 +256,7 @@ stateDiagram-v2
 ### M2：环境与一键搭建
 
 - Java/Node.js/Python 受管安装、版本选择、校验与清理。
-- 服务端目录、安装模板、下载缓存和校验；支持 HOST 下 Direct/MCDR 包装。模板目录覆盖 Vanilla、NeoForge、Forge、Fabric、Bukkit、Spigot、Paper、Purpur、Pufferfish、Folia、Leaf、Mohist、Magma、Sponge、Arclight、Youer、AsyncYouer、Silkard、CatServer、Lingshu、Velocity、Waterfall、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit 和 Cloudburst Nukkit；其中 AsyncYouer/Lingshu 为非公开目录画像，不进入公开 provider 或安装验证范围。
+- 服务端目录、安装模板、下载缓存和校验；支持 HOST 下 Direct/MCDR 包装。模板目录覆盖 Vanilla、NeoForge、Forge、Fabric、Bukkit、Spigot、Paper、Purpur、Pufferfish、Folia、Leaf、Mohist、Magma、Sponge、Arclight、Youer、Silkard、CatServer、Velocity、Waterfall、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit 和 Cloudburst Nukkit。
 - 混合端分别管理插件与模组，按模板/版本解析不同扩展目录；代理端按一对多或一对一拓扑管理子服务器；基岩端按 RakNet、端口、配置和扩展能力提供专门运维画像。
 - 实例完整设置：名称、类型、到期时间、工作目录、启动/更新命令。
 - 验收：在空 Core 上选择已验证模板与运行时，一次操作完成下载、配置和首次启动；代理拓扑和基岩端专门约束不能被普通 Java 实例路径绕过。

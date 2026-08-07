@@ -426,10 +426,8 @@ fn requires_java_eula(kind: InstanceKind) -> bool {
             | InstanceKind::Sponge
             | InstanceKind::Arclight
             | InstanceKind::Youer
-            | InstanceKind::AsyncYouer
             | InstanceKind::Silkard
             | InstanceKind::CatServer
-            | InstanceKind::Lingshu
     )
 }
 

@@ -67,7 +67,6 @@
     - [x] Mohist 和 Youer 使用 MohistMC 官方 project API 读取公开版本目录；构建下载与 SHA-256 字段仍需接入版本化安装配方。
     - [x] Silkard 使用官方 GitHub branches API 读取数字开头的版本分支并过滤开发分支；分支元数据不代表已存在可直接安装的发布归档。
   - [x] 执行模板安装。
-  - [x] AsyncYouer 和 Lingshu 已确认是非公开服务端；仅保留类型目录和混合端扩展布局建模，不纳入公开版本 provider、归档验证、安装配方或二十七种公开模板统计。
   - [ ] 为已接入版本 provider 的二十七种模板及后续类型补齐按版本验证的归档结构、可执行文件、默认配置、启动参数和更新策略。
   - [ ] 不能把仅有模板目录或版本元数据 provider 误认为完整安装支持。
 
@@ -80,7 +79,7 @@
 | Java 原版端 | Vanilla | Java 运行时；无默认模组/插件扩展布局。 |
 | Java 模组端 | NeoForge、Forge、Fabric | 模组独立管理；当前通用布局为 `mods/`，但最终目录由模板/版本决定。 |
 | Java 插件端 | Bukkit、Spigot、Paper、Purpur、Pufferfish、Folia、Leaf | 插件独立管理；当前通用布局为 `plugins/`，但最终目录由模板/版本决定。 |
-| Java 混合端 | Mohist、Magma、Sponge、Arclight、Youer、AsyncYouer、Silkard、CatServer、Lingshu | 插件与模组分别管理；每种端可声明不同目录，不能共用单一默认路径；AsyncYouer/Lingshu 仅为非公开目录画像。 |
+| Java 混合端 | Mohist、Magma、Sponge、Arclight、Youer、Silkard、CatServer | 插件与模组分别管理；每种端可声明不同目录，不能共用单一默认路径。 |
 | 反向代理端 | Velocity、Waterfall、BungeeCord、Lightfall | 一对多代理；使用独立的子服务器关系，可关联多个非代理实例。 |
 | 基岩版反向代理端 | Geyser | 一对一代理；面向 Bedrock 使用 RakNet UDP，并且只关联一个 Java 后端实例。 |
 | 基岩版服务端 | Bedrock Dedicated Server、PocketMine-MP、Nukkit、Cloudburst Nukkit | 使用专门的基岩端运维画像；默认端口 `19132`，配置与扩展能力按端区分。 |

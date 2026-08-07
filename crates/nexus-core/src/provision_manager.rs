@@ -416,10 +416,8 @@ fn required_runtime(kind: InstanceKind) -> Option<InstallRuntimeRequirement> {
         | InstanceKind::Sponge
         | InstanceKind::Arclight
         | InstanceKind::Youer
-        | InstanceKind::AsyncYouer
         | InstanceKind::Silkard
         | InstanceKind::CatServer
-        | InstanceKind::Lingshu
         | InstanceKind::Waterfall
         | InstanceKind::BungeeCord
         | InstanceKind::Lightfall
@@ -449,10 +447,8 @@ fn template_kind(template_id: &str) -> Option<InstanceKind> {
         "sponge" => Some(InstanceKind::Sponge),
         "arclight" => Some(InstanceKind::Arclight),
         "youer" => Some(InstanceKind::Youer),
-        "async-youer" => Some(InstanceKind::AsyncYouer),
         "silkard" => Some(InstanceKind::Silkard),
         "catserver" => Some(InstanceKind::CatServer),
-        "lingshu" => Some(InstanceKind::Lingshu),
         "waterfall" => Some(InstanceKind::Waterfall),
         "bungeecord" => Some(InstanceKind::BungeeCord),
         "lightfall" => Some(InstanceKind::Lightfall),

@@ -12,18 +12,18 @@ English | [简体中文](README.zh_CN.md)
 
 ## Current M2 Scope
 
-The current M2 domain and template catalog model 29 server, proxy, and Bedrock-facing profiles: 27 public metadata targets plus two non-public catalog-only hybrid profiles.
+The current M2 domain and template catalog model 27 public server, proxy, and Bedrock-facing profiles.
 
 | Profile | Types |
 |---------|-------|
 | Java vanilla | Vanilla |
 | Java modded | NeoForge, Forge, Fabric |
 | Java plugins | Bukkit, Spigot, Paper, Purpur, Pufferfish, Folia, Leaf |
-| Java hybrid | Mohist, Magma, Sponge, Arclight, Youer, AsyncYouer, Silkard, CatServer, Lingshu (AsyncYouer/Lingshu: non-public catalog only) |
+| Java hybrid | Mohist, Magma, Sponge, Arclight, Youer, Silkard, CatServer |
 | Proxies | Velocity, Waterfall, BungeeCord, Lightfall, Geyser |
 | Bedrock servers | Bedrock Dedicated Server, PocketMine-MP, Nukkit, Cloudburst Nukkit |
 
-The catalog distinguishes a server profile from a verified installer. Version metadata currently covers 27 public profiles: Vanilla, Paper, Velocity, Fabric, NeoForge, Forge, Bukkit, Spigot, Purpur, Pufferfish, Folia, Leaf, Mohist, Youer, Silkard, Magma, Sponge, Arclight, CatServer, Waterfall, BungeeCord, Lightfall, Geyser, Bedrock Dedicated Server, PocketMine-MP, Nukkit, and Cloudburst Nukkit. AsyncYouer and Lingshu are confirmed non-public and intentionally remain catalog-only without public version providers or installation verification. NeoForge uses the official Maven XML catalog, Pufferfish aggregates five official Jenkins jobs, Bukkit and Spigot use official Jenkins RSS Atom feeds, Mohist and Youer use MohistMC's public project API, Silkard uses the official GitHub branches API, GitHub release providers require JAR/PHAR assets, BDS uses Mojang's official download-links API for Windows/Linux stable and Preview ZIPs, and Nukkit variants use OpenCollab Maven metadata; Sponge currently reflects legacy official SpongeVanilla releases and Magma primarily exposes development builds. RSS, archive, build, project, and branch metadata do not by themselves verify a directly installable server artifact. Archive layouts, launch recipes, and installation validation remain incremental for every public profile.
+The catalog distinguishes a server profile from a verified installer. Version metadata currently covers all 27 profiles: Vanilla, Paper, Velocity, Fabric, NeoForge, Forge, Bukkit, Spigot, Purpur, Pufferfish, Folia, Leaf, Mohist, Youer, Silkard, Magma, Sponge, Arclight, CatServer, Waterfall, BungeeCord, Lightfall, Geyser, Bedrock Dedicated Server, PocketMine-MP, Nukkit, and Cloudburst Nukkit. NeoForge uses the official Maven XML catalog, Pufferfish aggregates five official Jenkins jobs, Bukkit and Spigot use official Jenkins RSS Atom feeds, Mohist and Youer use MohistMC's public project API, Silkard uses the official GitHub branches API, GitHub release providers require JAR/PHAR assets, BDS uses Mojang's official download-links API for Windows/Linux stable and Preview ZIPs, and Nukkit variants use OpenCollab Maven metadata; Sponge currently reflects legacy official SpongeVanilla releases and Magma primarily exposes development builds. RSS, archive, build, project, and branch metadata do not by themselves verify a directly installable server artifact. Archive layouts, launch recipes, and installation validation remain incremental for every profile.
 
 - Hybrid servers manage plugins and mods separately, with extension directories declared by the template and version rather than assumed globally; the domain catalog resolves those directories per extension kind.
 - Bedrock plugin preflight validation now parses PocketMine-MP PHAR/TAR and Nukkit/Cloudburst Nukkit JAR/ZIP root `plugin.yml` manifests before Core writes; a caller may provide exact target Bedrock API versions, while automatic API discovery remains planned.

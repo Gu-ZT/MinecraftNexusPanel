@@ -281,12 +281,6 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             )],
         )
         .with_extension_layouts(hybrid_layout()),
-        java_server(
-            "async-youer",
-            "AsyncYouer",
-            InstanceKind::AsyncYouer,
-            hybrid_layout(),
-        ),
         template(
             "silkard",
             "Silkard",
@@ -315,7 +309,6 @@ pub(crate) fn install_templates() -> Vec<InstallTemplate> {
             )],
         )
         .with_extension_layouts(hybrid_layout()),
-        java_server("lingshu", "Lingshu", InstanceKind::Lingshu, hybrid_layout()),
         java_proxy(
             "waterfall",
             "Waterfall",
@@ -424,24 +417,6 @@ pub(crate) fn install_template(id: &str) -> Option<InstallTemplate> {
         .find(|template| template.id() == id)
 }
 
-fn java_server(
-    id: &str,
-    name: &str,
-    kind: InstanceKind,
-    extension_layouts: Vec<InstallTemplateExtensionLayout>,
-) -> InstallTemplate {
-    template(
-        id,
-        name,
-        kind,
-        InstallTemplateFamily::JavaServer,
-        InstallRuntimeRequirement::Java,
-        ProxyTopology::None,
-        Vec::new(),
-    )
-    .with_extension_layouts(extension_layouts)
-}
-
 fn java_proxy(
     id: &str,
     name: &str,
@@ -523,7 +498,7 @@ mod tests {
     fn provides_the_supported_server_template_catalog() {
         let templates = install_templates();
 
-        assert_eq!(templates.len(), 29);
+        assert_eq!(templates.len(), 27);
         assert_eq!(templates[0].instance_kind(), InstanceKind::Vanilla);
         assert_eq!(templates[3].instance_kind(), InstanceKind::Fabric);
         assert_eq!(templates[0].family(), InstallTemplateFamily::JavaServer);
@@ -535,7 +510,7 @@ mod tests {
         assert_eq!(geyser.instance_kind(), InstanceKind::Geyser);
         assert_eq!(geyser.family(), InstallTemplateFamily::BedrockProxy);
         assert_eq!(geyser.proxy_topology(), ProxyTopology::OneToOne);
-        assert_eq!(templates[25].family(), InstallTemplateFamily::BedrockServer);
+        assert_eq!(templates[23].family(), InstallTemplateFamily::BedrockServer);
 
         let mohist = templates
             .iter()
