@@ -54,3 +54,6 @@ After completing each section, commit the changes according to the conventional-
 remote. Before pushing, check the commit messages to avoid formatting issues. You may connect to the GugleRAG MCP to
 read/write the Minecraft Nexus Panel knowledge base. Any information you consider important can be recorded. Add
 sufficient Chinese comments and rustdoc to all code.
+
+Do not start the development server in the background, otherwise it will occupy the port. If you need to start it, use
+RustRover's MCP to run the `desktop:dev` task.
