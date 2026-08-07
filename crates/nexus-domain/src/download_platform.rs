@@ -7,6 +7,8 @@ use serde::Serialize;
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum DownloadPlatform {
+    /// 与操作系统无关的通用产物。
+    Any,
     /// Linux。
     Linux,
     /// macOS。
@@ -30,6 +32,16 @@ impl DownloadPlatform {
     /// 判断该平台是否与当前编译目标一致。
     #[must_use]
     pub fn is_current(self) -> bool {
-        Self::current() == Some(self)
+        self == Self::Any || Self::current() == Some(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DownloadPlatform;
+
+    #[test]
+    fn accepts_universal_downloads_on_the_current_platform() {
+        assert!(DownloadPlatform::Any.is_current());
     }
 }

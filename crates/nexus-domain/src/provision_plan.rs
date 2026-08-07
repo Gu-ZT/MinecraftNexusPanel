@@ -5,6 +5,8 @@ use crate::DownloadManifest;
 use crate::InstallRuntimeRequirement;
 use crate::InstanceId;
 use crate::InstanceKind;
+use crate::ProvisionFile;
+use crate::ProvisionInstallStrategy;
 use crate::RuntimeArchiveFormat;
 
 /// 一键搭建实例所需的完整执行计划。
@@ -30,9 +32,15 @@ pub struct ProvisionPlan {
     runtime_id: Option<String>,
     archive: DownloadManifest,
     archive_format: RuntimeArchiveFormat,
+    #[serde(default)]
+    install_strategy: ProvisionInstallStrategy,
     executable_path: String,
     #[serde(default)]
+    required_runtime_version: Option<String>,
+    #[serde(default)]
     launch_arguments: Vec<String>,
+    #[serde(default)]
+    files: Vec<ProvisionFile>,
     stop_command: String,
     stop_timeout_seconds: u16,
 }
@@ -74,11 +82,35 @@ impl ProvisionPlan {
             runtime_id,
             archive,
             archive_format,
+            install_strategy: ProvisionInstallStrategy::ExtractArchive,
             executable_path,
+            required_runtime_version: None,
             launch_arguments,
+            files: Vec::new(),
             stop_command,
             stop_timeout_seconds,
         }
+    }
+
+    /// 设置下载产物的安装策略。
+    #[must_use]
+    pub fn with_install_strategy(mut self, install_strategy: ProvisionInstallStrategy) -> Self {
+        self.install_strategy = install_strategy;
+        self
+    }
+
+    /// 设置安装和启动所需的运行时主版本。
+    #[must_use]
+    pub fn with_required_runtime_version(mut self, version: String) -> Self {
+        self.required_runtime_version = Some(version);
+        self
+    }
+
+    /// 设置安装完成后写入实例目录的文本文件。
+    #[must_use]
+    pub fn with_files(mut self, files: Vec<ProvisionFile>) -> Self {
+        self.files = files;
+        self
     }
 
     /// 返回安装模板标识。
@@ -159,16 +191,34 @@ impl ProvisionPlan {
         self.archive_format
     }
 
+    /// 返回下载产物的安装策略。
+    #[must_use]
+    pub const fn install_strategy(&self) -> ProvisionInstallStrategy {
+        self.install_strategy
+    }
+
     /// 返回解压后的可执行文件相对路径。
     #[must_use]
     pub fn executable_path(&self) -> &str {
         &self.executable_path
     }
 
+    /// 返回安装和启动要求的运行时主版本。
+    #[must_use]
+    pub fn required_runtime_version(&self) -> Option<&str> {
+        self.required_runtime_version.as_deref()
+    }
+
     /// 返回启动参数，保持模板声明顺序。
     #[must_use]
     pub fn launch_arguments(&self) -> &[String] {
         &self.launch_arguments
+    }
+
+    /// 返回安装完成后写入的实例文本文件。
+    #[must_use]
+    pub fn files(&self) -> &[ProvisionFile] {
+        &self.files
     }
 
     /// 返回优雅停止命令。

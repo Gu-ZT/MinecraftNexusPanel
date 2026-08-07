@@ -52,11 +52,12 @@ API。通用鉴权、分页、错误、幂等及乐观锁规则沿用 Web API。
 
 | 方法 | 路径                                              | 权限              | 说明                                 |
 |------|---------------------------------------------------|-------------------|--------------------------------------|
-| GET  | `/server-catalog/templates`                       | `instance.read`   | Java 原版/模组/插件/混合端、代理端和基岩端模板目录 |
-| GET  | `/server-catalog/templates/{templateId}/versions` | `instance.read`   | Minecraft、加载器与构建版本          |
-| POST | `/cores/{coreId}/provision-plans:resolve`         | `instance.create` | 解析依赖、下载量和最终设置           |
-| POST | `/cores/{coreId}/instance-provisions`             | `instance.create` | 执行一键搭建                         |
-| GET  | `/cores/{coreId}/instance-provisions/{taskId}`   | 资源可见          | 查询供应状态                         |
+| GET  | `/install-templates`                                                   | `instance.read`   | Java 原版/模组/插件/混合端、代理端和基岩端模板目录 |
+| GET  | `/install-templates/{templateId}/versions`                            | `instance.read`   | Minecraft、加载器与构建版本          |
+| POST | `/cores/{coreId}/install-templates/{templateId}/provision-plans:resolve` | `instance.create` | 将玩家选择的版本解析为可信安装计划   |
+| POST | `/cores/{coreId}/provision-plans:resolve`                              | `instance.create` | 校验调用方提供的完整低层安装计划     |
+| POST | `/cores/{coreId}/instance-provisions`                                  | `instance.create` | 执行一键搭建                         |
+| GET  | `/cores/{coreId}/instance-provisions/{taskId}`                         | 资源可见          | 查询供应状态                         |
 
 执行前先 resolve：
 
@@ -92,6 +93,10 @@ provision；Catalog 变化导致 hash 失效时必须重新确认。
 
 当前执行计划要求显式提供经来源校验的 `archive` 下载清单、压缩格式、归档内可执行文件相对路径和启动参数。Core 会再次校验
 SHA-256、平台/架构、实例目录、归档条目和受管运行时；下载失败、实例目录已存在或计划 hash 变化时不会留下半成品目录。
+
+NeoForge 是首个经过验证的模板级配方。客户端提交 Minecraft 版本、NeoForge loader 版本、实例参数和可选 Java runtime；Panel 校验版本关联并读取官方
+installer JAR 的大小与 SHA-256，Core 使用匹配的 Java 主版本运行 `--installServer`。Windows 启动参数使用生成的 `win_args.txt`，Linux/macOS 使用
+`unix_args.txt`，直接进程启动不包含 shell 脚本的 `"$@"` 占位符。
 
 ### 3.2 代理子服务器
 

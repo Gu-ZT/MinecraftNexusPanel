@@ -947,6 +947,10 @@ fn runtime_manager_error_response(
             ("RUNTIME_IN_USE", "The runtime is referenced by an instance")
         }
         RuntimeManagerError::NotFound { .. } => ("RUNTIME_NOT_FOUND", "The runtime does not exist"),
+        RuntimeManagerError::RequiredVersionNotFound { .. } => (
+            "RUNTIME_VERSION_NOT_FOUND",
+            "A compatible runtime version is not available",
+        ),
         RuntimeManagerError::InvalidRuntimeId
         | RuntimeManagerError::InvalidManifest { .. }
         | RuntimeManagerError::UnsafeArchiveEntry { .. } => {
@@ -1087,9 +1091,17 @@ fn provision_manager_error_response(
         ProvisionManagerError::Runtime(RuntimeManagerError::InvalidManifest { .. }) => {
             error_response(request_id, "RUNTIME_INVALID", "Selected runtime is invalid")
         }
+        ProvisionManagerError::Runtime(RuntimeManagerError::RequiredVersionNotFound { .. }) => {
+            error_response(
+                request_id,
+                "RUNTIME_VERSION_NOT_FOUND",
+                "A compatible runtime version is not available",
+            )
+        }
         ProvisionManagerError::TaskStorePoisoned
         | ProvisionManagerError::Archive { .. }
         | ProvisionManagerError::Download(_)
+        | ProvisionManagerError::Installer { .. }
         | ProvisionManagerError::Repository(_)
         | ProvisionManagerError::Runtime(_)
         | ProvisionManagerError::Storage { .. } => {

@@ -60,8 +60,8 @@ export type RuntimeKind = 'JAVA' | 'NODE_JS' | 'PYTHON';
 export type RuntimeMode = 'HOST' | 'CONTAINER';
 export type SupervisorMode = 'DIRECT' | 'MCDR';
 export type RuntimeArchiveFormat = 'TAR_GZ' | 'ZIP';
-export type DownloadPlatform = 'LINUX' | 'MACOS' | 'WINDOWS';
-export type DownloadArchitecture = 'AARCH64' | 'X86_64';
+export type DownloadPlatform = 'ANY' | 'LINUX' | 'MACOS' | 'WINDOWS';
+export type DownloadArchitecture = 'ANY' | 'AARCH64' | 'X86_64';
 export type BedrockManagementKind = 'DEDICATED_SERVER' | 'POCKET_MINE' | 'NUKKIT' | 'GEYSER';
 export type BedrockTransport = 'RAKNET_UDP';
 export type BedrockConfigurationFormat = 'PROPERTIES' | 'YAML' | 'UNKNOWN';
@@ -82,6 +82,7 @@ export type RuntimeSource = 'MANAGED' | 'SYSTEM';
 export type RuntimeValidation = 'VALID' | 'INVALID';
 export type RuntimeTaskState = 'RUNNING' | 'SUCCEEDED' | 'FAILED';
 export type InstallTemplateVersionKind = 'GAME' | 'LOADER' | 'SERVER';
+export type ProvisionInstallStrategy = 'EXTRACT_ARCHIVE' | 'JAVA_INSTALLER';
 
 export interface User {
   id: string;
@@ -286,10 +287,30 @@ export interface ProvisionPlan {
   runtimeId?: string | null;
   archive: DownloadManifest;
   archiveFormat: RuntimeArchiveFormat;
+  installStrategy?: ProvisionInstallStrategy;
   executablePath: string;
+  requiredRuntimeVersion?: string | null;
   launchArguments?: string[];
+  files?: ProvisionFile[];
   stopCommand: string;
   stopTimeoutSeconds: number;
+}
+
+export interface ProvisionFile {
+  path: string;
+  content: string;
+}
+
+export interface TemplateProvisionRequest {
+  instanceId: string;
+  instanceName: string;
+  instanceDirectory: string;
+  minecraftVersion: string;
+  loaderVersion: string;
+  runtimeId?: string | null;
+  jvmArguments?: string[];
+  stopCommand?: string;
+  stopTimeoutSeconds?: number;
 }
 
 export interface ProvisionResolution {
@@ -647,6 +668,7 @@ export interface InstallTemplateVersion {
   providerId: string;
   kind: InstallTemplateVersionKind;
   stable: boolean;
+  gameVersion: string | null;
   metadataUrl: string | null;
 }
 
@@ -879,6 +901,11 @@ export interface PanelApiClient {
   getExtensionInstallTask(coreId: string, taskId: string): Promise<ExtensionInstallTask>;
   listManagedRuntimes(coreId: string): Promise<ManagedRuntimePage>;
   resolveProvisionPlan(coreId: string, plan: ProvisionPlan): Promise<ProvisionResolution>;
+  resolveTemplateProvisionPlan(
+    coreId: string,
+    templateId: string,
+    request: TemplateProvisionRequest,
+  ): Promise<ProvisionResolution>;
   executeProvision(coreId: string, plan: ProvisionPlan, planHash: string): Promise<ProvisionOperation>;
   getProvisionTask(coreId: string, taskId: string): Promise<ProvisionOperation>;
   installRuntime(
@@ -1296,6 +1323,12 @@ export function createPanelApiClient(options: ApiClientOptions): PanelApiClient 
       return request<ProvisionResolution>(
         `/api/v1/cores/${encodeURIComponent(coreId)}/provision-plans:resolve`,
         { method: 'POST', body: plan, csrf: true },
+      );
+    },
+    resolveTemplateProvisionPlan(coreId, templateId, templateRequest) {
+      return request<ProvisionResolution>(
+        `/api/v1/cores/${encodeURIComponent(coreId)}/install-templates/${encodeURIComponent(templateId)}/provision-plans:resolve`,
+        { method: 'POST', body: templateRequest, csrf: true },
       );
     },
     executeProvision(coreId, plan, planHash) {

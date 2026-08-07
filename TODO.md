@@ -66,8 +66,11 @@
     - [x] Bukkit 和 Spigot 使用官方 Jenkins RSS Atom feed，解析稳定构建编号和构建页链接；RSS 元数据不代表构建产物已验证可直接安装。
     - [x] Mohist 和 Youer 使用 MohistMC 官方 project API 读取公开版本目录；构建下载与 SHA-256 字段仍需接入版本化安装配方。
     - [x] Silkard 使用官方 GitHub branches API 读取数字开头的版本分支并过滤开发分支；分支元数据不代表已存在可直接安装的发布归档。
-  - [x] 执行模板安装。
+  - [x] 执行模板安装基础链路。
+    - [x] NeoForge 作为首个验证配方：选择 Minecraft 与 loader 版本，解析官方 installer 大小和 SHA-256，使用匹配 Java 主版本在临时目录执行并受控重试，生成 `user_jvm_args.txt` 和平台参数文件启动配置后原子注册实例。
+    - [x] WebUI 为 NeoForge 联动游戏版本、loader 版本和 Java runtime，按 `neoforge-<game-version>-server-<sequence>` 自动生成可编辑实例 ID，并轮询安装任务直至实例创建完成。
   - [ ] 为已接入版本 provider 的二十七种模板及后续类型补齐按版本验证的归档结构、可执行文件、默认配置、启动参数和更新策略。
+    - [ ] 除 NeoForge 外的其余二十六类公开模板仍需逐类型、逐版本完成真实产物安装验证。
   - [ ] 不能把仅有模板目录或版本元数据 provider 误认为完整安装支持。
 
 ### M2 服务端类型矩阵

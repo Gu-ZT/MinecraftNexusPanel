@@ -1121,6 +1121,39 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /cores/{coreId}/install-templates/{templateId}/provision-plans:resolve:
+    post:
+      tags: [ Install templates ]
+      operationId: resolveTemplateProvisionPlan
+      summary: Resolve a verified template version into a server installation plan
+      security:
+        - cookieAuth: [ ]
+          csrfToken: [ ]
+        - bearerAuth: [ ]
+      parameters:
+        - $ref: '#/components/parameters/CoreId'
+        - $ref: '#/components/parameters/TemplateId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateProvisionRequest'
+      responses:
+        '200':
+          description: Vendor metadata resolved into a Core-confirmed plan and content hash
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProvisionResolution'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /cores/{coreId}/instance-provisions:
     post:
       tags: [ Install templates ]
@@ -4074,10 +4107,10 @@ components:
       enum: [ TAR_GZ, ZIP ]
     DownloadPlatform:
       type: string
-      enum: [ LINUX, MACOS, WINDOWS ]
+      enum: [ ANY, LINUX, MACOS, WINDOWS ]
     DownloadArchitecture:
       type: string
-      enum: [ AARCH64, X86_64 ]
+      enum: [ ANY, AARCH64, X86_64 ]
     DownloadManifest:
       type: object
       required: [ url, sizeBytes, sha256, platform, architecture ]
@@ -4200,15 +4233,25 @@ components:
           $ref: '#/components/schemas/DownloadManifest'
         archiveFormat:
           $ref: '#/components/schemas/RuntimeArchiveFormat'
+        installStrategy:
+          $ref: '#/components/schemas/ProvisionInstallStrategy'
         executablePath:
           type: string
           minLength: 1
+        requiredRuntimeVersion:
+          type: [ string, 'null' ]
+          pattern: '^[0-9]{1,16}$'
         launchArguments:
           type: array
           maxItems: 256
           items:
             type: string
             maxLength: 8192
+        files:
+          type: array
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/ProvisionFile'
         stopCommand:
           type: string
           minLength: 1
@@ -4217,6 +4260,68 @@ components:
           type: integer
           minimum: 1
           maximum: 300
+    ProvisionInstallStrategy:
+      type: string
+      enum: [ EXTRACT_ARCHIVE, JAVA_INSTALLER ]
+      default: EXTRACT_ARCHIVE
+    ProvisionFile:
+      type: object
+      required: [ path, content ]
+      properties:
+        path:
+          type: string
+          minLength: 1
+        content:
+          type: string
+          maxLength: 65536
+    TemplateProvisionRequest:
+      type: object
+      required:
+        - instanceId
+        - instanceName
+        - instanceDirectory
+        - minecraftVersion
+        - loaderVersion
+      properties:
+        instanceId:
+          type: string
+          pattern: '^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$'
+        instanceName:
+          type: string
+          minLength: 1
+          maxLength: 128
+        instanceDirectory:
+          type: string
+          minLength: 1
+          maxLength: 1024
+        minecraftVersion:
+          type: string
+          minLength: 1
+          maxLength: 32
+        loaderVersion:
+          type: string
+          minLength: 1
+          maxLength: 128
+        runtimeId:
+          type: [ string, 'null' ]
+          pattern: '^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$'
+        jvmArguments:
+          type: array
+          maxItems: 128
+          items:
+            type: string
+            minLength: 1
+            maxLength: 8192
+        stopCommand:
+          type: string
+          minLength: 1
+          maxLength: 8192
+          default: stop
+        stopTimeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 300
+          default: 30
     ProvisionResolution:
       type: object
       required: [ resolvedPlan, planHash ]
@@ -4304,7 +4409,7 @@ components:
       enum: [ GAME, LOADER, SERVER ]
     InstallTemplateVersion:
       type: object
-      required: [ id, providerId, kind, stable, metadataUrl ]
+      required: [ id, providerId, kind, stable, gameVersion, metadataUrl ]
       properties:
         id:
           type: string
@@ -4314,6 +4419,8 @@ components:
           $ref: '#/components/schemas/InstallTemplateVersionKind'
         stable:
           type: boolean
+        gameVersion:
+          type: [ string, 'null' ]
         metadataUrl:
           type: [ string, 'null' ]
           format: uri

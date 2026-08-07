@@ -13,6 +13,8 @@ pub struct InstallTemplateVersion {
     provider_id: String,
     kind: InstallTemplateVersionKind,
     stable: bool,
+    #[serde(default)]
+    game_version: Option<String>,
     metadata_url: Option<String>,
 }
 
@@ -31,8 +33,16 @@ impl InstallTemplateVersion {
             provider_id,
             kind,
             stable,
+            game_version: None,
             metadata_url,
         }
+    }
+
+    /// 关联加载器或服务端构建对应的 Minecraft 版本。
+    #[must_use]
+    pub fn with_game_version(mut self, game_version: String) -> Self {
+        self.game_version = Some(game_version);
+        self
     }
 
     /// 返回版本目录项标识。
@@ -57,6 +67,12 @@ impl InstallTemplateVersion {
     #[must_use]
     pub const fn stable(&self) -> bool {
         self.stable
+    }
+
+    /// 返回加载器或服务端构建关联的 Minecraft 版本。
+    #[must_use]
+    pub fn game_version(&self) -> Option<&str> {
+        self.game_version.as_deref()
     }
 
     /// 返回可选的 provider 详情 URL。

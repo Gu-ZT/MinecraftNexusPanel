@@ -7,6 +7,8 @@ use serde::Serialize;
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum DownloadArchitecture {
+    /// 与 CPU 架构无关的通用产物。
+    Any,
     /// AArch64/ARM64。
     Aarch64,
     /// x86_64/AMD64。
@@ -27,6 +29,16 @@ impl DownloadArchitecture {
     /// 判断该架构是否与当前编译目标一致。
     #[must_use]
     pub fn is_current(self) -> bool {
-        Self::current() == Some(self)
+        self == Self::Any || Self::current() == Some(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DownloadArchitecture;
+
+    #[test]
+    fn accepts_universal_downloads_on_the_current_architecture() {
+        assert!(DownloadArchitecture::Any.is_current());
     }
 }

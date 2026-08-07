@@ -91,6 +91,26 @@ async fn proxies_instance_lifecycle_requests_to_a_registered_core() {
 
     let core_id = register_core(panel_address, &authorization, core_address).await;
 
+    let unavailable_recipe = send_json_request(
+        panel_address,
+        "POST",
+        &format!("/api/v1/cores/{core_id}/install-templates/paper/provision-plans:resolve"),
+        &[("Authorization", authorization.as_str())],
+        Some(json!({
+            "instanceId": "paper-1.21.8-server-01",
+            "instanceName": "Paper 1.21.8 Server 01",
+            "instanceDirectory": "instances/paper-1.21.8-server-01",
+            "minecraftVersion": "1.21.8",
+            "loaderVersion": "latest"
+        })),
+    )
+    .await;
+    assert_eq!(unavailable_recipe.status, 409);
+    assert_eq!(
+        unavailable_recipe.body["error"]["code"],
+        "INSTALL_RECIPE_UNAVAILABLE"
+    );
+
     let runtimes = send_json_request(
         panel_address,
         "GET",

@@ -57,6 +57,14 @@ pub enum RuntimeManagerError {
         /// 未找到的运行时标识。
         runtime_id: String,
     },
+    /// 找不到满足模板主版本要求的可用运行时。
+    #[error("no valid {requirement} runtime matches required version {version}")]
+    RequiredVersionNotFound {
+        /// 模板要求的运行时类别。
+        requirement: String,
+        /// 模板要求的运行时主版本。
+        version: String,
+    },
     /// 清单声明的可执行文件不是安全的普通文件。
     #[error("runtime executable is not valid: {path}")]
     InvalidExecutable {

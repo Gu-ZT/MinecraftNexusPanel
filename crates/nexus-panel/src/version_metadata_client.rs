@@ -4,14 +4,19 @@
 //! 和规范化版本元数据，不把成功解析误认为归档布局、启动命令或升级流程已经验证。
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::str;
 use std::time::Duration;
 
+use nexus_domain::DownloadArchitecture;
+use nexus_domain::DownloadManifest;
+use nexus_domain::DownloadPlatform;
 use nexus_domain::InstallTemplate;
 use nexus_domain::InstallTemplateVersion;
 use nexus_domain::InstallTemplateVersionKind;
 use nexus_domain::PRODUCT_NAME;
 use nexus_domain::PRODUCT_VERSION;
+use nexus_domain::Sha256Digest;
 use nexus_domain::VersionMetadataProvider;
 use quick_xml::Reader;
 use quick_xml::events::BytesStart;
@@ -63,6 +68,9 @@ const MOHIST_PROJECT_PROVIDER_ID: &str = "mohist-project-api";
 const YOUER_PROJECT_PROVIDER_ID: &str = "youer-project-api";
 const SILKARD_BRANCH_PROVIDER_ID: &str = "silkard-github-branches";
 const PAPERMC_CONTACT_URL: &str = "https://github.com/Gu-ZT/MinecraftNexusPanel";
+const NEOFORGE_MAVEN_BASE_URL: &str = "https://maven.neoforged.net/releases/net/neoforged/neoforge";
+const MAXIMUM_CHECKSUM_BYTES: usize = 1024;
+const MAXIMUM_INSTALLER_BYTES: u64 = 512 * 1024 * 1024;
 
 /// 从模板声明的供应商读取并规范化安装版本的内部客户端。
 #[derive(Clone)]
@@ -348,6 +356,101 @@ impl VersionMetadataClient {
 
         Ok(bytes)
     }
+
+    /// 读取 NeoForge installer 的大小和 SHA-256，生成可由任意 Core 校验的下载清单。
+    pub(crate) async fn neoforge_installer_manifest(
+        &self,
+        loader_version: &str,
+    ) -> Result<DownloadManifest, VersionMetadataError> {
+        if !valid_neoforge_version(loader_version) {
+            return Err(VersionMetadataError::InvalidResponse {
+                provider_id: NEOFORGE_PROVIDER_ID.to_owned(),
+            });
+        }
+        let artifact_url = format!(
+            "{NEOFORGE_MAVEN_BASE_URL}/{loader_version}/neoforge-{loader_version}-installer.jar"
+        );
+        let checksum_url = format!("{artifact_url}.sha256");
+        let checksum = self
+            .fetch_small_text(NEOFORGE_PROVIDER_ID, &checksum_url)
+            .await?;
+        let sha256 = checksum
+            .split_whitespace()
+            .next()
+            .filter(|value| value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            .and_then(|value| Sha256Digest::from_hex(&value.to_ascii_lowercase()).ok())
+            .ok_or_else(|| VersionMetadataError::InvalidResponse {
+                provider_id: NEOFORGE_PROVIDER_ID.to_owned(),
+            })?;
+        let response = self
+            .client
+            .head(&artifact_url)
+            .send()
+            .await
+            .and_then(reqwest::Response::error_for_status)
+            .map_err(|source| VersionMetadataError::Request {
+                provider_id: NEOFORGE_PROVIDER_ID.to_owned(),
+                source,
+            })?;
+        let size_bytes = response
+            .content_length()
+            .filter(|size| *size > 0 && *size <= MAXIMUM_INSTALLER_BYTES)
+            .ok_or_else(|| VersionMetadataError::InvalidResponse {
+                provider_id: NEOFORGE_PROVIDER_ID.to_owned(),
+            })?;
+
+        Ok(DownloadManifest::new(
+            artifact_url,
+            size_bytes,
+            sha256,
+            DownloadPlatform::Any,
+            DownloadArchitecture::Any,
+        ))
+    }
+
+    async fn fetch_small_text(
+        &self,
+        provider_id: &str,
+        url: &str,
+    ) -> Result<String, VersionMetadataError> {
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .and_then(reqwest::Response::error_for_status)
+            .map_err(|source| VersionMetadataError::Request {
+                provider_id: provider_id.to_owned(),
+                source,
+            })?;
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAXIMUM_CHECKSUM_BYTES as u64)
+        {
+            return Err(VersionMetadataError::ResponseTooLarge {
+                provider_id: provider_id.to_owned(),
+                maximum_bytes: MAXIMUM_CHECKSUM_BYTES,
+            });
+        }
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|source| VersionMetadataError::Request {
+                provider_id: provider_id.to_owned(),
+                source,
+            })?;
+        if bytes.len() > MAXIMUM_CHECKSUM_BYTES {
+            return Err(VersionMetadataError::ResponseTooLarge {
+                provider_id: provider_id.to_owned(),
+                maximum_bytes: MAXIMUM_CHECKSUM_BYTES,
+            });
+        }
+        str::from_utf8(&bytes).map(str::to_owned).map_err(|_| {
+            VersionMetadataError::InvalidResponse {
+                provider_id: provider_id.to_owned(),
+            }
+        })
+    }
 }
 
 fn provider<'a>(
@@ -405,7 +508,8 @@ fn parse_neoforge_versions(
     let metadata = str::from_utf8(metadata).map_err(|_| invalid_response(provider))?;
     let mut reader = Reader::from_str(metadata);
     reader.config_mut().trim_text(true);
-    let mut versions = Vec::new();
+    let mut loader_versions = Vec::new();
+    let mut game_versions = BTreeSet::new();
 
     loop {
         match reader.read_event() {
@@ -418,13 +522,21 @@ fn parse_neoforge_versions(
                     return Err(invalid_response(provider));
                 }
 
-                versions.push(InstallTemplateVersion::new(
-                    id.clone(),
-                    provider.id().to_owned(),
-                    InstallTemplateVersionKind::Server,
-                    is_stable_version(&id),
-                    None,
-                ));
+                let game_version =
+                    neoforge_game_version(&id).ok_or_else(|| invalid_response(provider))?;
+                game_versions.insert(game_version.clone());
+                loader_versions.push(
+                    InstallTemplateVersion::new(
+                        id.clone(),
+                        provider.id().to_owned(),
+                        InstallTemplateVersionKind::Loader,
+                        is_stable_version(&id),
+                        Some(format!(
+                            "{NEOFORGE_MAVEN_BASE_URL}/{id}/neoforge-{id}-installer.jar"
+                        )),
+                    )
+                    .with_game_version(game_version),
+                );
             }
             Ok(Event::Eof) => break,
             Err(_) => return Err(invalid_response(provider)),
@@ -432,11 +544,44 @@ fn parse_neoforge_versions(
         }
     }
 
-    if versions.is_empty() {
+    if loader_versions.is_empty() {
         Err(invalid_response(provider))
     } else {
+        let mut versions = game_versions
+            .into_iter()
+            .map(|game_version| {
+                InstallTemplateVersion::new(
+                    game_version,
+                    provider.id().to_owned(),
+                    InstallTemplateVersionKind::Game,
+                    true,
+                    None,
+                )
+            })
+            .collect::<Vec<_>>();
+        versions.extend(loader_versions);
         Ok(versions)
     }
+}
+
+pub(crate) fn neoforge_game_version(loader_version: &str) -> Option<String> {
+    let mut segments = loader_version.split('.');
+    let minor = segments.next()?.parse::<u16>().ok()?;
+    let patch = segments.next()?.parse::<u16>().ok()?;
+    if patch == 0 {
+        Some(format!("1.{minor}"))
+    } else {
+        Some(format!("1.{minor}.{patch}"))
+    }
+}
+
+fn valid_neoforge_version(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.as_bytes()[0].is_ascii_digit()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_' | b'+'))
 }
 
 fn parse_forge_versions(
@@ -1072,11 +1217,26 @@ mod tests {
         )
         .expect("NeoForge metadata is valid");
 
-        assert_eq!(versions.len(), 2);
-        assert_eq!(versions[0].id(), "20.2.12-beta");
-        assert_eq!(versions[0].kind(), InstallTemplateVersionKind::Server);
-        assert!(!versions[0].stable());
-        assert!(versions[1].stable());
+        assert_eq!(versions.len(), 4);
+        assert!(versions.iter().any(|version| {
+            version.id() == "1.20.2" && version.kind() == InstallTemplateVersionKind::Game
+        }));
+        assert!(versions.iter().any(|version| {
+            version.id() == "1.21.1" && version.kind() == InstallTemplateVersionKind::Game
+        }));
+        let beta = versions
+            .iter()
+            .find(|version| version.id() == "20.2.12-beta")
+            .expect("beta loader is present");
+        assert_eq!(beta.kind(), InstallTemplateVersionKind::Loader);
+        assert_eq!(beta.game_version(), Some("1.20.2"));
+        assert!(!beta.stable());
+        let stable = versions
+            .iter()
+            .find(|version| version.id() == "21.1.200")
+            .expect("stable loader is present");
+        assert_eq!(stable.game_version(), Some("1.21.1"));
+        assert!(stable.stable());
     }
 
     #[test]

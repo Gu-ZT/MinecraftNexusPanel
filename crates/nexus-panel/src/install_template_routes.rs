@@ -65,7 +65,10 @@ async fn list_install_template_versions(
     }
 }
 
-fn version_metadata_error_response(error: VersionMetadataError, request_id: RequestId) -> Response {
+pub(crate) fn version_metadata_error_response(
+    error: VersionMetadataError,
+    request_id: RequestId,
+) -> Response {
     tracing::warn!(%error, %request_id, "Version metadata lookup failed");
 
     error_response(

@@ -441,6 +441,7 @@ mod tests {
     fn rejects_a_manifest_for_a_different_platform() {
         let wrong_platform = match DownloadPlatform::current().expect("test platform is supported")
         {
+            DownloadPlatform::Any => unreachable!("current platform is never universal"),
             DownloadPlatform::Windows => DownloadPlatform::Linux,
             DownloadPlatform::Linux | DownloadPlatform::Macos => DownloadPlatform::Windows,
         };

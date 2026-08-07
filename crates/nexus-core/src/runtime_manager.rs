@@ -58,22 +58,53 @@ impl RuntimeManager {
         &self,
         runtime_id: Option<&str>,
         requirement: InstallRuntimeRequirement,
+        required_version: Option<&str>,
     ) -> Result<String, RuntimeManagerError> {
-        let Some(runtime_id) = runtime_id else {
+        if matches!(
+            requirement,
+            InstallRuntimeRequirement::Php | InstallRuntimeRequirement::Native
+        ) {
+            if runtime_id.is_some() || required_version.is_some() {
+                return Err(RuntimeManagerError::InvalidManifest { field: "runtimeId" });
+            }
             return Ok(system_executable(requirement).to_owned());
-        };
-        let Some(runtime) = self.discovery.find_managed(runtime_id).await else {
-            return Err(RuntimeManagerError::NotFound {
-                runtime_id: runtime_id.to_owned(),
-            });
-        };
+        }
         let expected_kind = runtime_kind(requirement)
             .ok_or(RuntimeManagerError::InvalidManifest { field: "runtimeId" })?;
-        if runtime.kind() != expected_kind || runtime.validation() != RuntimeValidation::Valid {
-            return Err(RuntimeManagerError::InvalidManifest { field: "runtimeId" });
+        if let Some(runtime_id) = runtime_id {
+            let Some(runtime) = self.discovery.find_managed(runtime_id).await else {
+                return Err(RuntimeManagerError::NotFound {
+                    runtime_id: runtime_id.to_owned(),
+                });
+            };
+            if runtime.kind() != expected_kind
+                || runtime.validation() != RuntimeValidation::Valid
+                || !matches_required_version(runtime.version(), required_version)
+            {
+                return Err(RuntimeManagerError::InvalidManifest { field: "runtimeId" });
+            }
+
+            return Ok(runtime.executable().to_owned());
         }
 
-        Ok(runtime.executable().to_owned())
+        let Some(required_version) = required_version else {
+            return Ok(system_executable(requirement).to_owned());
+        };
+        self.discovery
+            .discover()
+            .await
+            .into_iter()
+            .find(|runtime| {
+                runtime.runtime_id().is_none()
+                    && runtime.kind() == expected_kind
+                    && runtime.validation() == RuntimeValidation::Valid
+                    && matches_required_version(runtime.version(), Some(required_version))
+            })
+            .map(|runtime| runtime.executable().to_owned())
+            .ok_or_else(|| RuntimeManagerError::RequiredVersionNotFound {
+                requirement: format!("{requirement:?}"),
+                version: required_version.to_owned(),
+            })
     }
 
     /// 启动异步运行时安装任务。
@@ -426,6 +457,18 @@ fn system_executable(requirement: InstallRuntimeRequirement) -> &'static str {
     }
 }
 
+fn matches_required_version(actual: Option<&str>, required: Option<&str>) -> bool {
+    let Some(required) = required else {
+        return true;
+    };
+    actual.is_some_and(|actual| {
+        actual == required
+            || actual
+                .strip_prefix(required)
+                .is_some_and(|suffix| suffix.starts_with(['.', '_', '-', '+']))
+    })
+}
+
 fn storage(operation: &'static str, path: &Path, source: std::io::Error) -> RuntimeManagerError {
     RuntimeManagerError::Storage {
         operation,
@@ -442,6 +485,7 @@ mod tests {
     use nexus_domain::DownloadArchitecture;
     use nexus_domain::DownloadManifest;
     use nexus_domain::DownloadPlatform;
+    use nexus_domain::InstallRuntimeRequirement;
     use nexus_domain::RuntimeArchiveFormat;
     use nexus_domain::RuntimeInstallManifest;
     use nexus_domain::RuntimeKind;
@@ -454,6 +498,7 @@ mod tests {
     use zip::write::SimpleFileOptions;
 
     use super::RuntimeManager;
+    use super::matches_required_version;
 
     #[tokio::test]
     async fn installs_verifies_and_deletes_a_cached_runtime_archive() {
@@ -521,6 +566,29 @@ mod tests {
                 .path()
                 .join("runtimes/java/java-temurin-21")
                 .exists()
+        );
+    }
+
+    #[test]
+    fn matches_required_runtime_major_versions() {
+        assert!(matches_required_version(Some("21.0.4"), Some("21")));
+        assert!(matches_required_version(Some("21"), Some("21")));
+        assert!(!matches_required_version(Some("25.0.1"), Some("21")));
+        assert!(!matches_required_version(None, Some("21")));
+    }
+
+    #[tokio::test]
+    async fn resolves_native_runtime_without_a_managed_identifier() {
+        let data_directory = tempdir().expect("temporary data directory is created");
+        let manager =
+            RuntimeManager::new(data_directory.path()).expect("runtime manager is created");
+
+        assert_eq!(
+            manager
+                .resolve_executable(None, InstallRuntimeRequirement::Native, None)
+                .await
+                .expect("native runtime resolution is valid"),
+            ""
         );
     }
 

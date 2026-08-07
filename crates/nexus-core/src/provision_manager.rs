@@ -10,12 +10,14 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use nexus_domain::InstallRuntimeRequirement;
 use nexus_domain::InstanceCreate;
 use nexus_domain::InstanceKind;
 use nexus_domain::InstanceUpdate;
 use nexus_domain::LaunchConfig;
+use nexus_domain::ProvisionInstallStrategy;
 use nexus_domain::ProvisionPlan;
 use nexus_domain::TaskId;
 use serde_json::Value;
@@ -24,8 +26,11 @@ use serde_json::json;
 use sha2::Digest;
 use sha2::Sha256;
 use tokio::fs;
+use tokio::process::Command;
 use tokio::spawn;
 use tokio::task::spawn_blocking;
+use tokio::time::Instant;
+use tokio::time::timeout;
 
 use crate::DownloadManager;
 use crate::DownloadTask;
@@ -33,6 +38,10 @@ use crate::InstanceRepository;
 use crate::ProvisionManagerError;
 use crate::RuntimeManager;
 use crate::archive_extractor;
+
+const INSTALLER_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+const INSTALLER_ATTEMPTS: usize = 2;
+const MAXIMUM_INSTALLER_DIAGNOSTIC_BYTES: usize = 4 * 1024;
 
 /// 编排运行时解析、服务端归档安装和实例注册的内部管理器。
 #[derive(Clone)]
@@ -126,7 +135,11 @@ impl ProvisionManager {
         let update = metadata_update(plan)?;
         let runtime_executable = self
             .runtimes
-            .resolve_executable(plan.runtime_id(), plan.required_runtime())
+            .resolve_executable(
+                plan.runtime_id(),
+                plan.required_runtime(),
+                plan.required_runtime_version(),
+            )
             .await?;
         let download_task = DownloadTask::new();
         let archive_path = self
@@ -147,27 +160,20 @@ impl ProvisionManager {
             .await
             .map_err(|source| storage("create", &temporary_path, source))?;
 
-        let archive_path_for_worker = archive_path.clone();
-        let temporary_path_for_worker = temporary_path.clone();
-        let archive_format = plan.archive_format();
-        let extraction = spawn_blocking(move || {
-            archive_extractor::extract(
-                &archive_path_for_worker,
-                archive_format,
-                &temporary_path_for_worker,
-            )
-        })
-        .await
-        .map_err(|error| ProvisionManagerError::Archive {
-            path: archive_path.clone(),
-            message: error.to_string(),
-        })?;
-        if let Err(error) = extraction {
+        if let Err(error) =
+            install_downloaded_artifact(plan, &archive_path, &temporary_path, &runtime_executable)
+                .await
+        {
             remove_directory_if_exists(&temporary_path).await?;
-            return Err(ProvisionManagerError::Runtime(error));
+            return Err(error);
         }
 
-        let executable_path = safe_relative_path(plan.executable_path())?;
+        if let Err(error) = write_provision_files(plan, &temporary_path).await {
+            remove_directory_if_exists(&temporary_path).await?;
+            return Err(error);
+        }
+
+        let executable_path = resolved_relative_path(plan.executable_path())?;
         let extracted_executable = temporary_path.join(&executable_path);
         let metadata = match fs::metadata(&extracted_executable).await {
             Ok(metadata) => metadata,
@@ -337,7 +343,33 @@ fn validate_plan(plan: &ProvisionPlan) -> Result<(), ProvisionManagerError> {
         return Err(ProvisionManagerError::InvalidPlan { field: "runtimeId" });
     }
     safe_directory_path(plan.instance_directory())?;
-    safe_relative_path(plan.executable_path())?;
+    resolved_relative_path(plan.executable_path())?;
+    if plan.install_strategy() == ProvisionInstallStrategy::JavaInstaller
+        && (plan.template_id() != "neoforge"
+            || plan.required_runtime() != InstallRuntimeRequirement::Java)
+    {
+        return Err(ProvisionManagerError::InvalidPlan {
+            field: "installStrategy",
+        });
+    }
+    if plan.required_runtime_version().is_some_and(|version| {
+        version.is_empty()
+            || version.len() > 16
+            || !version.bytes().all(|byte| byte.is_ascii_digit())
+    }) {
+        return Err(ProvisionManagerError::InvalidPlan {
+            field: "requiredRuntimeVersion",
+        });
+    }
+    if plan.files().len() > 32 {
+        return Err(ProvisionManagerError::InvalidPlan { field: "files" });
+    }
+    for file in plan.files() {
+        safe_relative_path(file.path())?;
+        if file.content().len() > 64 * 1024 || file.content().contains('\0') {
+            return Err(ProvisionManagerError::InvalidPlan { field: "files" });
+        }
+    }
     if plan.launch_arguments().len() > 256
         || plan
             .launch_arguments()
@@ -475,8 +507,129 @@ fn launch_arguments(plan: &ProvisionPlan, server_argument: &str) -> Vec<String> 
     };
     arguments
         .into_iter()
-        .map(|argument| argument.replace("{server}", server_argument))
+        .map(|argument| {
+            argument
+                .replace("{server}", server_argument)
+                .replace("{os}", platform_argument_name())
+        })
         .collect()
+}
+
+async fn install_downloaded_artifact(
+    plan: &ProvisionPlan,
+    artifact_path: &Path,
+    destination: &Path,
+    runtime_executable: &str,
+) -> Result<(), ProvisionManagerError> {
+    match plan.install_strategy() {
+        ProvisionInstallStrategy::ExtractArchive => {
+            let artifact_path_for_worker = artifact_path.to_path_buf();
+            let destination_for_worker = destination.to_path_buf();
+            let archive_format = plan.archive_format();
+            let extraction = spawn_blocking(move || {
+                archive_extractor::extract(
+                    &artifact_path_for_worker,
+                    archive_format,
+                    &destination_for_worker,
+                )
+            })
+            .await
+            .map_err(|error| ProvisionManagerError::Archive {
+                path: artifact_path.to_path_buf(),
+                message: error.to_string(),
+            })?;
+            extraction.map_err(ProvisionManagerError::Runtime)
+        }
+        ProvisionInstallStrategy::JavaInstaller => {
+            run_java_installer(artifact_path, destination, runtime_executable).await
+        }
+    }
+}
+
+async fn run_java_installer(
+    artifact_path: &Path,
+    destination: &Path,
+    runtime_executable: &str,
+) -> Result<(), ProvisionManagerError> {
+    let installer_path = destination.join("mcnp-installer.jar");
+    fs::copy(artifact_path, &installer_path)
+        .await
+        .map_err(|source| storage("copy", &installer_path, source))?;
+
+    let deadline = Instant::now() + INSTALLER_TIMEOUT;
+    let mut last_diagnostic = "installer failed".to_owned();
+    for attempt in 1..=INSTALLER_ATTEMPTS {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            last_diagnostic = "installer timed out".to_owned();
+            break;
+        }
+        let mut command = Command::new(runtime_executable);
+        command
+            .arg("-jar")
+            .arg("mcnp-installer.jar")
+            .arg("--installServer")
+            .current_dir(destination)
+            .kill_on_drop(true);
+        let output = match timeout(remaining, command.output()).await {
+            Ok(Ok(output)) => output,
+            Ok(Err(error)) => {
+                last_diagnostic = error.to_string();
+                continue;
+            }
+            Err(_) => {
+                last_diagnostic = "installer timed out".to_owned();
+                break;
+            }
+        };
+        if output.status.success() {
+            let _ = fs::remove_file(&installer_path).await;
+            return Ok(());
+        }
+        let diagnostic = if output.stderr.is_empty() {
+            &output.stdout
+        } else {
+            &output.stderr
+        };
+        last_diagnostic = limited_diagnostic(diagnostic);
+        tracing::warn!(attempt, "Provision installer attempt failed");
+    }
+
+    let _ = fs::remove_file(&installer_path).await;
+    Err(ProvisionManagerError::Installer {
+        message: last_diagnostic,
+    })
+}
+
+async fn write_provision_files(
+    plan: &ProvisionPlan,
+    destination: &Path,
+) -> Result<(), ProvisionManagerError> {
+    for file in plan.files() {
+        let path = destination.join(safe_relative_path(file.path())?);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .await
+                .map_err(|source| storage("create", parent, source))?;
+        }
+        fs::write(&path, file.content())
+            .await
+            .map_err(|source| storage("write", &path, source))?;
+    }
+    Ok(())
+}
+
+fn resolved_relative_path(value: &str) -> Result<PathBuf, ProvisionManagerError> {
+    safe_relative_path(&value.replace("{os}", platform_argument_name()))
+}
+
+fn platform_argument_name() -> &'static str {
+    if cfg!(windows) { "win" } else { "unix" }
+}
+
+fn limited_diagnostic(bytes: &[u8]) -> String {
+    let end = bytes.len().min(MAXIMUM_INSTALLER_DIAGNOSTIC_BYTES);
+    String::from_utf8_lossy(&bytes[..end]).trim().to_owned()
 }
 
 fn plan_hash(plan: &ProvisionPlan) -> Result<String, ProvisionManagerError> {
@@ -607,6 +760,8 @@ mod tests {
     use zip::write::SimpleFileOptions;
 
     use super::ProvisionManager;
+    use super::platform_argument_name;
+    use super::resolved_relative_path;
     use crate::InstanceRepository;
 
     #[tokio::test]
@@ -674,6 +829,21 @@ mod tests {
                 .get(&InstanceId::new("survival".to_owned()).expect("instance ID is valid"))
                 .expect("instance repository is readable")
                 .is_some()
+        );
+    }
+
+    #[test]
+    fn resolves_neoforge_platform_argument_paths() {
+        let path =
+            resolved_relative_path("libraries/net/neoforged/neoforge/21.1.217/{os}_args.txt")
+                .expect("platform argument path is safe");
+
+        assert_eq!(
+            path.to_string_lossy().replace('\\', "/"),
+            format!(
+                "libraries/net/neoforged/neoforge/21.1.217/{}_args.txt",
+                platform_argument_name()
+            )
         );
     }
 

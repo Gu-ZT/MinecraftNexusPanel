@@ -341,8 +341,9 @@ Core 将压缩包解压到受管 runtime 目录的临时目录，完成可执行
 压缩包中的绝对路径、父目录、符号链接和特殊文件会被拒绝。`runtime.verify` 重新执行版本探测，`runtime.delete` 会拒绝删除被实例启动命令引用的 runtime。
 
 `provision.resolve` 校验模板类型、运行时要求、目标平台/架构、实例目录和归档内的可执行文件路径，并对完整计划计算
-`planHash`。`provision.execute` 只接受相同的完整计划和 hash；Core 下载归档、验证 SHA-256、安全解压并原子创建实例目录，任务状态通过
-`provision.task.get` 查询。归档存在符号链接、特殊文件、绝对路径或父目录时会被拒绝。
+`planHash`。`provision.execute` 只接受相同的完整计划和 hash。默认 `EXTRACT_ARCHIVE` 策略下载归档、验证 SHA-256、安全解压并原子创建实例目录；
+`JAVA_INSTALLER` 策略只允许已经验证的 Java installer 模板，在同一临时目录和 15 分钟总预算内最多执行两次，成功后还必须确认平台参数文件存在。
+两种策略都只会在全部文件准备完成后注册实例，任务状态通过 `provision.task.get` 查询。归档存在符号链接、特殊文件、绝对路径或父目录时会被拒绝。
 
 ### 5.5.1 代理子服务器
 

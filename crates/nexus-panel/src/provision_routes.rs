@@ -20,18 +20,27 @@ use nexus_domain::TaskId;
 
 use crate::PanelState;
 use crate::ProvisionExecuteRequest;
+use crate::TemplateProvisionError;
+use crate::TemplateProvisionRequest;
 use crate::auth_routes::error_response;
 use crate::auth_routes::header_text;
 use crate::core_routes::authorize;
 use crate::core_routes::invalid_core_id_response;
 use crate::core_routes::parse_core_id;
 use crate::core_routes::registry_error_response;
+use crate::install_template_catalog::install_template;
+use crate::install_template_routes::version_metadata_error_response;
+use crate::neoforge_provision_recipe::resolve_neoforge_provision_plan;
 
 pub(crate) fn provision_routes() -> Router<PanelState> {
     Router::new()
         .route(
             "/api/v1/cores/{core_id}/provision-plans:resolve",
             post(resolve_provision),
+        )
+        .route(
+            "/api/v1/cores/{core_id}/install-templates/{template_id}/provision-plans:resolve",
+            post(resolve_template_provision),
         )
         .route(
             "/api/v1/cores/{core_id}/instance-provisions",
@@ -41,6 +50,63 @@ pub(crate) fn provision_routes() -> Router<PanelState> {
             "/api/v1/cores/{core_id}/instance-provisions/{task_id}",
             get(get_provision_task),
         )
+}
+
+async fn resolve_template_provision(
+    State(state): State<PanelState>,
+    Extension(request_id): Extension<RequestId>,
+    Path((core_id, template_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    payload: Result<Json<TemplateProvisionRequest>, JsonRejection>,
+) -> Response {
+    if let Err(response) = authorize(&state, &headers, true, request_id).await {
+        return response;
+    }
+    let Some(core_id) = parse_core_id(&core_id) else {
+        return invalid_core_id_response(request_id);
+    };
+    let Some(template) = install_template(&template_id) else {
+        return error_response(
+            StatusCode::NOT_FOUND,
+            "NOT_FOUND",
+            "Install template does not exist",
+            request_id,
+        );
+    };
+    let request = match payload {
+        Ok(Json(request)) => request,
+        Err(_) => return validation_error(request_id),
+    };
+    let plan = match template.id() {
+        "neoforge" => {
+            resolve_neoforge_provision_plan(&template, &request, state.version_metadata()).await
+        }
+        _ => Err(TemplateProvisionError::UnsupportedTemplate {
+            template_id: template.id().to_owned(),
+        }),
+    };
+    let plan = match plan {
+        Ok(plan) => plan,
+        Err(TemplateProvisionError::InvalidField { .. }) => {
+            return validation_error(request_id);
+        }
+        Err(TemplateProvisionError::UnsupportedTemplate { .. }) => {
+            return error_response(
+                StatusCode::CONFLICT,
+                "INSTALL_RECIPE_UNAVAILABLE",
+                "Install template does not have a verified provision recipe",
+                request_id,
+            );
+        }
+        Err(TemplateProvisionError::VersionMetadata(error)) => {
+            return version_metadata_error_response(error, request_id);
+        }
+    };
+
+    match state.cores().resolve_provision(core_id, &plan).await {
+        Ok(result) => Json(result).into_response(),
+        Err(error) => registry_error_response(error, request_id),
+    }
 }
 
 async fn resolve_provision(

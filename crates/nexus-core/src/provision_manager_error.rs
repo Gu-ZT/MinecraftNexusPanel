@@ -32,6 +32,12 @@ pub enum ProvisionManagerError {
         /// 不符合约束的计划字段名称。
         field: &'static str,
     },
+    /// 供应商 installer 进程执行失败或超时。
+    #[error("provision installer failed: {message}")]
+    Installer {
+        /// 经过截断且不包含秘密的进程诊断。
+        message: String,
+    },
     /// 执行哈希与已解析计划不一致。
     #[error("provision plan hash does not match the resolved plan")]
     PlanHashMismatch,
