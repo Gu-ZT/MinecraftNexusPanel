@@ -86,7 +86,7 @@ MinecraftNexusPanel/
 - 标准表单、按钮、菜单和图标统一使用 Arco Design；运维工作区参考 MCSManager 的紧凑信息层级，但不复制其源码或制造尚无后端能力的入口。
 - Core、实例和实例子视图必须由 Vue Router 地址表达，使浏览器历史、刷新和直接链接恢复同一工作上下文。
 - 主题提供 `system`、`light`、`dark` 三种偏好并监听系统配色变化；国际化语言包按 `frontend/app/src/locales/<语言代码>.json` 自动发现，文件内 `$meta.name` 提供语言显示名。
-- 当前共享应用已提供 `/dashboard`、`/instances`、`/nodes`、`/users`、`/settings` 和路由化实例详情；仪表盘聚合 Core、实例和授权审计，并允许具备 `audit.read` 的用户导出当前保留窗口 NDJSON，节点页提供只读连接信息与 CPU 拓扑，实例页提供生命周期控制、终端、结构化配置和文件管理。管理员用户页提供列表、创建、显示名称编辑、`audit.read` 授权/撤销和删除确认，无 `user.manage` 时隐藏入口。Core 编辑、镜像与 Panel 全局设置在后端 API 交付前不制造虚假控制入口。
+- 当前共享应用已提供 `/dashboard`、`/instances`、`/nodes`、`/users`、`/settings` 和路由化实例详情；仪表盘聚合 Core、实例和授权审计，并允许具备 `audit.read` 的用户导出当前保留窗口 NDJSON，节点页提供只读连接信息与 CPU 拓扑，实例页提供生命周期控制、终端、结构化配置、文件管理，以及按 Core、服务端类型、类型参数推进的实例创建向导；路由已选择 Core 时向导跳过第一步，Java、原生基岩端、PocketMine-MP 和自定义运行时分别展示对应启动字段。管理员用户页提供列表、创建、显示名称编辑、`audit.read` 授权/撤销和删除确认，无 `user.manage` 时隐藏入口。Core 编辑、镜像与 Panel 全局设置在后端 API 交付前不制造虚假控制入口。
 - 三端复用同一套页面、领域 store、API Client、表单校验和实时事件 SDK；平台差异只能通过 `platform` 适配器访问。
 - Panel 托管 Vue 构建产物；Tauri Desktop/Mobile 加载同一应用构建，不复制业务页面。
 - 浏览器适配器使用 Cookie/CSRF；Windows Desktop 使用 Windows Credential Manager、macOS Desktop 使用系统 Keychain、Linux Desktop 使用 keyutils 与 Secret Service 持久组合后端保存原生 Refresh Token，重启后及短期 Access Token 到期前 60 秒通过 refresh 轮换会话。
