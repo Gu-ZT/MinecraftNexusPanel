@@ -21,6 +21,7 @@ pub struct PanelConfig {
     desktop_session: Option<DesktopSessionConfig>,
     local_core: Option<LocalCoreConfig>,
     master_key: Option<PanelMasterKey>,
+    web_root: Option<PathBuf>,
     audit_retention_events: usize,
 }
 
@@ -34,6 +35,7 @@ impl fmt::Debug for PanelConfig {
             .field("desktop_session", &self.desktop_session)
             .field("local_core", &self.local_core.as_ref().map(|_| "REDACTED"))
             .field("master_key", &self.master_key)
+            .field("web_root", &self.web_root)
             .field("audit_retention_events", &self.audit_retention_events)
             .finish()
     }
@@ -66,6 +68,7 @@ impl PanelConfig {
             desktop_session: None,
             local_core: None,
             master_key: None,
+            web_root: None,
             audit_retention_events: Self::DEFAULT_AUDIT_RETENTION_EVENTS,
         })
     }
@@ -95,6 +98,13 @@ impl PanelConfig {
     #[must_use]
     pub fn with_local_core(mut self, local_core: LocalCoreConfig) -> Self {
         self.local_core = Some(local_core);
+        self
+    }
+
+    /// 设置由 Panel 同源托管的 WebUI 静态资源目录。
+    #[must_use]
+    pub fn with_web_root(mut self, web_root: PathBuf) -> Self {
+        self.web_root = Some(web_root);
         self
     }
 
@@ -148,6 +158,12 @@ impl PanelConfig {
     #[must_use]
     pub const fn master_key(&self) -> Option<&PanelMasterKey> {
         self.master_key.as_ref()
+    }
+
+    /// 返回 WebUI 静态资源目录；未配置时 Panel 只提供 API。
+    #[must_use]
+    pub fn web_root(&self) -> Option<&Path> {
+        self.web_root.as_deref()
     }
 
     /// 返回 Panel 用户级审计事件保留数量。

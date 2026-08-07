@@ -31,7 +31,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": ["binaries/*"],
+    "resources": ["binaries/*", "web/**/*"],
     "windows": {
       "webviewInstallMode": {
         "type": "skip"

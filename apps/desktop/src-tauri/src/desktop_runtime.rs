@@ -43,8 +43,11 @@ use crate::desktop_logs::redact_sensitive_fields;
 
 const DATA_DIRECTORY_NAME: &str = "data";
 const SECRETS_FILE_NAME: &str = "desktop-secrets.json";
+const WEB_DIRECTORY_NAME: &str = "web";
 #[cfg(debug_assertions)]
 const DEVELOPMENT_SIDECAR_PATH_ENVIRONMENT: &str = "MCNP_DESKTOP_DEV_SIDECAR_PATH";
+#[cfg(debug_assertions)]
+const DEVELOPMENT_WEB_ROOT_ENVIRONMENT: &str = "MCNP_PANEL_WEB_ROOT";
 const ADMIN_USERNAME: &str = "admin";
 const PANEL_PORT_START: u16 = 18_080;
 const CORE_PORT_START: u16 = 25_580;
@@ -101,6 +104,7 @@ impl DesktopRuntime {
         let core_address = select_loopback_port(CORE_PORT_START)?;
         let data_directory = app_data_directory.join(DATA_DIRECTORY_NAME);
         let sidecar_path = locate_sidecar(app)?;
+        let panel_web_root = locate_panel_web_root(app)?;
         let (log_path, log_file) =
             prepare_sidecar_log(&app_data_directory).map_err(|source| DesktopRuntimeError::Io {
                 path: app_data_directory.join(LOG_DIRECTORY_NAME),
@@ -112,6 +116,7 @@ impl DesktopRuntime {
             &data_directory,
             panel_address,
             core_address,
+            &panel_web_root,
             &secrets,
         )?;
         if let Err(error) = attach_sidecar_logs(&mut child, log_path, log_file) {
@@ -309,12 +314,50 @@ fn locate_sidecar<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, DesktopRunt
     })
 }
 
+/// 定位供本地 Panel 同源托管的共享 WebUI 构建产物。
+///
+/// 开发脚本显式传入本轮生成的 `dist`；发布版从 Tauri 资源目录读取随安装包携带的副本，
+/// 避免把任意外部路径或 Desktop 设备秘密暴露给浏览器入口。
+fn locate_panel_web_root<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, DesktopRuntimeError> {
+    let mut candidates = Vec::new();
+    #[cfg(debug_assertions)]
+    if let Some(path) = env::var_os(DEVELOPMENT_WEB_ROOT_ENVIRONMENT) {
+        candidates.push(PathBuf::from(path));
+    }
+    if let Ok(resource_directory) = app.path().resource_dir() {
+        candidates.push(resource_directory.join(WEB_DIRECTORY_NAME));
+    }
+    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(WEB_DIRECTORY_NAME));
+
+    select_panel_web_root(candidates)
+}
+
+fn select_panel_web_root(
+    candidates: impl IntoIterator<Item = PathBuf>,
+) -> Result<PathBuf, DesktopRuntimeError> {
+    let candidates = candidates.into_iter().collect::<Vec<_>>();
+    if let Some(path) = candidates
+        .iter()
+        .find(|path| path.join("index.html").is_file())
+    {
+        return Ok(path.clone());
+    }
+    Err(DesktopRuntimeError::WebAssetsNotFound {
+        candidates: candidates
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join("; "),
+    })
+}
+
 fn spawn_sidecar(
     sidecar_path: &Path,
     app_data_directory: &Path,
     data_directory: &Path,
     panel_address: SocketAddr,
     core_address: SocketAddr,
+    panel_web_root: &Path,
     secrets: &DesktopSecrets,
 ) -> Result<Child, DesktopRuntimeError> {
     let mut command = Command::new(sidecar_path);
@@ -323,6 +366,7 @@ fn spawn_sidecar(
         .current_dir(app_data_directory)
         .env("MCNP_DATA_DIR", data_directory)
         .env("MCNP_PANEL_LISTEN", panel_address.to_string())
+        .env("MCNP_PANEL_WEB_ROOT", panel_web_root)
         .env("MCNP_CORE_LISTEN", core_address.to_string())
         .env("MCNP_CORE_PSK", &secrets.core_psk)
         .env("MCNP_PANEL_MASTER_KEY", &secrets.panel_master_key)
@@ -452,6 +496,12 @@ pub enum DesktopRuntimeError {
         /// 已检查的候选路径。
         candidates: String,
     },
+    /// 安装资源或开发构建中缺少共享 WebUI。
+    #[error("Panel WebUI assets were not found; checked: {candidates}")]
+    WebAssetsNotFound {
+        /// 已检查的候选目录。
+        candidates: String,
+    },
     /// sidecar 无法启动。
     #[error("unable to start mcnp sidecar {path}: {source}")]
     Spawn {
@@ -495,10 +545,12 @@ pub enum DesktopRuntimeError {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::PathBuf;
 
     use tempfile::tempdir;
 
     use super::DesktopSecrets;
+    use super::select_panel_web_root;
 
     #[test]
     fn adds_a_device_secret_to_legacy_desktop_secrets() {
@@ -521,5 +573,21 @@ mod tests {
 
         let persisted = fs::read_to_string(path).expect("migrated Desktop secrets are readable");
         assert!(persisted.contains("desktop_session_secret"));
+    }
+
+    #[test]
+    fn selects_only_a_web_root_with_an_entry_document() {
+        let directory = tempdir().expect("temporary Desktop WebUI directory is created");
+        let missing = directory.path().join("missing");
+        let web_root = directory.path().join("web");
+        fs::create_dir(&web_root).expect("WebUI directory is created");
+        fs::write(web_root.join("index.html"), "<!doctype html>").expect("WebUI entry is written");
+
+        assert_eq!(
+            select_panel_web_root([missing, web_root.clone()])
+                .expect("complete WebUI root is selected"),
+            web_root
+        );
+        assert!(select_panel_web_root([PathBuf::from("absent")]).is_err());
     }
 }

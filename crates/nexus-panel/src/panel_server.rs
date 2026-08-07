@@ -1,4 +1,6 @@
 use std::net::SocketAddr;
+use std::path::Path;
+use std::path::PathBuf;
 
 use axum::Json;
 use axum::Router;
@@ -13,6 +15,7 @@ use axum::middleware;
 use axum::middleware::Next;
 use axum::response::IntoResponse;
 use axum::response::Response;
+use axum::routing::any;
 use axum::routing::get;
 use nexus_config::PanelConfig;
 use nexus_domain::RequestId;
@@ -24,6 +27,8 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tokio::net::TcpListener;
 use tokio::task::spawn_blocking;
+use tower_http::services::ServeDir;
+use tower_http::services::ServeFile;
 use uuid::Uuid;
 
 use crate::AuthService;
@@ -59,6 +64,7 @@ pub struct PanelServer {
     listen_address: SocketAddr,
     listener: TcpListener,
     state: PanelState,
+    web_root: Option<PathBuf>,
 }
 
 impl PanelServer {
@@ -67,6 +73,7 @@ impl PanelServer {
         let master_key = config
             .master_key()
             .ok_or(PanelError::MissingPanelMasterKey)?;
+        let web_root = validate_web_root(config.web_root())?;
         let store = SqliteStore::open_with_audit_retention(
             config.data_directory(),
             config.audit_retention_events(),
@@ -114,6 +121,7 @@ impl PanelServer {
                 extension_sources,
                 version_metadata,
             ),
+            web_root,
         })
     }
 
@@ -132,18 +140,18 @@ impl PanelServer {
 
         axum::serve(
             self.listener,
-            router(self.state).into_make_service_with_connect_info::<SocketAddr>(),
+            router(self.state, self.web_root).into_make_service_with_connect_info::<SocketAddr>(),
         )
         .await
         .map_err(PanelError::Serve)
     }
 }
 
-fn router(state: PanelState) -> Router {
+fn router(state: PanelState, web_root: Option<PathBuf>) -> Router {
     let audit_state = state.clone();
     let desktop_cors_state = state.clone();
 
-    Router::new()
+    let router = Router::new()
         .route("/api/v1/health/live", get(health))
         .route("/api/v1/health/ready", get(readiness))
         .merge(audit_routes())
@@ -160,13 +168,37 @@ fn router(state: PanelState) -> Router {
         .merge(provision_routes())
         .merge(install_template_routes())
         .merge(websocket_routes())
+        .route("/api", any(api_not_found))
+        .route("/api/{*path}", any(api_not_found))
         .with_state(state)
         .layer(middleware::from_fn_with_state(audit_state, audit_request))
         .layer(middleware::from_fn(assign_request_id))
         .layer(middleware::from_fn_with_state(
             desktop_cors_state,
             desktop_cors,
-        ))
+        ));
+
+    match web_root {
+        Some(web_root) => router.fallback_service(
+            ServeDir::new(&web_root).fallback(ServeFile::new(web_root.join("index.html"))),
+        ),
+        None => router,
+    }
+}
+
+fn validate_web_root(web_root: Option<&Path>) -> Result<Option<PathBuf>, PanelError> {
+    let Some(web_root) = web_root else {
+        return Ok(None);
+    };
+    let entry = web_root.join("index.html");
+    if !entry.is_file() {
+        return Err(PanelError::MissingWebEntry { path: entry });
+    }
+    Ok(Some(web_root.to_path_buf()))
+}
+
+async fn api_not_found() -> StatusCode {
+    StatusCode::NOT_FOUND
 }
 
 /// 为 Tauri WebView 开放受限的本地跨源请求。
@@ -299,6 +331,9 @@ async fn authenticated_user_id(
 }
 
 fn is_public_path(path: &str) -> bool {
+    if !path.starts_with("/api/") && path != "/api" {
+        return true;
+    }
     matches!(
         path,
         "/api/v1/health/live"

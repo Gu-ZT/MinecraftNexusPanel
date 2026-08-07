@@ -1,4 +1,4 @@
-import { chmodSync, cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -6,6 +6,8 @@ import { spawnSync } from 'node:child_process';
 const packageRequire = createRequire(import.meta.url);
 const repositoryRoot = resolve(import.meta.dirname, '..');
 const desktopBinaryDirectory = resolve(repositoryRoot, 'apps/desktop/src-tauri/binaries');
+const desktopWebDirectory = resolve(repositoryRoot, 'apps/desktop/src-tauri/web');
+const frontendBuildDirectory = resolve(repositoryRoot, 'frontend/app/dist');
 const releaseProfile = process.env.TAURI_ENV_DEBUG === 'true' ? 'debug' : 'release';
 const targetTriple = process.env.TAURI_ENV_TARGET_TRIPLE ?? hostTargetTriple();
 const executableName = process.platform === 'win32' ? 'mcnp.exe' : 'mcnp';
@@ -17,6 +19,7 @@ const sourceBinary = resolve(cargoTargetDirectory, executableName);
 const packagedBinary = resolve(desktopBinaryDirectory, executableName);
 
 buildFrontend();
+packageFrontend();
 
 const cargoArguments = ['build', '-p', 'mcnp', '--target', targetTriple];
 if (releaseProfile === 'release') {
@@ -63,6 +66,17 @@ function buildFrontend() {
     ['--dir', 'frontend/app', 'build'],
     repositoryRoot,
   );
+}
+
+/** 将共享 WebUI 放入 Tauri 资源目录，供发布版 sidecar 在动态 Panel 端口同源托管。 */
+function packageFrontend() {
+  const entry = resolve(frontendBuildDirectory, 'index.html');
+  if (!existsSync(entry)) {
+    throw new Error(`Frontend build output is missing: ${entry}`);
+  }
+  rmSync(desktopWebDirectory, { force: true, recursive: true });
+  cpSync(frontendBuildDirectory, desktopWebDirectory, { recursive: true });
+  writeFileSync(resolve(desktopWebDirectory, '.gitkeep'), '');
 }
 
 function resolvePackageBinary(packageName, relativePath) {

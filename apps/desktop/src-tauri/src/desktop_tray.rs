@@ -15,29 +15,36 @@ use tauri::menu::MenuItemBuilder;
 use tauri::tray::MouseButton;
 use tauri::tray::TrayIconBuilder;
 use tauri::tray::TrayIconEvent;
+use tauri_plugin_opener::OpenerExt;
 
 const MAIN_WINDOW_LABEL: &str = "main";
 const TRAY_ICON_ID: &str = "mcnp-desktop";
 const OPEN_MENU_ID: &str = "open-mcnp";
+const OPEN_WEB_MENU_ID: &str = "open-web-panel";
 const QUIT_MENU_ID: &str = "quit-mcnp";
 
 /// 创建系统托盘，显示本地 Panel 地址，并绑定显示主窗口和显式退出动作。
 pub fn setup<R: Runtime>(app: &App<R>, panel_address: &str) -> Result<()> {
     let open_item = MenuItemBuilder::with_id(OPEN_MENU_ID, "Open MCNP").build(app)?;
+    let open_web_item = MenuItemBuilder::with_id(OPEN_WEB_MENU_ID, "Open Web Panel").build(app)?;
     let quit_item = MenuItemBuilder::with_id(QUIT_MENU_ID, "Quit MCNP").build(app)?;
     let menu = MenuBuilder::new(app)
         .item(&open_item)
+        .item(&open_web_item)
         .separator()
         .item(&quit_item)
         .build()?;
+    let panel_url = panel_address.to_owned();
 
     let mut builder = TrayIconBuilder::with_id(TRAY_ICON_ID)
         .menu(&menu)
         .tooltip(format!("MCNP Panel: {panel_address}"))
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| {
+        .on_menu_event(move |app, event| {
             if event.id() == OPEN_MENU_ID {
                 show_main_window(app);
+            } else if event.id() == OPEN_WEB_MENU_ID {
+                let _ = app.opener().open_url(panel_url.clone(), None::<String>);
             } else if event.id() == QUIT_MENU_ID {
                 app.exit(0);
             }

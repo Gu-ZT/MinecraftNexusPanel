@@ -157,8 +157,8 @@ pnpm install
 pnpm desktop:build
 ```
 
-The build compiles the shared Vue application, builds the release `mcnp` executable, and
-bundles it as the local Core/Panel sidecar. The installer is written to
+The build compiles the shared Vue application, packages it for same-origin serving by Panel,
+builds the release `mcnp` executable, and bundles both as the local Core/Panel runtime. The installer is written to
 `target/release/bundle/nsis/MCNP Desktop_0.1.0_x64-setup.exe`; end users do not need
 Node.js, Rust, pnpm, or a separate MCNP download. The installer uses the system-provided
 Microsoft Edge WebView2 Runtime instead of embedding it; Windows 10/11 normally includes
@@ -171,7 +171,9 @@ device secret remains outside the WebView in the protected Desktop secrets file.
 Closing the main window keeps the local Core and Panel running in the system tray. Double-clicking
 the tray icon or choosing `Open MCNP` restores the window; `Quit MCNP` explicitly exits and stops
 the sidecar. A second launch is forwarded to the existing process and restores its window instead of
-starting another sidecar. The tray tooltip reports the active loopback Panel address selected at startup.
+starting another sidecar. The tray tooltip reports the active loopback Panel address selected at startup;
+opening that address in a browser loads the complete shared WebUI, and `Open Web Panel` opens it directly.
+Browser access keeps the normal login boundary and never receives the Desktop device secret.
 The local settings page can register MCNP for the current user's login; an autostart launch remains
 hidden in the tray until the user opens it. Sidecar stdout/stderr is collected under the application
 data `logs` directory with one rotated file, and the settings page can open that directory. Desktop

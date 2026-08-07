@@ -150,8 +150,8 @@ pnpm install
 pnpm desktop:build
 ```
 
-构建过程会编译共享 Vue 应用、构建 release `mcnp` 二进制，并将它作为本地 Core/Panel
-sidecar 封装进安装包。产物位于
+构建过程会编译共享 Vue 应用并将其作为 Panel 同源静态资源，随后构建 release `mcnp`
+二进制，再把两者作为本地 Core/Panel 运行时封装进安装包。产物位于
 `target/release/bundle/nsis/MCNP Desktop_0.1.0_x64-setup.exe`；最终用户不需要安装
 Node.js、Rust、pnpm，也不需要另行下载 MCNP。安装包不内置 WebView2 Runtime，而是使用
 系统已有的 Microsoft Edge WebView2；Windows 10/11 通常已预装该运行时，精简安装包当前
@@ -161,8 +161,9 @@ Node.js、Rust、pnpm，也不需要另行下载 MCNP。安装包不内置 WebVi
 秘密，并由 Tauri 使用随机设备秘密自动建立原生会话，无需手动登录。首次会话建立后，
 引导密码从秘密文件删除，设备秘密仍由 Desktop 保管且不会进入 WebView。
 关闭主窗口后，本地 Core/Panel 会继续在系统托盘中运行；托盘悬浮提示显示启动时选择的动态
-Panel 地址。双击托盘图标或选择 `Open MCNP` 可恢复窗口，选择 `Quit MCNP` 才会显式退出并停止
-sidecar。设置页可管理当前用户登录时启动；由登录项启动时会直接驻留托盘，不主动弹出主窗口。
+Panel 地址；该地址可在浏览器中直接打开完整共享 WebUI，也可以通过 `Open Web Panel` 菜单打开。
+浏览器继续使用正常登录边界，不会获得 Desktop 设备秘密。双击托盘图标或选择 `Open MCNP`
+可恢复窗口，选择 `Quit MCNP` 才会显式退出并停止 sidecar。设置页可管理当前用户登录时启动；由登录项启动时会直接驻留托盘，不主动弹出主窗口。
 重复启动会转交给已运行的进程并恢复主窗口，不会再次启动 sidecar。sidecar 的 stdout/stderr
 会以逐行 JSON 收集到应用数据目录的 `logs` 文件夹，写盘前遮盖已知结构化秘密字段，并保留
 一个轮转副本；设置页可以直接打开该目录。

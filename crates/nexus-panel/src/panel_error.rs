@@ -1,5 +1,6 @@
 use std::io;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 
 use nexus_storage::StorageError;
 use thiserror::Error;
@@ -33,6 +34,12 @@ pub enum PanelError {
     /// 未配置用于加密 Core 秘密的 Panel 主密钥。
     #[error("MCNP_PANEL_MASTER_KEY is required to encrypt registered Core secrets")]
     MissingPanelMasterKey,
+    /// 配置的 WebUI 目录不包含可用的 SPA 入口。
+    #[error("Panel WebUI entry file does not exist: {path}")]
+    MissingWebEntry {
+        /// Panel 期望读取的 `index.html` 路径。
+        path: PathBuf,
+    },
     /// 扩展来源服务初始化或请求失败。
     #[error(transparent)]
     ExtensionSource(#[from] ExtensionSourceError),

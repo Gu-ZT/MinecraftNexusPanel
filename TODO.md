@@ -195,7 +195,7 @@
   - [x] Desktop 首次启动生成 Panel 主密钥、Core PSK 和随机首位管理员密码，自动换取原生会话后从秘密文件删除引导密码，无需用户手动登录。
   - [x] Desktop 通过动态 loopback API 地址和原生 Bearer Token 连接内置 Panel；Panel 仅允许 Tauri 本地来源的受限 CORS。
   - [x] Desktop 退出时停止本地 sidecar；数据和秘密保存于 `%APPDATA%\dev.mcnp.desktop`。
-  - [x] 系统托盘显示动态 Panel 地址，并支持恢复主窗口和显式退出；关闭主窗口时隐藏到托盘并保持本地 Core/Panel 运行，显式退出后停止 sidecar。
+  - [x] 系统托盘显示可由浏览器直接访问完整共享 WebUI 的动态 Panel 地址，并可在系统浏览器打开；浏览器保持正常登录边界，关闭主窗口时隐藏到托盘并保持本地 Core/Panel 运行，显式退出后停止 sidecar。
   - [x] 使用操作系统当前用户登录项管理开机启动；设置页读取真实状态并可切换，登录项启动时静默驻留托盘。
   - [x] 使用官方 Tauri 单实例插件处理重复启动；第二次启动会唤醒并聚焦首个实例的主窗口，不重复启动 sidecar。
   - [x] sidecar stdout/stderr 由后台线程收集到 `%APPDATA%\dev.mcnp.desktop\logs`，日志文件达到 10 MiB 时保留一个轮转副本；设置页可打开日志目录。

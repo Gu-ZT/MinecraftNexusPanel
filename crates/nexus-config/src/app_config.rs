@@ -35,6 +35,7 @@ impl AppConfig {
             environment_or_default("MCNP_PANEL_LISTEN", PanelConfig::DEFAULT_LISTEN_ADDRESS);
         let mut panel_audit_retention_events = environment_optional("MCNP_AUDIT_RETENTION_EVENTS")
             .unwrap_or_else(|| PanelConfig::DEFAULT_AUDIT_RETENTION_EVENTS.to_string());
+        let mut panel_web_root = environment_optional("MCNP_PANEL_WEB_ROOT");
         let mut data_directory = environment_or_default("MCNP_DATA_DIR", "data");
         let mut log_filter = environment_or_default("MCNP_LOG_FILTER", "info");
         let core_pre_shared_key = environment_optional("MCNP_CORE_PSK");
@@ -84,6 +85,9 @@ impl AppConfig {
                     panel_audit_retention_events =
                         next_value(&mut arguments, "--panel-audit-retention-events")?;
                 }
+                "--panel-web-root" => {
+                    panel_web_root = Some(next_value(&mut arguments, "--panel-web-root")?);
+                }
                 "--data-dir" => data_directory = next_value(&mut arguments, "--data-dir")?,
                 "--log-filter" => log_filter = next_value(&mut arguments, "--log-filter")?,
                 "--help" | "-h" => return Err(ConfigError::HelpRequested),
@@ -130,6 +134,9 @@ impl AppConfig {
         }
         if let Some(master_key) = panel_master_key {
             panel = panel.with_master_key(master_key);
+        }
+        if let Some(web_root) = panel_web_root {
+            panel = panel.with_web_root(PathBuf::from(web_root));
         }
         let logging = LoggingConfig::new(log_filter)?;
 
@@ -178,6 +185,7 @@ impl AppConfig {
             "  --panel-listen ADDRESS   Panel HTTP listen address\n",
             "  --panel-audit-retention-events COUNT\n",
             "                           Retained Panel audit event count (100-100000)\n",
+            "  --panel-web-root PATH    Static WebUI directory served by Panel\n",
             "  --data-dir PATH          Runtime data directory\n",
             "  --log-filter FILTER      tracing filter directive\n",
             "  -h, --help               Print help\n",
@@ -189,6 +197,7 @@ impl AppConfig {
             "  MCNP_CORE_TLS_KEY         Optional Core TLS private key path\n",
             "  MCNP_PANEL_LISTEN         Default Panel HTTP listen address\n",
             "  MCNP_PANEL_MASTER_KEY     Required by panel and all; 32-byte unpadded Base64URL key\n",
+            "  MCNP_PANEL_WEB_ROOT       Static WebUI directory served by Panel\n",
             "  MCNP_AUDIT_RETENTION_EVENTS  Retained Panel audit event count (default 10000)\n",
             "  MCNP_INITIAL_ADMIN_USERNAME  Initial administrator username for an empty database\n",
             "  MCNP_INITIAL_ADMIN_PASSWORD  Initial administrator password for an empty database\n",
@@ -238,6 +247,8 @@ mod tests {
             "127.0.0.1:8080",
             "--panel-audit-retention-events",
             "2500",
+            "--panel-web-root",
+            "web-ui",
             "--data-dir",
             "runtime-data",
             "--log-filter",
@@ -270,6 +281,13 @@ mod tests {
         );
         assert_eq!(config.logging().filter(), "debug");
         assert_eq!(config.panel().audit_retention_events(), 2500);
+        assert_eq!(
+            config
+                .panel()
+                .web_root()
+                .expect("Panel WebUI root is configured"),
+            PathBuf::from("web-ui")
+        );
     }
 
     #[test]

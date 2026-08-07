@@ -24,8 +24,8 @@ pnpm install
 pnpm desktop:build
 ```
 
-构建脚本会依次构建 Vue 前端、构建 release `mcnp` 二进制，并将它复制到 Tauri
-资源目录。默认产物是：
+构建脚本会依次构建 Vue 前端、把 WebUI 复制到 Tauri 资源目录、构建 release `mcnp`
+二进制，并将 sidecar 一并复制到资源目录。默认产物是：
 
 ```text
 target/release/bundle/nsis/MCNP Desktop_0.1.0_x64-setup.exe
@@ -50,7 +50,9 @@ Desktop 会通过 Tauri 持有的随机设备秘密自动换取原生会话，�
 [`docs/operations/initial-administrator.md`](../../docs/operations/initial-administrator.md)。
 
 关闭主窗口时应用会隐藏到系统托盘，本地 Core/Panel 继续运行。托盘悬浮提示显示当前动态
-Panel 地址；双击托盘图标或选择 `Open MCNP` 可恢复主窗口，选择 `Quit MCNP` 才会退出应用并停止本地 sidecar。当前版本已交付
+Panel 地址；该地址由 Panel 同源托管完整共享 WebUI，可直接在浏览器访问，也可通过
+`Open Web Panel` 菜单打开。浏览器仍需正常登录，Tauri 的设备秘密不会进入浏览器。
+双击托盘图标或选择 `Open MCNP` 可恢复主窗口，选择 `Quit MCNP` 才会退出应用并停止本地 sidecar。当前版本已交付
 Windows x64 独立 sidecar 安装包。重复启动会转交给已运行的进程并恢复主窗口，不会再次启动
 sidecar。sidecar 的 stdout/stderr 会收集到 `%APPDATA%\dev.mcnp.desktop\logs`，日志文件达到
 10 MiB 时保留一个轮转副本；Desktop 请求逐行 JSON，并在写盘前递归遮盖已知秘密字段。
