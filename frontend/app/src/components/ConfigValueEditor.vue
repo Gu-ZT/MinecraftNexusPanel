@@ -306,7 +306,7 @@ code {
   width: 100%;
   min-height: 2.25rem;
   border-color: var(--mcnp-border);
-  border-radius: 4px;
+  border-radius: var(--mcnp-radius-sm);
   background: var(--mcnp-surface);
   color: var(--mcnp-text);
 }
@@ -321,7 +321,7 @@ code {
   display: grid;
   gap: 0.5rem;
   border: 1px solid var(--mcnp-border);
-  border-radius: 4px;
+  border-radius: var(--mcnp-radius-sm);
   padding: 0.65rem;
   background: var(--mcnp-surface-raised);
 }

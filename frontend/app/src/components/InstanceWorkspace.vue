@@ -27,6 +27,8 @@ import type { Core, Instance, LogLine, PanelApiClient } from '@mcnp/api-client';
 
 import ConfigEditor from './ConfigEditor.vue';
 import InstanceFileManager from './InstanceFileManager.vue';
+import StatusBadge from './StatusBadge.vue';
+import TerminalPanel from './TerminalPanel.vue';
 import {
   canStartInstance,
   canStopInstance,
@@ -144,12 +146,13 @@ function statusLabel(status: string): string {
     </nav>
 
     <header class="instance-heading">
-      <div>
+      <div class="instance-heading__identity">
         <span :class="['instance-heading__mark', statusClass(instance.runtime.state)]"></span>
-        <div>
+        <div class="instance-heading__text">
           <h1>{{ instance.name }}</h1>
           <p>{{ instance.kind }} · {{ instance.id }} · {{ core.name }}</p>
         </div>
+        <StatusBadge :status="instance.runtime.state" :label="statusLabel(instance.runtime.state)" />
       </div>
       <div class="lifecycle-actions">
         <a-button
@@ -258,15 +261,20 @@ function statusLabel(status: string): string {
       <div v-else-if="activeView === 'console'" class="console-view">
         <p v-if="errorMessage" class="form-error workspace-message" role="alert">{{ errorMessage }}</p>
         <p v-else-if="noticeMessage" class="notice workspace-message" role="status">{{ noticeMessage }}</p>
-        <section class="terminal-shell">
-          <header class="terminal-toolbar">
-            <span><IconCode /> {{ t('console.output') }} <small>{{ logs.length }}</small></span>
+        <TerminalPanel :title="`${t('console.output')} · ${logs.length}`" :busy="logsLoading">
+          <template #toolbar>
             <a-tooltip :content="t('console.refreshOutput')">
-              <a-button type="text" size="mini" :loading="logsLoading" :aria-label="t('console.refreshOutput')" @click="loadLogs(true)">
+              <a-button
+                type="text"
+                size="mini"
+                :loading="logsLoading"
+                :aria-label="t('console.refreshOutput')"
+                @click="loadLogs(true)"
+              >
                 <template #icon><IconRefresh /></template>
               </a-button>
             </a-tooltip>
-          </header>
+          </template>
           <a-spin class="log-spinner" :loading="logsLoading && !logs.length">
             <div class="log-pane">
               <a-empty v-if="logs.length === 0" :description="t('console.emptyOutput')" />
@@ -278,16 +286,18 @@ function statusLabel(status: string): string {
               </ol>
             </div>
           </a-spin>
-        </section>
-        <form class="command-row" @submit.prevent="sendCommand">
-          <a-input v-model="command" :disabled="commandPending" :placeholder="t('console.commandPlaceholder')">
-            <template #prefix><IconCommand /></template>
-          </a-input>
-          <a-button type="primary" html-type="submit" :loading="commandPending" :disabled="!command.trim()">
-            <template #icon><IconSend /></template>
-            {{ t('common.send') }}
-          </a-button>
-        </form>
+          <template #input>
+            <form class="command-row" @submit.prevent="sendCommand">
+              <a-input v-model="command" :disabled="commandPending" :placeholder="t('console.commandPlaceholder')">
+                <template #prefix><IconCommand /></template>
+              </a-input>
+              <a-button type="primary" html-type="submit" :loading="commandPending" :disabled="!command.trim()">
+                <template #icon><IconSend /></template>
+                {{ t('common.send') }}
+              </a-button>
+            </form>
+          </template>
+        </TerminalPanel>
       </div>
 
       <ConfigEditor
@@ -347,21 +357,32 @@ function statusLabel(status: string): string {
 
 .instance-heading {
   display: flex;
-  min-height: 4.3rem;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+  margin-bottom: 0.85rem;
+  border: 1px solid var(--mcnp-border);
+  border-radius: var(--mcnp-radius);
+  padding: 0.95rem 1.1rem;
+  background: var(--mcnp-surface);
+  box-shadow: var(--mcnp-shadow);
 }
 
-.instance-heading > div,
+.instance-heading__identity,
 .lifecycle-actions {
   display: flex;
   align-items: center;
 }
 
-.instance-heading > div:first-child {
+.instance-heading__identity {
   min-width: 0;
   gap: 0.75rem;
+}
+
+.instance-heading__text {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
 }
 
 .instance-heading__mark {
@@ -385,7 +406,6 @@ function statusLabel(status: string): string {
 }
 
 .instance-heading p {
-  margin-top: 0.25rem;
   color: var(--mcnp-text-faint);
   font-size: 0.66rem;
 }
@@ -397,35 +417,39 @@ function statusLabel(status: string): string {
 
 .instance-tabs {
   display: flex;
-  min-height: 2.75rem;
-  align-items: stretch;
-  gap: 0.2rem;
+  align-items: center;
+  gap: 0.25rem;
+  margin-bottom: 0.85rem;
   border: 1px solid var(--mcnp-border);
-  border-bottom: 0;
-  border-radius: var(--mcnp-radius) var(--mcnp-radius) 0 0;
-  padding: 0 0.5rem;
+  border-radius: var(--mcnp-radius-sm);
+  padding: 0.25rem;
   background: var(--mcnp-surface-raised);
 }
 
 .instance-tab {
   display: inline-flex;
+  min-height: 2.25rem;
   align-items: center;
-  gap: 0.4rem;
-  border-bottom: 2px solid transparent;
-  padding: 0 0.7rem;
+  gap: 0.45rem;
+  border-radius: var(--mcnp-radius-sm);
+  padding: 0 0.8rem;
   color: var(--mcnp-text-muted);
   font-size: 0.72rem;
   font-weight: 600;
   text-decoration: none;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
 }
 
-.instance-tab:hover,
+.instance-tab:hover {
+  background: var(--mcnp-surface-hover);
+  color: var(--mcnp-text);
+}
+
 .instance-tab.active {
+  background: var(--mcnp-primary-soft);
   color: var(--mcnp-primary);
-}
-
-.instance-tab.active {
-  border-bottom-color: var(--mcnp-primary);
 }
 
 .instance-content {
@@ -435,7 +459,9 @@ function statusLabel(status: string): string {
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--mcnp-border);
+  border-radius: var(--mcnp-radius);
   background: var(--mcnp-surface);
+  box-shadow: var(--mcnp-shadow);
 }
 
 .overview-view {
@@ -448,7 +474,7 @@ function statusLabel(status: string): string {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   border: 1px solid var(--mcnp-border);
-  border-radius: 4px;
+  border-radius: var(--mcnp-radius);
   background: var(--mcnp-surface-raised);
 }
 
@@ -487,7 +513,7 @@ function statusLabel(status: string): string {
 .detail-panel {
   overflow: hidden;
   border: 1px solid var(--mcnp-border);
-  border-radius: 4px;
+  border-radius: var(--mcnp-radius);
 }
 
 .detail-panel header {
@@ -532,44 +558,14 @@ function statusLabel(status: string): string {
   flex-direction: column;
 }
 
-.terminal-shell {
-  display: flex;
+.console-view > :deep(.terminal-panel) {
   min-height: 24rem;
   flex: 1;
-  flex-direction: column;
-  margin: 0.75rem 0.75rem 0;
-  overflow: hidden;
-  border: 1px solid #2c2e33;
-  border-radius: 4px 4px 0 0;
-  background: var(--mcnp-console);
-}
-
-.terminal-toolbar {
-  display: flex;
-  min-height: 2.25rem;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 0.45rem 0 0.75rem;
-  border-bottom: 1px solid #2c2e33;
-  background: #18191c;
-  color: #b7bbc3;
-  font-size: 0.68rem;
-}
-
-.terminal-toolbar > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-}
-
-.terminal-toolbar small {
-  color: #6f747e;
 }
 
 .log-spinner {
   display: block;
-  min-height: 0;
-  flex: 1;
+  height: 100%;
 }
 
 .log-spinner :deep(.arco-spin),
@@ -582,7 +578,7 @@ function statusLabel(status: string): string {
   overflow: auto;
   padding: 0.75rem;
   color: #c9cdd4;
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
 }
 
 .log-pane ol {

@@ -23,7 +23,9 @@
     "send": "发送",
     "status": "状态",
     "unknown": "未知",
-    "viewAll": "查看全部"
+    "viewAll": "查看全部",
+    "collapse": "收起",
+    "expand": "展开"
   },
   "auth": {
     "eyebrow": "MCNP CONSOLE",
@@ -77,10 +79,13 @@
     "audit": "最近审计",
     "auditHint": "当前账号有权读取的 Panel 请求",
     "auditEmpty": "暂无可显示的审计事件",
-    "exportAudit": "导出 NDJSON"
+    "exportAudit": "导出 NDJSON",
+    "instanceDistribution": "实例状态分布",
+    "instanceDistributionHint": "当前实例按运行状态分组统计"
   },
   "cores": {
     "title": "Core 节点",
+    "short": "Core",
     "empty": "尚未连接 Core",
     "latency": "{value} ms"
   },
@@ -283,6 +288,9 @@
     "saved": "文件已保存",
     "uploaded": "已上传 {count} 个文件",
     "downloaded": "文件已下载",
+    "transferProgress": "传输进度",
+    "uploading": "正在上传",
+    "downloading": "正在下载",
     "deleted": "文件已删除",
     "deleteConfirm": "确定要删除“{name}”吗？目录将递归删除。",
     "editorSizeLimit": "在线编辑仅支持不超过 1 MiB 的文件",

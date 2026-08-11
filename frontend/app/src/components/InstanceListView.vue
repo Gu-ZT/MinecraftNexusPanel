@@ -45,6 +45,8 @@ import type {
 } from '@mcnp/api-client';
 
 import { canStartInstance, canStopInstance, describeError, statusClass } from '../utils/presentation';
+import PageHeader from './PageHeader.vue';
+import StatusBadge from './StatusBadge.vue';
 
 type CreateStep = 1 | 2 | 3;
 type LaunchProfile = 'java' | 'bedrock-native' | 'pocketmine' | 'custom';
@@ -657,19 +659,15 @@ function canReset(state: InstanceState): boolean {
 
 <template>
   <main class="console-page">
-    <header class="page-heading page-heading--toolbar">
-      <div>
-        <p class="page-eyebrow"><IconApps /> {{ t('instances.eyebrow') }}</p>
-        <h1>{{ t('instances.title') }}</h1>
-      </div>
+    <PageHeader :eyebrow="t('instances.eyebrow')" :title="t('instances.title')">
       <div class="instance-page-actions">
         <p>{{ t('instances.summary', { filtered: filteredInstances.length, total: instances.length }) }}</p>
-        <a-button type="primary" :disabled="cores.length === 0" @click="openCreate">
+        <a-button class="instance-create-button" type="primary" :disabled="cores.length === 0" @click="openCreate">
           <template #icon><IconPlus /></template>
           {{ t('instances.create') }}
         </a-button>
       </div>
-    </header>
+    </PageHeader>
 
     <section class="filter-bar">
       <a-select
@@ -692,12 +690,12 @@ function canReset(state: InstanceState): boolean {
       <section v-if="pagedInstances.length" class="instance-card-grid">
         <article v-for="instance in pagedInstances" :key="`${instance.coreId}:${instance.id}`" class="instance-card">
           <header>
-            <span :class="['instance-card__mark', statusClass(instance.runtime.state)]"></span>
+            <i :class="['instance-card__mark', statusClass(instance.runtime.state)]"></i>
             <div>
               <h2>{{ instance.name }}</h2>
               <p>{{ coreName(instance.coreId) }} · {{ instance.kind }}</p>
             </div>
-            <i :class="statusClass(instance.runtime.state)"><span></span>{{ statusLabel(instance.runtime.state) }}</i>
+            <StatusBadge :status="instance.runtime.state" :label="statusLabel(instance.runtime.state)" />
           </header>
 
           <dl>
@@ -1076,24 +1074,31 @@ function canReset(state: InstanceState): boolean {
 .create-progress {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  border-bottom: 1px solid var(--mcnp-border);
+  gap: 0.25rem;
+  border: 1px solid var(--mcnp-border);
+  border-radius: var(--mcnp-radius-sm);
+  padding: 0.25rem;
+  background: var(--mcnp-surface-raised);
 }
 
 .create-progress button {
   display: flex;
   min-width: 0;
-  min-height: 3rem;
+  min-height: 2.75rem;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
   border: 0;
-  border-bottom: 2px solid transparent;
-  padding: 0.55rem 0.7rem;
+  border-radius: var(--mcnp-radius-sm);
+  padding: 0.5rem 0.7rem;
   background: transparent;
   color: var(--mcnp-text-faint);
   cursor: pointer;
   font-size: 0.72rem;
   font-weight: 650;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
 }
 
 .create-progress button:not(:disabled):hover {
@@ -1102,7 +1107,7 @@ function canReset(state: InstanceState): boolean {
 }
 
 .create-progress button.active {
-  border-bottom-color: var(--mcnp-primary);
+  background: var(--mcnp-primary-soft);
   color: var(--mcnp-primary);
 }
 
@@ -1123,6 +1128,16 @@ function canReset(state: InstanceState): boolean {
   border: 1px solid currentColor;
   border-radius: 50%;
   place-items: center;
+}
+
+.create-progress button.active > span {
+  border-color: var(--mcnp-primary);
+  background: var(--mcnp-primary-soft);
+}
+
+.create-progress button.complete > span {
+  border-color: var(--mcnp-success);
+  background: var(--mcnp-success-soft);
 }
 
 .create-step {
@@ -1376,13 +1391,23 @@ function canReset(state: InstanceState): boolean {
   display: grid;
   grid-template-columns: minmax(10rem, 14rem) minmax(9rem, 12rem) minmax(15rem, 1fr);
   gap: 0.65rem;
-  margin-bottom: 0.85rem;
+  border: 1px solid var(--mcnp-border);
+  border-radius: var(--mcnp-radius);
+  padding: 0.7rem;
+  background: var(--mcnp-surface);
+  box-shadow: var(--mcnp-shadow);
+  margin-bottom: 1rem;
 }
 
 .filter-bar :deep(.arco-select-view),
 .filter-bar :deep(.arco-input-wrapper) {
   border-color: var(--mcnp-border);
   background: var(--mcnp-surface);
+}
+
+.instance-create-button {
+  background-image: var(--mcnp-gradient-primary);
+  border-color: transparent;
 }
 
 .instance-card-grid {
@@ -1400,6 +1425,17 @@ function canReset(state: InstanceState): boolean {
   border: 1px solid var(--mcnp-border);
   border-radius: var(--mcnp-radius);
   background: var(--mcnp-surface);
+  box-shadow: var(--mcnp-shadow);
+  transition:
+    transform 160ms ease-out,
+    box-shadow 160ms ease-out,
+    border-color 160ms ease-out;
+}
+
+.instance-card:hover {
+  border-color: var(--mcnp-border-subtle);
+  box-shadow: var(--mcnp-shadow-hover);
+  transform: translateY(-1px);
 }
 
 .instance-card > header {

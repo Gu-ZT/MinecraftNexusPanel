@@ -7,7 +7,7 @@ import {
   Select as ASelect,
   Switch as ASwitch,
 } from '@arco-design/web-vue';
-import { IconComputer, IconFolder, IconLanguage, IconMoon, IconPoweroff, IconSettings, IconSun } from '@arco-design/web-vue/es/icon';
+import { IconComputer, IconFolder, IconLanguage, IconMoon, IconPoweroff, IconSun } from '@arco-design/web-vue/es/icon';
 import { useI18n } from 'vue-i18n';
 
 import type { PlatformKind } from '@mcnp/platform';
@@ -15,6 +15,7 @@ import type { PlatformKind } from '@mcnp/platform';
 import type { ThemePreference } from '../composables/useTheme';
 import { useTheme } from '../composables/useTheme';
 import { availableLocales, localePreference, setLocalePreference } from '../i18n';
+import PageHeader from './PageHeader.vue';
 
 defineProps<{
   platformKind: PlatformKind;
@@ -57,13 +58,9 @@ function openLogs(): void {
 
 <template>
   <main class="console-page settings-page">
-    <header class="page-heading">
-      <div>
-        <p class="page-eyebrow"><IconSettings /> {{ t('settings.eyebrow') }}</p>
-        <h1>{{ t('settings.title') }}</h1>
-      </div>
+    <PageHeader :eyebrow="t('settings.eyebrow')" :title="t('settings.title')">
       <p>{{ t('settings.summary') }}</p>
-    </header>
+    </PageHeader>
 
     <section class="settings-section">
       <header>
@@ -166,6 +163,7 @@ function openLogs(): void {
   border: 1px solid var(--mcnp-border);
   border-radius: var(--mcnp-radius);
   background: var(--mcnp-surface);
+  box-shadow: var(--mcnp-shadow);
 }
 
 .settings-section + .settings-section {
@@ -186,7 +184,7 @@ function openLogs(): void {
   display: grid;
   width: 2.3rem;
   height: 2.3rem;
-  border-radius: 5px;
+  border-radius: var(--mcnp-radius-sm);
   place-items: center;
   background: var(--mcnp-primary-soft);
   color: var(--mcnp-primary);

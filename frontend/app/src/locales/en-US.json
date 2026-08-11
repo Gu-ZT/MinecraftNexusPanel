@@ -23,7 +23,9 @@
     "send": "Send",
     "status": "Status",
     "unknown": "Unknown",
-    "viewAll": "View all"
+    "viewAll": "View all",
+    "collapse": "Collapse",
+    "expand": "Expand"
   },
   "auth": {
     "eyebrow": "MCNP CONSOLE",
@@ -77,10 +79,13 @@
     "audit": "Recent audit",
     "auditHint": "Panel requests visible to the current account",
     "auditEmpty": "No audit events are available",
-    "exportAudit": "Export NDJSON"
+    "exportAudit": "Export NDJSON",
+    "instanceDistribution": "Instance status distribution",
+    "instanceDistributionHint": "Instances grouped by runtime state"
   },
   "cores": {
     "title": "Core nodes",
+    "short": "Core",
     "empty": "No Core connected",
     "latency": "{value} ms"
   },
@@ -283,6 +288,9 @@
     "saved": "File saved",
     "uploaded": "Uploaded {count} files",
     "downloaded": "File downloaded",
+    "transferProgress": "Transfer progress",
+    "uploading": "Uploading",
+    "downloading": "Downloading",
     "deleted": "File deleted",
     "deleteConfirm": "Delete “{name}”? Directories are deleted recursively.",
     "editorSizeLimit": "The online editor supports files up to 1 MiB",

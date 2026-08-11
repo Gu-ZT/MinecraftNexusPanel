@@ -22,7 +22,7 @@ import type {
 } from '@mcnp/api-client';
 import type { DesktopRuntimeInfo } from '@mcnp/platform';
 
-import ControlPanelHeader from '../components/ControlPanelHeader.vue';
+import AppShell from '../components/AppShell.vue';
 import DashboardView from '../components/DashboardView.vue';
 import InstanceListView from '../components/InstanceListView.vue';
 import InstanceWorkspace from '../components/InstanceWorkspace.vue';
@@ -30,7 +30,6 @@ import LocalSettingsView from '../components/LocalSettingsView.vue';
 import NodeListView from '../components/NodeListView.vue';
 import PreferenceControls from '../components/PreferenceControls.vue';
 import UserListView from '../components/UserListView.vue';
-import { projectIconUrl } from '../project-icon';
 import { useApplicationStore } from '../stores/application';
 import { describeError } from '../utils/presentation';
 
@@ -537,7 +536,7 @@ function clearSession(): void {
     <div class="login-utilities"><PreferenceControls /></div>
     <section class="login-panel">
       <div class="login-brand">
-        <img class="brand-mark" :src="projectIconUrl" alt="" aria-hidden="true" />
+        <span class="login-brand__mark" aria-hidden="true">M</span>
         <span>{{ t('app.name') }}</span>
       </div>
       <div class="login-heading">
@@ -563,17 +562,16 @@ function clearSession(): void {
     </section>
   </form>
 
-  <div v-else class="control-shell">
-    <ControlPanelHeader
-      :user="currentUser"
-      :cores="cores"
-      :loading="loading"
-      :signing-out="actionPending === 'logout'"
-      :show-sign-out="application.platform.kind !== 'desktop'"
-      @refresh="loadWorkspace"
-      @sign-out="signOut"
-    />
-
+  <AppShell
+    v-else
+    :user="currentUser"
+    :cores="cores"
+    :loading="loading"
+    :signing-out="actionPending === 'logout'"
+    :show-sign-out="application.platform.kind !== 'desktop'"
+    @refresh="loadWorkspace"
+    @sign-out="signOut"
+  >
     <div v-if="errorMessage || noticeMessage" class="global-feedback">
       <p v-if="errorMessage" class="form-error" role="alert">{{ errorMessage }}</p>
       <p v-else class="notice" role="status">{{ noticeMessage }}</p>
@@ -629,8 +627,8 @@ function clearSession(): void {
       :action-pending="actionPending"
       @action="runLifecycleAction"
     />
-    <main v-else class="console-page"><a-empty :description="t('instances.notFound')" /></main>
-  </div>
+    <div v-else class="console-page"><a-empty :description="t('instances.notFound')" /></div>
+  </AppShell>
 </template>
 
 <style scoped>
@@ -652,21 +650,51 @@ function clearSession(): void {
 }
 
 .login-shell {
+  position: relative;
   display: grid;
   box-sizing: border-box;
   min-height: 100vh;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr;
+  overflow: hidden;
   padding: 1rem 1.25rem 3rem;
   background: var(--mcnp-bg);
 }
 
+/* 装饰性渐变光斑：纯 CSS 径向渐变，不引入图片（docs/design/frontend-design.md §4.1） */
+.login-shell::before,
+.login-shell::after {
+  position: absolute;
+  border-radius: 50%;
+  content: '';
+  pointer-events: none;
+}
+
+.login-shell::before {
+  top: -14rem;
+  left: -10rem;
+  width: 30rem;
+  height: 30rem;
+  background: radial-gradient(circle, var(--mcnp-primary-soft), transparent 65%);
+}
+
+.login-shell::after {
+  right: -12rem;
+  bottom: -14rem;
+  width: 34rem;
+  height: 34rem;
+  background: radial-gradient(circle, var(--mcnp-accent), transparent 65%);
+  opacity: 0.55;
+}
+
 .login-utilities {
+  z-index: 1;
   display: flex;
   justify-content: flex-end;
 }
 
 .login-panel {
+  z-index: 1;
   display: grid;
   box-sizing: border-box;
   align-self: center;
@@ -675,10 +703,12 @@ function clearSession(): void {
   min-width: 0;
   gap: 1.05rem;
   border: 1px solid var(--mcnp-border);
-  border-radius: var(--mcnp-radius);
-  padding: 1.75rem;
-  background: var(--mcnp-surface);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+  border-radius: var(--mcnp-radius-lg);
+  padding: 2rem;
+  background: var(--mcnp-glass);
+  box-shadow: var(--mcnp-shadow-hover);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
 }
 
 .login-brand {
@@ -690,12 +720,18 @@ function clearSession(): void {
   font-weight: 600;
 }
 
-.brand-mark {
-  width: 2rem;
-  height: 2rem;
-  flex: 0 0 2rem;
-  border-radius: 4px;
-  object-fit: cover;
+.login-brand__mark {
+  display: grid;
+  width: 2.4rem;
+  height: 2.4rem;
+  flex: 0 0 2.4rem;
+  border-radius: 11px;
+  place-items: center;
+  background: var(--mcnp-gradient-primary);
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 800;
+  box-shadow: var(--mcnp-shadow);
 }
 
 .login-heading {
@@ -742,12 +778,6 @@ function clearSession(): void {
   color: var(--mcnp-text-muted);
   font-size: 0.8rem;
   font-weight: 600;
-}
-
-.control-shell {
-  min-height: 100vh;
-  background: var(--mcnp-bg);
-  color: var(--mcnp-text);
 }
 
 .global-feedback {

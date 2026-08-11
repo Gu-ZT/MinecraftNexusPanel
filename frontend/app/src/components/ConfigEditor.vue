@@ -358,7 +358,12 @@ function describeError(error: unknown, fallback: string): string {
   min-height: 0;
   flex: 1;
   grid-template-columns: minmax(13rem, 18rem) minmax(0, 1fr);
+  align-items: start;
+  gap: 0.85rem;
+  padding: 0.85rem;
 }
+
+/* 左列文档列表卡 + 右列编辑器卡（docs/design/frontend-design.md §4.4） */
 
 .config-documents {
   display: grid;
@@ -366,8 +371,9 @@ function describeError(error: unknown, fallback: string): string {
   gap: 0.45rem;
   min-width: 0;
   overflow: auto;
-  padding: 0.75rem;
-  border-right: 1px solid var(--mcnp-border);
+  border: 1px solid var(--mcnp-border);
+  border-radius: var(--mcnp-radius);
+  padding: 0.6rem;
   background: var(--mcnp-surface-raised);
 }
 
@@ -377,12 +383,15 @@ function describeError(error: unknown, fallback: string): string {
   width: 100%;
   min-width: 0;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--mcnp-radius-sm);
   padding: 0.65rem;
   background: transparent;
   color: var(--mcnp-text);
   cursor: pointer;
   text-align: left;
+  transition:
+    background-color 150ms ease-out,
+    border-color 150ms ease-out;
 }
 
 .config-document.selected {
@@ -417,7 +426,10 @@ function describeError(error: unknown, fallback: string): string {
   gap: 0.8rem;
   min-width: 0;
   overflow: auto;
+  border: 1px solid var(--mcnp-border);
+  border-radius: var(--mcnp-radius);
   padding: 1rem;
+  background: var(--mcnp-surface);
 }
 
 .config-fields {
@@ -475,6 +487,7 @@ function describeError(error: unknown, fallback: string): string {
   display: grid;
   gap: 0.25rem;
   border-left: 3px solid var(--mcnp-border);
+  border-radius: var(--mcnp-radius-sm);
   padding: 0.45rem 0.6rem;
   background: var(--mcnp-surface-raised);
   color: var(--mcnp-text-muted);
@@ -498,8 +511,6 @@ function describeError(error: unknown, fallback: string): string {
 
   .config-documents {
     max-height: 12rem;
-    border-right: 0;
-    border-bottom: 1px solid var(--mcnp-border);
   }
 }
 </style>

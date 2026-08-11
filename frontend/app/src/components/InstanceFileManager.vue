@@ -30,6 +30,7 @@ import type { FileEntry, FileTask, PanelApiClient } from '@mcnp/api-client';
 
 import { describeError, formatBytes, formatDate } from '../utils/presentation';
 import { Sha256Digest } from '../utils/sha256-digest';
+import TaskProgressCard from './TaskProgressCard.vue';
 
 const props = defineProps<{
   client: PanelApiClient;
@@ -58,6 +59,9 @@ const editorEntry = ref<FileEntry | null>(null);
 const editorContent = ref('');
 const editorSha256 = ref('');
 const editorLoading = ref(false);
+
+const transferring = computed(() => pending.value === 'upload' || pending.value.startsWith('download:'));
+const transferLabel = computed(() => (pending.value.startsWith('download:') ? t('files.downloading') : t('files.uploading')));
 
 const sortedEntries = computed(() =>
   [...entries.value]
@@ -460,7 +464,6 @@ async function hashFile(file: File, reportProgress: (fraction: number) => void):
       <span class="file-path">/{{ currentPath }}</span>
     </nav>
 
-    <a-progress v-if="pending === 'upload' || pending.startsWith('download:')" :percent="progress / 100" :show-text="true" />
     <p v-if="errorMessage" class="form-error" role="alert">{{ errorMessage }}</p>
     <p v-else-if="noticeMessage" class="notice" role="status">{{ noticeMessage }}</p>
 
@@ -554,6 +557,13 @@ async function hashFile(file: File, reportProgress: (fraction: number) => void):
         </div>
       </a-spin>
     </a-modal>
+
+    <TaskProgressCard :title="t('files.transferProgress')" :visible="transferring">
+      <div class="transfer-progress-row">
+        <span>{{ transferLabel }}</span>
+        <a-progress :percent="progress / 100" :show-text="true" />
+      </div>
+    </TaskProgressCard>
   </section>
 </template>
 
@@ -594,7 +604,7 @@ async function hashFile(file: File, reportProgress: (fraction: number) => void):
   gap: 0.25rem;
   overflow-x: auto;
   border: 1px solid var(--mcnp-border);
-  border-radius: 4px;
+  border-radius: var(--mcnp-radius-sm);
   padding: 0.35rem 0.5rem;
   background: var(--mcnp-surface-raised);
 }
@@ -621,7 +631,7 @@ async function hashFile(file: File, reportProgress: (fraction: number) => void):
 .file-path {
   margin-left: auto;
   color: var(--mcnp-text-faint);
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.62rem;
   white-space: nowrap;
 }
@@ -636,7 +646,8 @@ async function hashFile(file: File, reportProgress: (fraction: number) => void):
   height: 100%;
   overflow: auto;
   border: 1px solid var(--mcnp-border);
-  border-radius: 4px;
+  border-radius: var(--mcnp-radius-sm);
+  background: var(--mcnp-surface);
 }
 
 .file-table {
@@ -703,6 +714,16 @@ async function hashFile(file: File, reportProgress: (fraction: number) => void):
   white-space: nowrap;
 }
 
+.transfer-progress-row {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.transfer-progress-row span {
+  color: var(--mcnp-text-muted);
+  font-size: 0.72rem;
+}
+
 .file-dialog {
   display: grid;
   gap: 1rem;
@@ -723,7 +744,7 @@ async function hashFile(file: File, reportProgress: (fraction: number) => void):
 
 .file-editor :deep(textarea) {
   height: 100%;
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.72rem;
   line-height: 1.55;
 }

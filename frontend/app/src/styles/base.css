@@ -1,28 +1,71 @@
+/*
+ * MCNP 前端 v2 设计令牌（docs/design/frontend-design.md §2）
+ *
+ * 浅色/深色双主题通过 :root 与 :root[arco-theme='dark'] 定义，所有组件只消费 --mcnp-* 变量，
+ * 禁止硬编码颜色、圆角与阴影。Arco 变量（--primary-6、--color-bg-* 等）在此桥接到令牌，
+ * 使 Arco 控件与外壳保持同色。
+ */
+
 :root {
   color-scheme: light;
   color: #1d2129;
-  background: #f2f3f5;
-  --mcnp-bg: #f2f3f5;
-  --mcnp-header: #ffffff;
+  background: #f4f6fb;
+
+  /* 色彩 */
+  --mcnp-bg: #f4f6fb;
   --mcnp-surface: #ffffff;
-  --mcnp-surface-raised: #f7f8fa;
-  --mcnp-surface-hover: #f2f3f5;
-  --mcnp-console: #17181a;
-  --mcnp-border: #e5e6eb;
-  --mcnp-border-subtle: #f0f1f2;
+  --mcnp-surface-raised: #f7f9fc;
+  --mcnp-surface-hover: #eef2f8;
+  --mcnp-glass: rgba(255, 255, 255, 0.72);
+  --mcnp-border: #e6eaf2;
+  --mcnp-border-subtle: #f0f2f6;
   --mcnp-text: #1d2129;
   --mcnp-text-muted: #4e5969;
   --mcnp-text-faint: #86909c;
-  --mcnp-primary: #165dff;
-  --mcnp-primary-hover: #4080ff;
-  --mcnp-primary-soft: rgba(22, 93, 255, 0.1);
-  --mcnp-success: #00a52b;
-  --mcnp-warning: #d76b00;
-  --mcnp-danger: #e63535;
-  --mcnp-danger-soft: rgba(245, 63, 63, 0.1);
-  --mcnp-success-soft: rgba(0, 180, 42, 0.1);
-  --mcnp-warning-soft: rgba(255, 125, 0, 0.12);
-  --mcnp-radius: 6px;
+  --mcnp-primary: #3b6ef6;
+  --mcnp-primary-hover: #5c86f8;
+  --mcnp-primary-active: #2b52d6;
+  --mcnp-primary-soft: rgba(59, 110, 246, 0.1);
+  --mcnp-accent: #8b5cf6;
+  --mcnp-gradient-primary: linear-gradient(135deg, #3b6ef6 0%, #8b5cf6 100%);
+  --mcnp-success: #16a34a;
+  --mcnp-warning: #d97706;
+  --mcnp-danger: #dc2626;
+  --mcnp-danger-soft: rgba(220, 38, 38, 0.09);
+  --mcnp-success-soft: rgba(22, 163, 74, 0.09);
+  --mcnp-warning-soft: rgba(217, 119, 6, 0.1);
+  --mcnp-console: #14161b;
+
+  /* 形状与阴影 */
+  --mcnp-radius-sm: 8px;
+  --mcnp-radius: 14px;
+  --mcnp-radius-lg: 20px;
+  --mcnp-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.06);
+  --mcnp-shadow-hover: 0 2px 4px rgba(15, 23, 42, 0.06), 0 10px 28px rgba(15, 23, 42, 0.12);
+
+  /* Arco 桥接（浅色） */
+  --primary-6: var(--mcnp-primary);
+  --primary-5: var(--mcnp-primary-hover);
+  --primary-7: var(--mcnp-primary-active);
+  --success-6: var(--mcnp-success);
+  --warning-6: var(--mcnp-warning);
+  --danger-6: var(--mcnp-danger);
+  --color-bg-1: var(--mcnp-bg);
+  --color-bg-2: var(--mcnp-surface);
+  --color-bg-3: var(--mcnp-surface-raised);
+  --color-bg-4: var(--mcnp-surface-hover);
+  --color-bg-5: var(--mcnp-surface-hover);
+  --color-text-1: var(--mcnp-text);
+  --color-text-2: var(--mcnp-text-muted);
+  --color-text-3: var(--mcnp-text-faint);
+  --color-text-4: var(--mcnp-text-faint);
+  --color-border-1: var(--mcnp-border);
+  --color-border-2: var(--mcnp-border);
+  --color-border-3: var(--mcnp-border);
+  --border-radius-small: var(--mcnp-radius-sm);
+  --border-radius-medium: 10px;
+  --border-radius-large: var(--mcnp-radius);
+
   font-family:
     Inter, "Noto Sans SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-synthesis: none;
@@ -31,28 +74,55 @@
 
 :root[arco-theme='dark'] {
   color-scheme: dark;
-  color: #d7d9de;
-  background: #202124;
-  --mcnp-bg: #202124;
-  --mcnp-header: #1b1c1f;
-  --mcnp-surface: #18191b;
-  --mcnp-surface-raised: #222326;
-  --mcnp-surface-hover: #2a2b2f;
-  --mcnp-console: #101113;
-  --mcnp-border: #3a3c42;
-  --mcnp-border-subtle: #2b2d32;
-  --mcnp-text: #d7d9de;
-  --mcnp-text-muted: #a2a6af;
-  --mcnp-text-faint: #737780;
-  --mcnp-primary: #3c89e8;
-  --mcnp-primary-hover: #65a9f3;
-  --mcnp-primary-soft: rgba(60, 137, 232, 0.16);
-  --mcnp-success: #61c985;
-  --mcnp-warning: #e0ab52;
-  --mcnp-danger: #ec7070;
-  --mcnp-danger-soft: rgba(236, 112, 112, 0.13);
-  --mcnp-success-soft: rgba(97, 201, 133, 0.13);
-  --mcnp-warning-soft: rgba(224, 171, 82, 0.14);
+  color: #e2e5ea;
+  background: #101216;
+
+  --mcnp-bg: #101216;
+  --mcnp-surface: #171a20;
+  --mcnp-surface-raised: #1e222a;
+  --mcnp-surface-hover: #262b34;
+  --mcnp-glass: rgba(20, 23, 29, 0.72);
+  --mcnp-border: #2c313b;
+  --mcnp-border-subtle: #23272f;
+  --mcnp-text: #e2e5ea;
+  --mcnp-text-muted: #a2a8b4;
+  --mcnp-text-faint: #6e7480;
+  --mcnp-primary: #6b95ff;
+  --mcnp-primary-hover: #8ab0ff;
+  --mcnp-primary-active: #4a7af0;
+  --mcnp-primary-soft: rgba(107, 149, 255, 0.16);
+  --mcnp-accent: #a78bfa;
+  --mcnp-gradient-primary: linear-gradient(135deg, #6b95ff 0%, #a78bfa 100%);
+  --mcnp-success: #4ade80;
+  --mcnp-warning: #fbbf24;
+  --mcnp-danger: #f87171;
+  --mcnp-danger-soft: rgba(248, 113, 113, 0.13);
+  --mcnp-success-soft: rgba(74, 222, 128, 0.13);
+  --mcnp-warning-soft: rgba(251, 191, 36, 0.14);
+  --mcnp-console: #0c0e12;
+
+  --mcnp-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 16px rgba(0, 0, 0, 0.3);
+  --mcnp-shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.4), 0 10px 28px rgba(0, 0, 0, 0.45);
+
+  /* Arco 桥接（深色） */
+  --primary-6: var(--mcnp-primary);
+  --primary-5: var(--mcnp-primary-hover);
+  --primary-7: var(--mcnp-primary-active);
+  --success-6: var(--mcnp-success);
+  --warning-6: var(--mcnp-warning);
+  --danger-6: var(--mcnp-danger);
+  --color-bg-1: var(--mcnp-bg);
+  --color-bg-2: var(--mcnp-surface);
+  --color-bg-3: var(--mcnp-surface-raised);
+  --color-bg-4: var(--mcnp-surface-hover);
+  --color-bg-5: var(--mcnp-surface-hover);
+  --color-text-1: var(--mcnp-text);
+  --color-text-2: var(--mcnp-text-muted);
+  --color-text-3: var(--mcnp-text-faint);
+  --color-text-4: var(--mcnp-text-faint);
+  --color-border-1: var(--mcnp-border);
+  --color-border-2: var(--mcnp-border);
+  --color-border-3: var(--mcnp-border);
 }
 
 * {
@@ -90,13 +160,14 @@ select {
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
-select:focus-visible {
+select:focus-visible,
+a:focus-visible {
   outline: 2px solid var(--mcnp-primary);
   outline-offset: 2px;
 }
 
 ::selection {
-  background: rgba(36, 120, 220, 0.35);
+  background: rgba(59, 110, 246, 0.35);
 }
 
 * {
@@ -111,8 +182,25 @@ select:focus-visible {
   letter-spacing: 0;
 }
 
+/* 等宽数字：KPI 与指标刷新时避免抖动 */
+.mcnp-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 玻璃拟态容器：侧边导航、顶栏、浮层（docs/design/frontend-design.md §3.1） */
+.mcnp-glass {
+  background: var(--mcnp-glass);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+}
+
+/*
+ * 以下共享类被页面组件（Dashboard/InstanceList/Workspace 等）继续使用，v1→v2 迁移期间保留；
+ * 后续页面迁移逐步收敛到共享组件后清理。
+ */
+
 .console-page {
-  width: min(100%, 108rem);
+  width: min(100%, 120rem);
   margin: 0 auto;
   padding: 1.25rem 1.5rem 1.5rem;
 }

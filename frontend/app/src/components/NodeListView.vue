@@ -14,7 +14,9 @@ import { useI18n } from 'vue-i18n';
 
 import type { Core, CpuTopology, PanelApiClient } from '@mcnp/api-client';
 
-import { describeError, formatDate, statusClass } from '../utils/presentation';
+import { describeError, formatDate } from '../utils/presentation';
+import PageHeader from './PageHeader.vue';
+import StatusBadge from './StatusBadge.vue';
 
 const props = defineProps<{
   client: PanelApiClient;
@@ -77,13 +79,9 @@ function isolationLabel(value: boolean | null): string {
 
 <template>
   <main class="console-page">
-    <header class="page-heading page-heading--toolbar">
-      <div>
-        <p class="page-eyebrow"><IconCloud /> {{ t('nodes.eyebrow') }}</p>
-        <h1>{{ t('nodes.title') }}</h1>
-      </div>
+    <PageHeader :eyebrow="t('nodes.eyebrow')" :title="t('nodes.title')">
       <p>{{ t('nodes.summary', { filtered: filteredCores.length, total: cores.length }) }}</p>
-    </header>
+    </PageHeader>
 
     <section class="filter-bar">
       <a-select v-model="statusFilter" :placeholder="t('nodes.allStates')" allow-clear>
@@ -107,7 +105,7 @@ function isolationLabel(value: boolean | null): string {
               <h2>{{ core.name }}</h2>
               <p>{{ core.address }}</p>
             </div>
-            <i :class="statusClass(core.status)"><span></span>{{ statusLabel(core.status) }}</i>
+            <StatusBadge :status="core.status" :label="statusLabel(core.status)" />
           </header>
           <dl>
             <div><dt>{{ t('nodes.latency') }}</dt><dd>{{ core.latencyMs === null ? t('common.notRecorded') : `${core.latencyMs} ms` }}</dd></div>
@@ -169,7 +167,12 @@ function isolationLabel(value: boolean | null): string {
   display: grid;
   grid-template-columns: minmax(10rem, 13rem) minmax(15rem, 1fr);
   gap: 0.65rem;
-  margin-bottom: 0.85rem;
+  border: 1px solid var(--mcnp-border);
+  border-radius: var(--mcnp-radius);
+  padding: 0.7rem;
+  background: var(--mcnp-surface);
+  box-shadow: var(--mcnp-shadow);
+  margin-bottom: 1rem;
 }
 
 .filter-bar :deep(.arco-select-view),
@@ -189,6 +192,17 @@ function isolationLabel(value: boolean | null): string {
   border: 1px solid var(--mcnp-border);
   border-radius: var(--mcnp-radius);
   background: var(--mcnp-surface);
+  box-shadow: var(--mcnp-shadow);
+  transition:
+    transform 160ms ease-out,
+    box-shadow 160ms ease-out,
+    border-color 160ms ease-out;
+}
+
+.node-card:hover {
+  border-color: var(--mcnp-border-subtle);
+  box-shadow: var(--mcnp-shadow-hover);
+  transform: translateY(-1px);
 }
 
 .node-card header {
@@ -204,7 +218,7 @@ function isolationLabel(value: boolean | null): string {
   display: grid;
   width: 2.5rem;
   height: 2.5rem;
-  border-radius: 5px;
+  border-radius: var(--mcnp-radius-sm);
   place-items: center;
   background: var(--mcnp-primary-soft);
   color: var(--mcnp-primary);
@@ -304,7 +318,7 @@ function isolationLabel(value: boolean | null): string {
   gap: 0.25rem;
   border: 1px solid var(--mcnp-border);
   border-left: 3px solid var(--mcnp-success);
-  border-radius: 4px;
+  border-radius: var(--mcnp-radius-sm);
   padding: 0.65rem;
   background: var(--mcnp-surface);
 }

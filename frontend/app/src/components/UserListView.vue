@@ -15,7 +15,6 @@ import {
   IconPlus,
   IconRefresh,
   IconSafe,
-  IconUserGroup,
 } from '@arco-design/web-vue/es/icon';
 import { onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -23,6 +22,7 @@ import { useI18n } from 'vue-i18n';
 import type { PanelApiClient, User } from '@mcnp/api-client';
 
 import { describeError } from '../utils/presentation';
+import PageHeader from './PageHeader.vue';
 
 const props = defineProps<{
   client: PanelApiClient;
@@ -154,27 +154,23 @@ async function deleteUser(user: User): Promise<void> {
 
 <template>
   <main class="console-page">
-    <header class="page-heading page-heading--toolbar">
-      <div>
-        <p class="page-eyebrow"><IconUserGroup /> {{ t('users.eyebrow') }}</p>
-        <h1>{{ t('users.title') }}</h1>
-      </div>
+    <PageHeader :eyebrow="t('users.eyebrow')" :title="t('users.title')">
       <div class="user-page-actions">
         <a-button :loading="loading" @click="loadUsers">
           <template #icon><IconRefresh /></template>
           {{ t('common.refresh') }}
         </a-button>
-        <a-button type="primary" @click="openCreate">
+        <a-button class="user-create-button" type="primary" @click="openCreate">
           <template #icon><IconPlus /></template>
           {{ t('users.create') }}
         </a-button>
       </div>
-    </header>
+    </PageHeader>
 
     <p v-if="errorMessage" class="form-error" role="alert">{{ errorMessage }}</p>
     <p v-else-if="noticeMessage" class="notice" role="status">{{ noticeMessage }}</p>
 
-    <section class="data-panel user-panel">
+    <section class="user-panel">
       <a-spin :loading="loading">
         <div v-if="users.length" class="data-table-wrap">
           <table class="data-table user-table">
@@ -289,8 +285,42 @@ async function deleteUser(user: User): Promise<void> {
   gap: 0.6rem;
 }
 
+.user-create-button {
+  background-image: var(--mcnp-gradient-primary);
+  border-color: transparent;
+}
+
 .user-panel {
-  margin-top: 0.8rem;
+  overflow: hidden;
+  border: 1px solid var(--mcnp-border);
+  border-radius: var(--mcnp-radius);
+  background: var(--mcnp-surface);
+  box-shadow: var(--mcnp-shadow);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.data-table th,
+.data-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--mcnp-border-subtle);
+  color: var(--mcnp-text-muted);
+  text-align: left;
+}
+
+.data-table th {
+  background: var(--mcnp-surface-raised);
+  color: var(--mcnp-text-faint);
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+
+.data-table tr:last-child td {
+  border-bottom: 0;
 }
 
 .user-table td:first-child {
@@ -333,10 +363,6 @@ async function deleteUser(user: User): Promise<void> {
 }
 
 @media (max-width: 40rem) {
-  .page-heading--toolbar {
-    align-items: flex-start;
-  }
-
   .user-page-actions {
     width: 100%;
   }
