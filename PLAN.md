@@ -86,6 +86,7 @@ MinecraftNexusPanel/
 - 标准表单、按钮、菜单和图标统一使用 Arco Design；运维工作区参考 MCSManager 的紧凑信息层级，但不复制其源码或制造尚无后端能力的入口。
 - Core、实例和实例子视图必须由 Vue Router 地址表达，使浏览器历史、刷新和直接链接恢复同一工作上下文。
 - 主题提供 `system`、`light`、`dark` 三种偏好并监听系统配色变化；国际化语言包按 `frontend/app/src/locales/<语言代码>.json` 自动发现，文件内 `$meta.name` 提供语言显示名。
+- 统一前端的视觉与交互规范以 [`docs/design/frontend-design.md`](docs/design/frontend-design.md)（v2 现代仪表盘风格）为准：卡片化信息层级、大圆角、玻璃拟态外壳与渐变强调色；路由地址、领域 store、API Client 和平台适配器契约不因视觉升级而改变，迁移按页面分批进行。
 - 当前共享应用已提供 `/dashboard`、`/instances`、`/nodes`、`/users`、`/settings` 和路由化实例详情；仪表盘聚合 Core、实例和授权审计，并允许具备 `audit.read` 的用户导出当前保留窗口 NDJSON，节点页提供只读连接信息与 CPU 拓扑，实例页提供生命周期控制、终端、结构化配置、文件管理，以及按 Core、服务端类型、类型参数推进的实例创建向导；路由已选择 Core 时向导跳过第一步，Java、原生基岩端、PocketMine-MP 和自定义运行时分别展示对应启动字段。管理员用户页提供列表、创建、显示名称编辑、`audit.read` 授权/撤销和删除确认，无 `user.manage` 时隐藏入口。Core 编辑、镜像与 Panel 全局设置在后端 API 交付前不制造虚假控制入口。
 - 三端复用同一套页面、领域 store、API Client、表单校验和实时事件 SDK；平台差异只能通过 `platform` 适配器访问。
 - Panel 托管 Vue 构建产物；Tauri Desktop/Mobile 加载同一应用构建，不复制业务页面。
@@ -237,68 +238,103 @@ stateDiagram-v2
 
 ## 7. 分阶段交付
 
+自本次修订起，每个里程碑按“后端”与“前端/客户端”两条泳道组织工作项。后端泳道覆盖 `crates/`、`apps/nexus` 的
+Rust 实现、协议与 API；前端/客户端泳道覆盖 `frontend/` 共享 Vue 应用以及 `apps/desktop`、`apps/mobile` 壳。两条泳道在
+同一里程碑内解耦推进，前端不等待同里程碑后端项全部完成才开工，但里程碑验收必须端到端通过；泳道内工作项的完成状态
+以 [TODO.md](TODO.md) 为唯一记录。统一前端的视觉与交互以
+[`docs/design/frontend-design.md`](docs/design/frontend-design.md) 为准。
+
 ### M0：设计冻结与工程骨架
 
-- 建立 Rust workspace、Web workspace、统一格式化和 CI。
-- 冻结 v1 Core 帧、错误模型和首批 OpenAPI。
-- 建立配置结构、日志规范、请求 ID 和版本信息。
+- 后端：
+  - 建立 Rust workspace、统一格式化和 CI。
+  - 冻结 v1 Core 帧、错误模型和首批 OpenAPI。
+  - 建立配置结构、日志规范、请求 ID 和版本信息。
+- 前端/客户端：
+  - 建立 Web workspace 和统一 Vue 3 应用骨架，接入 Arco Design、Vue Router、Pinia 与 TanStack Vue Query。
+  - 冻结主题偏好、语言包自动发现和路由化工作上下文契约。
 - 验收：所有空应用可构建，OpenAPI 可校验，协议编解码有往返测试。
 
 ### M1：最小可用纵向链路
 
-- Core：PSK 握手、节点信息、实例列表、启动/停止/终止、命令、日志游标。
-- Core 实例配置和运行时快照保存于数据目录 `instances.json`；重启时不伪造旧进程仍存活，无法确认的瞬态状态恢复为 `UNKNOWN`，且必须通过带 `RESET` 确认和幂等键的显式动作复位后才能重新启动。
-- Panel：管理员初始化、登录、Core 增删与连通性测试、实例代理 API。
-- WebUI：登录、运行概览、Core/实例列表、实例控制台和基础状态；实例工作区使用路由化的 Core/实例/视图上下文、Arco Design、自动/手动深浅主题和可扩展 JSON 语言包。
-- `all`：单命令启动，仍暴露 Core TCP 端口。
+- 后端：
+  - Core：PSK 握手、节点信息、实例列表、启动/停止/终止、命令、日志游标。
+  - Core 实例配置和运行时快照保存于数据目录 `instances.json`；重启时不伪造旧进程仍存活，无法确认的瞬态状态恢复为 `UNKNOWN`，且必须通过带 `RESET` 确认和幂等键的显式动作复位后才能重新启动。
+  - Panel：管理员初始化、登录、Core 增删与连通性测试、实例代理 API。
+  - `all`：单命令启动，仍暴露 Core TCP 端口。
+- 前端/客户端：
+  - WebUI：登录、运行概览、Core/实例列表、实例控制台和基础状态；实例工作区使用路由化的 Core/实例/视图上下文、Arco Design、自动/手动深浅主题和可扩展 JSON 语言包。
 - 验收：从空数据创建一个实例，启动测试进程，实时查看输出并安全停止。
 
 ### M2：环境与一键搭建
 
-- Java/Node.js/Python 受管安装、版本选择、校验与清理。
-- 服务端目录、安装模板、下载缓存和校验；支持 HOST 下 Direct/MCDR 包装。模板目录覆盖 Vanilla、NeoForge、Forge、Fabric、Bukkit、Spigot、Paper、Purpur、Pufferfish、Folia、Leaf、Mohist、Magma、Sponge、Arclight、Youer、Silkard、CatServer、Velocity、Waterfall、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit 和 Cloudburst Nukkit。NeoForge 已支持按 Minecraft 与 loader 版本选择、匹配 Java 主版本、校验官方 installer、生成 JVM/平台参数文件并异步安装；其他类型仍需补齐验证配方。
-- 混合端分别管理插件与模组，按模板/版本解析不同扩展目录；代理端按一对多或一对一拓扑管理子服务器；基岩端按 RakNet、端口、配置和扩展能力提供专门运维画像。
-- 实例完整设置：名称、类型、到期时间、工作目录、启动/更新命令。
+- 后端：
+  - Java/Node.js/Python 受管安装、版本选择、校验与清理。
+  - 服务端目录、安装模板、下载缓存和校验；支持 HOST 下 Direct/MCDR 包装。模板目录覆盖 Vanilla、NeoForge、Forge、Fabric、Bukkit、Spigot、Paper、Purpur、Pufferfish、Folia、Leaf、Mohist、Magma、Sponge、Arclight、Youer、Silkard、CatServer、Velocity、Waterfall、BungeeCord、Lightfall、Geyser、Bedrock Dedicated Server、PocketMine-MP、Nukkit 和 Cloudburst Nukkit。NeoForge 已支持按 Minecraft 与 loader 版本选择、匹配 Java 主版本、校验官方 installer、生成 JVM/平台参数文件并异步安装；其他类型仍需补齐验证配方。
+  - 混合端分别管理插件与模组，按模板/版本解析不同扩展目录；代理端按一对多或一对一拓扑管理子服务器；基岩端按 RakNet、端口、配置和扩展能力提供专门运维画像。
+  - 实例完整设置：名称、类型、到期时间、工作目录、启动/更新命令。
+- 前端/客户端：
+  - 实例创建向导：Core、服务端类型、类型参数三步；路由已选择 Core 时跳过第一步；Java、原生基岩端、PocketMine-MP 和自定义运行时分别展示对应启动字段；NeoForge 联动游戏版本、loader 版本与 Java runtime，自动生成实例 ID 并轮询安装任务。
 - 验收：在空 Core 上选择已验证模板与运行时，一次操作完成下载、配置和首次启动；代理拓扑和基岩端专门约束不能被普通 Java 实例路径绕过。
 
 ### M3：日常运维能力
 
-- 配置识别和结构化表单、文件管理、分块上传/下载、实例终端；当前已完成带 Minecraft 字段元数据的 `server.properties` provider、JSON/YAML/TOML provider、嵌套对象/数组递归 Schema/UI Schema、WebUI 配置文档列表/扫描/校验/保存、递归对象和安全的同构数组控件、文件沙箱列表、分块读取、小文件原子写入、目录创建、移动、批量操作、删除任务、ZIP 归档准备、活动 Core 内会话化分块上传/下载、WebUI 目录导航/编辑/重命名/分块传输/异步删除和 `config.validate` 实例级诊断，后续补齐异构数组、版本专用 Schema、跨文件规则、跨重启续传、快照、差异比较和统一任务中心进度。
-- 模组/插件聚合搜索、安装、更新、删除和兼容性提示；当前已接入 Modrinth MOD/PLUGIN 搜索、项目版本详情、依赖记录、HTTPS 归档摘要、根项目 required 依赖计划解析、Minecraft 版本/加载器过滤、分页和来源兼容性提示；计划安装会重新解析并创建可查询的 Panel 异步任务，校验归档后通过 Core `transfer-v1` 分片写入声明目录、持久化安装记录，同一 Core、实例、扩展类型和操作重复使用 `Idempotency-Key` 会复用原任务，新的多文件安装会先拒绝目标冲突并在失败后按哈希和记录执行补偿回滚，已持久化的 Modrinth 扩展可重新解析目标版本并在 Core 目标摘要保护下只更新根文件，混合端插件/模组分开处理，目录由模板布局决定；PocketMine-MP PHAR/TAR 与 Nukkit/Cloudburst Nukkit JAR/ZIP 在写入前解析根 `plugin.yml`，并在请求给出目标 Bedrock API 列表时执行精确匹配。Core 侧统一任务、更多来源、目标 API 自动发现和批量更新仍待完成。
-- 代理子服务器连通性与启停编排；当前已完成由 Core 节点执行的登记后端 TCP 连通性和 Minecraft Java Status 协议检查，并分别返回网络状态、协议状态和延迟。代理动作支持按启用后端去重编排：启动先启动后端再启动代理，停止先停止代理再停止后端；`includeBackends` 可显式关闭后端操作，返回逐实例步骤和部分失败结果，后端失败时不会继续启动代理。停止还支持 `1..=300` 秒超时。基岩端已完成配置优先的 RakNet UDP 地址/端口探测、默认 `0.0.0.0`/`19132` 回退以及专用 Unconnected Ping/Pong 健康检查，监听绑定地址、配置文件、扩展目录、升级和备份恢复仍需独立实现。
-- Cron/事件计划任务、执行历史、任务中心、备份/恢复。
-- 细粒度用户组权限和实例可见清单。
+- 后端：
+  - 配置识别与校验：`server.properties` 无损标量补丁、JSON/YAML/TOML Schema/UI Schema、嵌套递归 Schema 和 `config.validate` 实例级诊断；异构数组、版本专用 Schema 和跨文件规则随后补齐。
+  - 文件管理：沙箱列表、分块读写、目录创建、移动、批量操作、删除任务、ZIP 归档和 `transfer-v1` 会话化上传/下载；跨重启续传、快照与差异比较随后补齐。
+  - 模组/插件：按模板目录扫描与安装记录、Modrinth 搜索与依赖计划解析、计划安装异步任务、幂等复用、补偿回滚和单文件更新；基岩端 `plugin.yml` 解析与 API 精确匹配；Core 统一任务、更多来源和批量更新随后补齐。
+  - 代理子服务器连通性检查与启停编排；基岩端 RakNet 地址/端口探测和 Unconnected Ping/Pong 健康检查；监听绑定、升级和备份恢复随后补齐。
+  - Cron/事件计划任务、执行历史；细粒度用户组权限和实例可见清单。
+- 前端/客户端：
+  - 配置文档列表/扫描/校验/保存界面，递归对象与同构数组控件。
+  - 文件管理器：目录导航、编辑、重命名、分块传输、异步删除和传输进度。
+  - 实例终端、扩展管理界面、计划任务与任务中心界面、权限驱动的实例可见性。
 - 验收：受限用户只看到授权实例，能使用终端但不能访问文件或修改启动/容器设置。
 
 ### M4：Docker 与资源治理
 
-- 镜像拉取、更新、删除、构建和实时构建日志。
-- 实例容器化启动、端口、网络、挂载、环境变量、CPU/内存限制和 cpuset。
-- Core/实例大核调度：自动性能核、手动核集合、独占预留、NUMA 绑定和降级状态；当前已交付 Linux sysfs/进程 cpuset CPU 拓扑快照、ARM capacity/NUMA/隔离信息探测，以及 Windows Processor Relationship 物理核心、处理器组和 EfficiencyClass 层级探测。Windows 仅在系统报告多个层级时把最高/最低值映射为性能核/能效核，中间层级及未报告的隔离、NUMA 信息保持未知。Core/Panel 已提供只读 CPU policy 候选解析和 `CpuReservation` 的实例 revision 校验、冲突检查、列表、释放及 `cpu-reservations.json` 跨重启恢复。`CpuPolicy` 已纳入实例创建、部分更新和 `instances.json` 持久化，旧存档缺失时回退默认 AUTO/SHARED。预留登记和实例 policy 都不代表宿主机 affinity、Docker cpuset 或跨 Core 调度锁已应用；性能类别未知时不允许按编号猜测。
-- 容器安全策略、磁盘配额、镜像垃圾回收和凭据管理。
+- 后端：
+  - 镜像拉取、更新、删除、构建和实时构建日志。
+  - 实例容器化启动、端口、网络、挂载、环境变量、CPU/内存限制和 cpuset。
+  - Core/实例大核调度：自动性能核、手动核集合、独占预留、NUMA 绑定和降级状态；当前已交付 Linux sysfs/进程 cpuset CPU 拓扑快照、ARM capacity/NUMA/隔离信息探测，以及 Windows Processor Relationship 物理核心、处理器组和 EfficiencyClass 层级探测。Windows 仅在系统报告多个层级时把最高/最低值映射为性能核/能效核，中间层级及未报告的隔离、NUMA 信息保持未知。Core/Panel 已提供只读 CPU policy 候选解析和 `CpuReservation` 的实例 revision 校验、冲突检查、列表、释放及 `cpu-reservations.json` 跨重启恢复。`CpuPolicy` 已纳入实例创建、部分更新和 `instances.json` 持久化，旧存档缺失时回退默认 AUTO/SHARED。预留登记和实例 policy 都不代表宿主机 affinity、Docker cpuset 或跨 Core 调度锁已应用；性能类别未知时不允许按编号猜测。
+  - 容器安全策略、磁盘配额、镜像垃圾回收和凭据管理。
+- 前端/客户端：
+  - 镜像管理页面与构建日志视图。
+  - 实例容器设置表单（镜像、端口、挂载、资源限制）与 CPU 拓扑/policy 可视化；均随后端能力开放，不提前渲染入口。
 - 验收：同一实例可在停机状态下从 HOST 切换到 CONTAINER，并在容器/宿主机上应用同一 CPU policy；配置经校验且不会产生越界挂载。
 
 ### M5：统一 Vue 3 客户端
 
-- Vue 3 WebUI 完成全部管理页面，并由 Panel 托管。
-- 当前共享 WebUI 已交付 MCSManager 风格的紧凑控制台外壳、概览、可创建和筛选实例的实例目录、只读节点与 CPU 拓扑、管理员用户管理、本地主题/语言设置，以及包含概览、终端、配置和文件管理的全宽实例详情；后续页面继续按后端权限与 API 能力增量开放。
-- Tauri Desktop：已交付 Windows x64 独立安装包；安装包包含共享 Vue 构建产物和 release `mcnp all` sidecar，Panel 在动态 loopback 地址同源托管 WebUI。首启自动生成 Panel 主密钥、Core PSK 和随机管理员密码，并自动换取原生会话，无需用户手动登录；Panel 仅对 Tauri 本地来源开放跨源请求，退出时停止 sidecar。
-- Tauri Desktop 已提供显示可由浏览器访问完整 WebUI 的动态 Panel 地址、系统浏览器打开入口、关闭到托盘、主窗口恢复、显式退出、单实例重复启动唤醒、sidecar stdout/stderr 逐行 JSON 日志收集、结构化秘密字段遮盖和日志目录入口、Windows Credential Manager/macOS Keychain/Linux Secret Service Refresh Token 存储、仅限 loopback 和设备秘密的自动原生会话引导，以及可在设置页管理的当前用户开机启动；浏览器保持正常登录边界，登录项启动时静默驻留托盘。后续补齐日志文件加密、签名和自动更新。
-- Tauri Mobile：设备登录、生物识别保护 Refresh Token、移动终端与任务页面。
+- 后端：
+  - 补全 OpenAPI 以支撑全量共享 TypeScript Client 生成。
+  - Panel 托管 WebUI 构建产物、Desktop sidecar 支撑接口和原生会话引导所需的受限 CORS 与设备秘密通道。
+- 前端/客户端：
+  - Vue 3 WebUI 完成全部管理页面，并由 Panel 托管；后续页面继续按后端权限与 API 能力增量开放。
+  - 按 [`docs/design/frontend-design.md`](docs/design/frontend-design.md) 完成 v2 现代仪表盘风格迁移：设计令牌替换、玻璃拟态侧边导航外壳、卡片化仪表盘与实例目录、终端/配置/文件工作区容器规范，按页面分批进行并回归既有交互。
+  - 由 OpenAPI 生成共享 TypeScript API Client，三端统一使用。
+  - Tauri Desktop：已交付 Windows x64 独立安装包；安装包包含共享 Vue 构建产物和 release `mcnp all` sidecar，Panel 在动态 loopback 地址同源托管 WebUI。首启自动生成 Panel 主密钥、Core PSK 和随机管理员密码，并自动换取原生会话，无需用户手动登录；Panel 仅对 Tauri 本地来源开放跨源请求，退出时停止 sidecar。
+  - Tauri Desktop 已提供显示可由浏览器访问完整 WebUI 的动态 Panel 地址、系统浏览器打开入口、关闭到托盘、主窗口恢复、显式退出、单实例重复启动唤醒、sidecar stdout/stderr 逐行 JSON 日志收集、结构化秘密字段遮盖和日志目录入口、Windows Credential Manager/macOS Keychain/Linux Secret Service Refresh Token 存储、仅限 loopback 和设备秘密的自动原生会话引导，以及可在设置页管理的当前用户开机启动；浏览器保持正常登录边界，登录项启动时静默驻留托盘。后续补齐日志文件加密、签名和自动更新。
+  - Tauri Mobile：设备登录、生物识别保护 Refresh Token、移动终端与任务页面。
 - 验收：三端使用同一个 Vue 功能模块和生成 API Client，不存在独立维护的业务页面副本。
 
 ### M6：商业服务商版本
 
-- 多租户、套餐与配额、节点池、自动供应、到期停服/回收、客户门户。
-- API Key、Webhook、外部订单/支付系统适配器、用量计量和对账导出。
-- 高可用 Panel、PostgreSQL、对象存储备份、SLA 监控和批量运维。
+- 后端：
+  - 多租户、套餐与配额、节点池、自动供应、到期停服/回收。
+  - API Key、Webhook、外部订单/支付系统适配器、用量计量和对账导出。
+  - 高可用 Panel、PostgreSQL、对象存储备份和批量运维。
+- 前端/客户端：
+  - 客户门户、套餐/配额与用量查看界面、SLA 监控仪表盘。
 - 验收：从外部订单事件自动创建租户实例，执行配额，按到期策略停服，并保留完整审计链。
 
 ### M7：发布与生态
 
-- Windows x64 NSIS 安装包已可构建并包含 Core/Panel sidecar，WebView2 使用目标系统运行时而不进入安装包；标签/手动工作流会校验 Cargo/Tauri 版本并发布明确标记为 unsigned 的安装包和 SHA-256 清单。Linux/macOS/Windows ARM64 安装包、Docker 镜像、自动更新和代码签名仍待完成。
-- Vanilla/Paper/Velocity/Fabric/NeoForge/Forge/Purpur/Pufferfish/Folia/Leaf/Magma/Sponge/Arclight/CatServer/Waterfall/BungeeCord/Lightfall/Geyser/Bedrock Dedicated Server/PocketMine-MP/Nukkit/Cloudburst Nukkit 常用模板和版本元数据提供方。
-- 导入/导出、迁移、灾难恢复和兼容性矩阵。
+- 后端：
+  - Windows x64 NSIS 安装包已可构建并包含 Core/Panel sidecar，WebView2 使用目标系统运行时而不进入安装包；标签/手动工作流会校验 Cargo/Tauri 版本并发布明确标记为 unsigned 的安装包和 SHA-256 清单。Linux/macOS/Windows ARM64 安装包、Docker 镜像、自动更新和代码签名仍待完成。
+  - Vanilla/Paper/Velocity/Fabric/NeoForge/Forge/Purpur/Pufferfish/Folia/Leaf/Magma/Sponge/Arclight/CatServer/Waterfall/BungeeCord/Lightfall/Geyser/Bedrock Dedicated Server/PocketMine-MP/Nukkit/Cloudburst Nukkit 常用模板和版本元数据提供方。
+  - 导入/导出、迁移、灾难恢复和兼容性矩阵。
+- 前端/客户端：
+  - 三端发布配套：Android/iOS 构建与商店发布、桌面端自动更新入口和更新提示界面。
 
 ## 8. 测试策略
 

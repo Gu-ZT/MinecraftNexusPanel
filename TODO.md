@@ -2,16 +2,22 @@
 
 本清单以 [PLAN.md](PLAN.md) 为产品与架构依据，按可交付、可验证的工作项维护。勾选仅表示代码、测试和文档已达到当前阶段的验收标准，不表示后续阶段无需回归验证。
 
+自本次修订起，每个里程碑按两条泳道组织：**后端**（`crates/`、`apps/nexus` 的 Rust 实现、协议与 API）和
+**前端/客户端**（`frontend/` 共享 Vue 应用、`apps/desktop` 与 `apps/mobile` 壳）。统一前端的视觉与交互规范以
+[docs/design/frontend-design.md](docs/design/frontend-design.md)（v2 现代仪表盘风格）为准。
+
 ## 当前重点
 
 - [x] 完成 M0：工程契约、配置、日志、请求 ID、协议编解码与 CI。
 - [x] 启动 M1：Core/Panel 最小纵向链路。
 - [x] 完成 M2 受管运行时、可信下载缓存和模板计划执行的基础链路。
+- [ ] 前端 v2 设计迁移：按设计规范分批重写外壳与各页面（详见 M5 前端/客户端泳道）。
 
 ## M0：设计冻结与工程骨架
 
-- [x] 建立 Rust workspace、pnpm workspace 与统一 Vue 3 应用结构。
-- [x] 建立 Desktop/Mobile Tauri 壳和基础跨平台图标资源。
+### 后端
+
+- [x] 建立 Rust workspace 与统一格式化。
 - [x] 冻结 Core TCP、Web API、管理 API、WebSocket 与错误模型文档。
 - [x] 建立运行配置：模式、监听地址、数据目录和日志过滤级别。
 - [x] 建立 UUIDv7 `requestId` 领域类型，并在 Core TCP 请求/响应与 Panel HTTP 响应头中传播。
@@ -23,31 +29,39 @@
 - [x] 添加 GitHub Actions 质量检查：Windows、Linux、macOS 的 Rust/Tauri 与 pnpm 构建。
 - [x] 补充平台/架构支持矩阵及当前发布限制说明。
 
+### 前端/客户端
+
+- [x] 建立 pnpm workspace 与统一 Vue 3 应用结构。
+- [x] 建立 Desktop/Mobile Tauri 壳和基础跨平台图标资源。
+
 ## M1：最小可用纵向链路
 
-### 当前进展
+### 后端
 
 - [x] Core TCP：TLS 证书身份、Noise NNpsk0 PSK 握手、加密帧、`session.hello`/`session.welcome` 与持久化 `coreId`。
 - [x] Core：实例配置仓储持久化到数据目录，支持 `instance.create`、`instance.list`、`instance.get`、输入校验和分页读取。
   - [x] Core 重启时恢复 `instances.json`；无法重新确认旧进程的 `STARTING`/`RUNNING`/`STOPPING` 快照会恢复为 `UNKNOWN`。
   - [x] Core/Panel：`FAILED`/`UNKNOWN` 实例必须携带幂等键和 `confirmation=RESET` 显式复位为 `STOPPED`，避免误接管旧进程。
 - [x] Core：安全测试进程启动、stdin 优雅停止、强制终止、异常退出检测与 `instance.state` 事件。
-- [x] Panel：Core 加密连接客户端、Panel HTTP 存活/就绪探针、请求 ID 中间件与 SQLite 初始化基础。
-- [x] `all`：预先校验 Core/Panel 监听器并并发运行，不绕过 Core TCP 接口。
-
-- [x] Core：TLS 自动/自定义证书、Panel 地址验证策略、Noise PSK 握手与 `session.hello` / `session.welcome`。
 - [x] Core：节点信息、实例配置仓储、实例创建、列表和详情读取。
 - [x] Core：安全测试进程启动、停止、终止与状态事件。
 - [x] Core：实例 stdin 命令、stdout/stderr 游标日志与基础指标。
+- [x] Panel：Core 加密连接客户端、Panel HTTP 存活/就绪探针、请求 ID 中间件与 SQLite 初始化基础。
 - [x] Panel：SQLite 初始化、首位管理员初始化和登录会话。
 - [x] Panel：Core 添加、加密密钥保存、连通性检测和重连状态。
 - [x] Panel：实例代理 REST API、幂等键和统一错误响应。
 - [x] Panel：WebSocket 日志、任务进度和 Core 状态推送。
-- [x] WebUI：登录、Core 切换、实例列表、状态控制和控制台。
+- [x] `all`：预先校验 Core/Panel 监听器并并发运行，不绕过 Core TCP 接口。
 - [x] `all`：单命令同时启动 Panel 与 loopback Core，仍暴露 Core TCP 接口。
 - [x] 集成测试：空数据目录创建实例、运行测试进程、读取日志并安全停止。
 
+### 前端/客户端
+
+- [x] WebUI：登录、Core 切换、实例列表、状态控制和控制台。
+
 ## M2：环境与一键搭建
+
+### 后端
 
 - [x] Java、Node.js、Python 受管环境管理。
   - [x] 发现系统与受管目录中的 Java、Node.js、Python，并校验可执行文件和版本。
@@ -68,10 +82,24 @@
     - [x] Silkard 使用官方 GitHub branches API 读取数字开头的版本分支并过滤开发分支；分支元数据不代表已存在可直接安装的发布归档。
   - [x] 执行模板安装基础链路。
     - [x] NeoForge 作为首个验证配方：选择 Minecraft 与 loader 版本，解析官方 installer 大小和 SHA-256，使用匹配 Java 主版本在临时目录执行并受控重试，生成 `user_jvm_args.txt` 和平台参数文件启动配置后原子注册实例。
-    - [x] WebUI 为 NeoForge 联动游戏版本、loader 版本和 Java runtime，按 `neoforge-<game-version>-server-<sequence>` 自动生成可编辑实例 ID，并轮询安装任务直至实例创建完成。
   - [ ] 为已接入版本 provider 的二十七种模板及后续类型补齐按版本验证的归档结构、可执行文件、默认配置、启动参数和更新策略。
     - [ ] 除 NeoForge 外的其余二十六类公开模板仍需逐类型、逐版本完成真实产物安装验证。
   - [ ] 不能把仅有模板目录或版本元数据 provider 误认为完整安装支持。
+- [ ] Direct 与 MCDR 进程包装配置及审计任务。
+  - [x] HOST 下支持 DIRECT 和带显式占位符的 MCDR 包装；CONTAINER 配置会被 Core 明确拒绝而不会回退为宿主机执行。
+  - [x] Core 记录启动成功/失败、停止和强制终止请求，以及受管进程异常退出；MCDR 包装器异常退出使用专门原因码，并通过 `instance.audit.list`、Panel REST 和 TypeScript Client 查询。
+  - [x] Core 将审计记录写入数据目录下的 JSON 文件，启动时恢复并限制最近 2048 条；追加使用同目录临时文件原子替换，损坏文件会拒绝 Core 启动。
+  - [x] Panel HTTP 中间件持久化用户 ID、请求 ID、来源 IP、权限结果、方法、路径和状态码；请求体、查询参数、Cookie、Token 与密码不进入审计库，受权用户可按最新优先读取保留窗口。
+  - [x] 将 Panel 审计读取从管理员门禁扩展为 `audit.read`：权限随 SQLite 用户和会话持久化，管理员可创建/列出非管理员，未知授权名拒绝写入。
+  - [x] 管理员查询、更新和删除非管理员：权限撤销对现有会话立即生效，删除级联撤销会话，管理员目标和自删除受保护。
+  - [x] `audit.read` 用户将当前保留事件导出为 NDJSON；字段与只读列表一致且不引入请求敏感内容。
+  - [x] 通过环境变量或 CLI 在 `100..=100000` 配置审计保留数量；写入与裁剪保持原子，导出使用同一窗口。
+  - [ ] 用户组和资源范围筛选。
+- [x] 实例名称、类型、到期、工作目录、启动命令和更新命令设置。
+
+### 前端/客户端
+
+- [x] WebUI 为 NeoForge 联动游戏版本、loader 版本和 Java runtime，按 `neoforge-<game-version>-server-<sequence>` 自动生成可编辑实例 ID，并轮询安装任务直至实例创建完成。
 
 ### M2 服务端类型矩阵
 
@@ -93,19 +121,10 @@
 - Velocity、Waterfall、BungeeCord、Lightfall 使用一对多子服务器拓扑，Geyser 使用一对一拓扑；子服务器关系需要独立的列表、创建/替换和删除操作，不能伪装成普通实例字段。
 - 基岩版端需要独立处理 RakNet UDP 监听、端口占用、`server.properties`/`config.yml` 等配置、插件能力、扩展目录、启动健康检查、备份恢复和版本升级；不能复用只适用于 Java 服务端的探针和配置假设。
 - 当前 `BedrockManagementProfile` 已提供传输、默认端口、配置文件和扩展能力画像，Core 已补充专用 Unconnected Ping/Pong 健康检查；完整的基岩端配置编辑、扩展生命周期、监听绑定运维、备份恢复和版本升级仍属于后续 TODO。
-- [ ] Direct 与 MCDR 进程包装配置及审计任务。
-  - [x] HOST 下支持 DIRECT 和带显式占位符的 MCDR 包装；CONTAINER 配置会被 Core 明确拒绝而不会回退为宿主机执行。
-  - [x] Core 记录启动成功/失败、停止和强制终止请求，以及受管进程异常退出；MCDR 包装器异常退出使用专门原因码，并通过 `instance.audit.list`、Panel REST 和 TypeScript Client 查询。
-  - [x] Core 将审计记录写入数据目录下的 JSON 文件，启动时恢复并限制最近 2048 条；追加使用同目录临时文件原子替换，损坏文件会拒绝 Core 启动。
-  - [x] Panel HTTP 中间件持久化用户 ID、请求 ID、来源 IP、权限结果、方法、路径和状态码；请求体、查询参数、Cookie、Token 与密码不进入审计库，受权用户可按最新优先读取保留窗口。
-  - [x] 将 Panel 审计读取从管理员门禁扩展为 `audit.read`：权限随 SQLite 用户和会话持久化，管理员可创建/列出非管理员，未知授权名拒绝写入。
-  - [x] 管理员查询、更新和删除非管理员：权限撤销对现有会话立即生效，删除级联撤销会话，管理员目标和自删除受保护。
-  - [x] `audit.read` 用户将当前保留事件导出为 NDJSON；字段与只读列表一致且不引入请求敏感内容。
-  - [x] 通过环境变量或 CLI 在 `100..=100000` 配置审计保留数量；写入与裁剪保持原子，导出使用同一窗口。
-  - [ ] 用户组和资源范围筛选。
-- [x] 实例名称、类型、到期、工作目录、启动命令和更新命令设置。
 
 ## M3：日常运维
+
+### 后端
 
 - [ ] properties、YAML、JSON、TOML 配置识别与无损补丁。
   - [x] Core/Panel `PROPERTIES` 提供者：递归扫描、JSON Schema/UI Schema、SHA-256 revision 和原文读写。
@@ -117,7 +136,6 @@
   - [x] 校验 Java `server.properties` 端口范围、启用 Query/RCON 条件、RCON 密码、`server-ip` 和 `eula.txt`。
   - [x] 校验 Geyser `config.yml` 的 Bedrock/Java 端点，并报告重复监听端口；未知版本字段不误报。
   - [x] JSON/YAML/TOML provider 为嵌套对象和数组生成递归 JSON Schema/UI Schema，前端可按字段层级选择 group、array、number 和 checkbox 控件。
-  - [x] WebUI 提供配置文档列表、重新扫描、实例级校验、revision 保存和有损写回确认；按 Schema/UI Schema 渲染递归对象、布尔、数字、枚举、敏感文本和 Schema 明确的同构数组。
   - [ ] 异构数组编辑、版本专用 Schema 和更多跨文件规则；元组、`oneOf`/`anyOf` 或未声明数组项 Schema 当前保持只读。
 - [x] 实例文件浏览、上传、下载、移动、删除与路径逃逸防护。
   - [x] Core 文件沙箱：目录列表、分页游标、32 KiB 分块读取、SHA-256 和 1 MiB 内原子写入。
@@ -128,14 +146,12 @@
   - [x] Core/Panel 会话化分块上传：临时文件、固定 1 MiB 分片、顺序 offset、重复分片重试、摘要校验、创建会话时的目标 SHA-256 并发校验、4 GiB 单文件上限、16 会话配额、原子提交和放弃。
   - [x] Core/Panel 会话化分块下载：固定 1 MiB 分片、完整文件/分片 SHA-256、顺序 offset、已读分片重试、完成校验、放弃和二进制 HTTP 响应。
   - [x] Core/Panel 异步 ZIP 下载归档准备：最多 128 个源路径、16,384 个递归条目和 4 GiB 未压缩源数据，覆盖文件、目录、空目录和实例根目录，按条目报告进度并原子生成归档。
-  - [x] WebUI 文件管理器：目录导航与筛选、新建文件/目录、UTF-8 小文件编辑、重命名、增量 SHA-256 与会话化分块上传/下载、异步递归删除、任务轮询和传输进度。
   - [ ] 跨 Core 重启续传、快照、差异比较和统一任务中心进度。
 - [ ] 模组/插件搜索、解析、安装、更新、删除与兼容性提示。
   - [x] `InstallTemplate` 可按独立的 `ExtensionKind` 展开一个或多个声明目录，并保留插件/模组共用目录的类型边界。
   - [x] Panel 按模板声明的扩展目录分别扫描混合端插件与模组，支持多目录、缺失目录空页和模板/实例类型校验。
   - [x] Panel 在模板声明目录边界内通过 Core 原子写入已准备的单个扩展文件，限制 1 MiB 并要求幂等键。
   - [x] Panel 在模板声明目录边界内委托 Core 异步删除单个扩展文件，并要求类型、路径、DELETE 确认和幂等键校验。
-  - [x] 共享 TypeScript Client 已暴露扩展扫描、写入、删除和 Bedrock 扩展目录字段；全量 OpenAPI 生成仍属于 M5。
   - [x] 为本地产物持久化扩展安装记录，记录类型、路径、SHA-256、来源和安装时间；更新支持 If-Match 并发保护，删除任务成功后清理记录，失败/超时或同路径已被新安装替换时保留记录。
   - [x] 通过 Modrinth 公共 API 搜索 MOD/PLUGIN 项目，支持 Minecraft 版本、加载器和分页过滤，并返回来源元数据兼容性提示。
   - [x] 读取 Modrinth 项目版本、依赖记录、HTTPS 归档 URL 和 SHA-512 元数据，并按请求版本/加载器返回版本兼容性提示。
@@ -161,7 +177,17 @@
 - [ ] Cron/事件计划任务、去重、执行记录和任务中心。
 - [ ] RBAC、用户组、实例 scope 与审计日志。
 
+### 前端/客户端
+
+- [x] 共享 TypeScript Client 已暴露扩展扫描、写入、删除和 Bedrock 扩展目录字段；全量 OpenAPI 生成仍属于 M5。
+- [x] WebUI 提供配置文档列表、重新扫描、实例级校验、revision 保存和有损写回确认；按 Schema/UI Schema 渲染递归对象、布尔、数字、枚举、敏感文本和 Schema 明确的同构数组控件。
+- [x] WebUI 文件管理器：目录导航与筛选、新建文件/目录、UTF-8 小文件编辑、重命名、增量 SHA-256 与会话化分块上传/下载、异步递归删除、任务轮询和传输进度。
+- [ ] 扩展管理界面：Modrinth 搜索、安装计划确认、任务进度和安装记录展示。
+- [ ] 计划任务与统一任务中心界面。
+
 ## M4：Docker 与资源治理
+
+### 后端
 
 - [ ] Docker Engine 能力检测、镜像列表、拉取、删除与构建日志。
 - [ ] 容器化实例启动、端口、网络、挂载、环境变量和资源限制。
@@ -181,7 +207,18 @@
   - [x] Core 内存态独占预留冲突检测和释放。
   - [ ] 宿主机 affinity、Docker cpuset 执行器、跨 Core 调度锁和审计记录。
 
+### 前端/客户端
+
+- [ ] 镜像管理页面与实时构建日志视图（随后端能力开放）。
+- [ ] 实例容器设置表单与 CPU policy 选择/降级状态展示（随后端能力开放）。
+
 ## M5：统一客户端
+
+### 后端
+
+- [ ] 补全 OpenAPI 以支撑全量共享 TypeScript API Client 生成。
+
+### 前端/客户端
 
 - [ ] 由 OpenAPI 生成共享 TypeScript API Client。
 - [ ] 完成 WebUI 全部管理页面和权限驱动交互。
@@ -193,6 +230,13 @@
   - [x] 仪表盘为具备 `audit.read` 的用户提供当前保留窗口 NDJSON 导出，并显示下载进度与结果反馈。
   - [x] 接入 Arco Design 控件和图标；支持跟随系统、浅色、深色三种主题偏好及手动持久化切换。
   - [x] 接入 Vue I18n，并从 `frontend/app/src/locales/<语言代码>.json` 自动发现语言包；新增 JSON 文件无需修改注册代码。
+- [ ] 前端 v2 现代仪表盘风格迁移（依据 [docs/design/frontend-design.md](docs/design/frontend-design.md)，路由、store、API Client 与平台适配器契约不变）。
+  - [ ] 设计令牌 v2：替换 `base.css` 令牌为卡片化/玻璃拟态/渐变强调体系，桥接 Arco 变量，保留双主题与 `prefers-reduced-motion`。
+  - [ ] 应用外壳：玻璃拟态侧边导航 + 顶栏 + 内容区布局，移动端底部标签栏；导航权限过滤保持现状。
+  - [ ] 仪表盘：KPI 统计卡、实例状态分布、节点健康、最近审计动态卡片与骨架屏。
+  - [ ] 实例目录与创建向导：卡片网格、筛选工具条、模态化三步向导。
+  - [ ] 实例工作区：实例头卡 + 子页签外壳，概览/终端/配置/文件四视图容器规范。
+  - [ ] 节点、用户、设置页面卡片化；每批迁移完成后回归既有交互（创建向导、终端刷新、配置保存、文件传输）。
 - [ ] Desktop sidecar、托盘、开机启动和安全 WebUI 暴露。
   - [x] Windows x64 Tauri NSIS 安装包内置共享 Vue 前端和 release `mcnp all` sidecar，最终用户无需安装 Node.js、Rust、pnpm 或单独下载 MCNP。
   - [x] Desktop 首次启动生成 Panel 主密钥、Core PSK 和随机首位管理员密码，自动换取原生会话后从秘密文件删除引导密码，无需用户手动登录。
@@ -213,22 +257,35 @@
 
 ## M6：商业服务商版本
 
+### 后端
+
 - [ ] Tenant、Plan、Subscription、NodePool、Allocation 与 UsageRecord 数据模型。
 - [ ] 多租户隔离、套餐配额、到期策略与可审计资源预留。
 - [ ] Provider API、API Key、幂等供应、签名 Webhook 和用量导出。
 - [ ] 自动节点放置、性能核预留、容量评分与故障域约束。
-- [ ] PostgreSQL、高可用 Panel、对象存储备份和 SLA 仪表盘。
+- [ ] PostgreSQL、高可用 Panel、对象存储备份。
+
+### 前端/客户端
+
+- [ ] 客户门户、套餐/配额与用量查看界面。
+- [ ] SLA 监控仪表盘。
 
 ## M7：发布与生态
+
+### 后端
 
 - [ ] Windows、Linux、macOS 安装包、校验和、签名和自动更新。
   - [x] Windows x64 NSIS 安装包已能构建，包含 `mcnp.exe` sidecar；WebView2 使用系统运行时，当前精简产物约 6.5 MB。
   - [x] Windows x64 标签/手动打包工作流校验 Cargo/Tauri 版本，发布明确标记为 unsigned 的 NSIS 和 `SHA256SUMS.txt`，标签发布会幂等更新同名 GitHub Release。
   - [ ] Linux/macOS/Windows ARM64 安装包、代码签名和自动更新。
-- [ ] Android/iOS 构建、签名、商店发布与设备兼容性验证。
 - [ ] Docker 镜像、多架构清单和部署示例。
 - [ ] Paper、Velocity、Fabric 模板市场与扩展元数据生态。
 - [ ] 导入/导出、迁移、灾难恢复和兼容性矩阵。
+
+### 前端/客户端
+
+- [ ] Android/iOS 构建、签名、商店发布与设备兼容性验证。
+- [ ] 桌面端自动更新入口与更新提示界面。
 
 ## 发布前确认
 
