@@ -1,0 +1,9 @@
+[package]
+name = "nexus-core"
+description = "MCNP Core：进程、文件、日志、指标与实例生命周期"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]

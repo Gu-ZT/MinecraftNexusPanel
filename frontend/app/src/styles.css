@@ -1,0 +1,26 @@
+body {
+  margin: 0;
+  background: var(--mcnp-bg-base);
+  color: var(--mcnp-text-primary);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', sans-serif;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.mono {
+  font-family: var(--mcnp-font-mono);
+}
+
+.text-secondary {
+  color: var(--mcnp-text-secondary);
+}
+
+.mcnp-card {
+  background: var(--mcnp-bg-panel);
+  border-radius: var(--mcnp-radius-m);
+  padding: var(--mcnp-space-4);
+}

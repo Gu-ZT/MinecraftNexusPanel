@@ -1,0 +1,9 @@
+[package]
+name = "nexus-panel"
+description = "MCNP Panel：HTTP/WS、鉴权、RBAC、审计、Core 连接池"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]

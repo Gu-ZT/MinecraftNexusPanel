@@ -1,0 +1,9 @@
+[package]
+name = "nexus-storage"
+description = "MCNP 持久化：SQLite/PostgreSQL 仓储实现与迁移"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]

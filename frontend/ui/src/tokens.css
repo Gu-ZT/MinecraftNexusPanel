@@ -1,0 +1,77 @@
+/**
+ * MCNP 设计令牌：三端共享的色号、间距、圆角与字体。
+ * 默认深色主题；浅色主题经 [data-mcnp-theme='light'] 覆盖。
+ * Arco 主题在 app 层通过 ConfigProvider / body[arco-theme] 对接本令牌。
+ */
+
+:root {
+  /* 品牌与语义色 */
+  --mcnp-color-primary: #4c9ffe;
+  --mcnp-color-success: #23c343;
+  --mcnp-color-warning: #ff7d00;
+  --mcnp-color-danger: #f53f3f;
+  --mcnp-color-offline: #86909c;
+
+  /* 背景层级 */
+  --mcnp-bg-base: #17171a;
+  --mcnp-bg-panel: #232324;
+  --mcnp-bg-elevated: #2a2a2b;
+  --mcnp-bg-terminal: #0d0d10;
+
+  /* 文本 */
+  --mcnp-text-primary: #e8e8ea;
+  --mcnp-text-secondary: #a9aeb8;
+  --mcnp-text-tertiary: #6b7180;
+
+  /* 状态色（实例状态机） */
+  --mcnp-state-created: #86909c;
+  --mcnp-state-starting: #ff7d00;
+  --mcnp-state-running: #23c343;
+  --mcnp-state-stopping: #ff7d00;
+  --mcnp-state-stopped: #4e5969;
+  --mcnp-state-failed: #f53f3f;
+
+  /* 间距与圆角 */
+  --mcnp-space-1: 4px;
+  --mcnp-space-2: 8px;
+  --mcnp-space-3: 12px;
+  --mcnp-space-4: 16px;
+  --mcnp-space-6: 24px;
+  --mcnp-radius-s: 4px;
+  --mcnp-radius-m: 8px;
+
+  /* 布局 */
+  --mcnp-sider-width: 232px;
+  --mcnp-header-height: 56px;
+  --mcnp-font-mono: 'Cascadia Code', 'JetBrains Mono', Consolas, 'Courier New', monospace;
+
+  color-scheme: dark;
+}
+
+[data-mcnp-theme='light'] {
+  --mcnp-bg-base: #f2f3f5;
+  --mcnp-bg-panel: #ffffff;
+  --mcnp-bg-elevated: #ffffff;
+  --mcnp-bg-terminal: #1d2129;
+  --mcnp-text-primary: #1d2129;
+  --mcnp-text-secondary: #4e5969;
+  --mcnp-text-tertiary: #86909c;
+  color-scheme: light;
+}
+
+/* 无障碍：尊重减弱动态偏好（PLAN 第 9 节） */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* 键盘可见焦点 */
+:focus-visible {
+  outline: 2px solid var(--mcnp-color-primary);
+  outline-offset: 2px;
+}

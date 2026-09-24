@@ -1,0 +1,9 @@
+[package]
+name = "nexus-config"
+description = "MCNP 配置：加载、环境变量与校验"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]

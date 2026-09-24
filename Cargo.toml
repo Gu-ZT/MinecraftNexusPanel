@@ -1,0 +1,27 @@
+# Minecraft Nexus Panel (MCNP) Rust workspace
+# 结构依据 PLAN.md 第 3 节；各 crate 职责见 docs/architecture/structure.md
+[workspace]
+resolver = "2"
+members = [
+    "apps/nexus",
+    "crates/nexus-domain",
+    "crates/nexus-protocol",
+    "crates/nexus-core",
+    "crates/nexus-panel",
+    "crates/nexus-storage",
+    "crates/nexus-config",
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+license = "PROPRIETARY" # TODO(M0): PLAN.md 第 12 节待定，首次发布前冻结
+publish = false
+
+# 共享依赖版本在此统一声明（workspace = true 继承）。
+# TODO(M0): 随各 crate 实际编码按需补充，不预填未使用依赖。
+[workspace.dependencies]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

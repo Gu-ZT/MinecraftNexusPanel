@@ -1,0 +1,9 @@
+[package]
+name = "nexus-protocol"
+description = "MCNP Core TCP 协议：长度前缀帧、Noise PSK 握手、请求/响应与版本协商"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]

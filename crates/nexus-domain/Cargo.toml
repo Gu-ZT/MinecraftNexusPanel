@@ -1,0 +1,9 @@
+[package]
+name = "nexus-domain"
+description = "MCNP 纯领域类型：实例、节点、任务、权限等（PLAN.md 第 6 节）"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
