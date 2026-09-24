@@ -43,6 +43,7 @@ async function submit(): Promise<void> {
 <template>
   <div class="login-page">
     <div class="login-card mcnp-card">
+      <img src="/icon.svg" alt="MCNP" class="login-logo" />
       <h1 class="login-title">Minecraft Nexus Panel</h1>
       <p class="login-subtitle">多节点 Minecraft 服务器管理面板</p>
       <AForm :model="form" layout="vertical" @submit-success="submit">
@@ -68,6 +69,14 @@ async function submit(): Promise<void> {
 
 .login-card {
   width: 360px;
+}
+
+.login-logo {
+  display: block;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto var(--mcnp-space-3);
+  border-radius: 14px;
 }
 
 .login-title {

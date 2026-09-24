@@ -104,7 +104,7 @@ async function onUserAction(key: string): Promise<void> {
   <ALayout class="app-shell">
     <ALayoutSider :width="collapsed ? 48 : 232" class="app-shell__sider">
       <div class="app-shell__brand" :class="{ 'app-shell__brand--collapsed': collapsed }">
-        <span class="app-shell__logo">⬡</span>
+        <img src="/icon.svg" alt="MCNP" class="app-shell__logo" />
         <span v-if="!collapsed" class="app-shell__name">MCNP</span>
       </div>
       <AMenu :selected-keys="[selectedMenuKey]" :collapsed="collapsed" @menu-item-click="onMenuClick">
@@ -184,7 +184,9 @@ async function onUserAction(key: string): Promise<void> {
 }
 
 .app-shell__logo {
-  color: var(--mcnp-color-primary);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
 }
 
 .app-shell__sider :deep(.arco-menu) {
