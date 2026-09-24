@@ -5,6 +5,7 @@ import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
 import { Message, Modal } from '@arco-design/web-vue';
+import { IconFile, IconFolder } from '@arco-design/web-vue/es/icon';
 import { ApiError } from '@mcnp/api-client';
 import { PermissionGate, formatBytes, formatRelative } from '@mcnp/ui';
 import { useApi } from '@/composables';
@@ -112,12 +113,14 @@ function removeEntry(entry: { path: string; name: string }): void {
       </PermissionGate>
     </div>
 
-    <ATable :data="entries ?? []" :loading="isLoading" :pagination="false" row-key="path">
+    <ATable :data="entries ?? []" :loading="isLoading" :pagination="false" row-key="path" :scroll="{ x: 960 }">
       <template #columns>
-        <ATableColumn title="名称">
+        <ATableColumn title="名称" :width="280">
           <template #cell="{ record }">
             <a class="file-link" @click="openEntry(record)">
-              {{ record.isDir ? '📁' : '📄' }} {{ record.name }}
+              <IconFolder v-if="record.isDir" class="file-icon file-icon--dir" />
+              <IconFile v-else class="file-icon" />
+              {{ record.name }}
             </a>
           </template>
         </ATableColumn>
@@ -127,7 +130,7 @@ function removeEntry(entry: { path: string; name: string }): void {
         <ATableColumn title="修改时间" :width="130">
           <template #cell="{ record }">{{ formatRelative(record.modifiedAt) }}</template>
         </ATableColumn>
-        <ATableColumn title="操作" :width="100">
+        <ATableColumn title="操作" :width="100" fixed="right">
           <template #cell="{ record }">
             <PermissionGate when="file.write">
               <AButton size="mini" status="danger" type="text" @click="removeEntry(record)">删除</AButton>
@@ -164,6 +167,18 @@ function removeEntry(entry: { path: string; name: string }): void {
 }
 
 .file-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   cursor: pointer;
+}
+
+.file-icon {
+  font-size: 15px;
+  color: var(--mcnp-text-secondary);
+}
+
+.file-icon--dir {
+  color: var(--mcnp-color-primary);
 }
 </style>

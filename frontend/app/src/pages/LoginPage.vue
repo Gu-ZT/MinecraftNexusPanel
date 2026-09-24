@@ -47,14 +47,13 @@ async function submit(): Promise<void> {
       <p class="login-subtitle">多节点 Minecraft 服务器管理面板</p>
       <AForm :model="form" layout="vertical" @submit-success="submit">
         <AFormItem label="用户名">
-          <AInput v-model="form.username" placeholder="admin" allow-clear />
+          <AInput v-model="form.username" placeholder="请输入用户名" allow-clear />
         </AFormItem>
         <AFormItem label="密码">
-          <AInputPassword v-model="form.password" placeholder="admin123" @press-enter="submit" />
+          <AInputPassword v-model="form.password" placeholder="请输入密码" @press-enter="submit" />
         </AFormItem>
         <AButton type="primary" long html-type="submit" :loading="loading">登录</AButton>
       </AForm>
-      <p class="login-hint">原型 Mock 账户：admin / operator / viewer，密码均为「用户名 + 123」</p>
     </div>
   </div>
 </template>
@@ -82,12 +81,5 @@ async function submit(): Promise<void> {
   text-align: center;
   color: var(--mcnp-text-secondary);
   font-size: 13px;
-}
-
-.login-hint {
-  margin-top: var(--mcnp-space-4);
-  font-size: 12px;
-  color: var(--mcnp-text-tertiary);
-  text-align: center;
 }
 </style>

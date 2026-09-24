@@ -58,7 +58,7 @@ async function test(coreId: string): Promise<void> {
 
 <template>
   <div>
-    <PageHeader title="Core 节点" subtitle="Panel 经 Noise PSK over TCP 连接各节点">
+    <PageHeader title="Core 节点" subtitle="查看各节点的在线状态、版本与资源使用情况">
       <template #extra>
         <PermissionGate when="core.manage">
           <AButton type="primary" @click="addVisible = true">添加节点</AButton>
@@ -67,19 +67,19 @@ async function test(coreId: string): Promise<void> {
     </PageHeader>
 
     <div class="mcnp-card">
-      <ATable :data="cores ?? []" :loading="isLoading" :pagination="false" row-key="id">
+      <ATable :data="cores ?? []" :loading="isLoading" :pagination="false" row-key="id" :scroll="{ x: 1200 }">
         <template #columns>
-          <ATableColumn title="名称" data-index="name" />
-          <ATableColumn title="地址">
+          <ATableColumn title="名称" data-index="name" :width="160" />
+          <ATableColumn title="地址" :width="190">
             <template #cell="{ record }"><span class="mono">{{ record.address }}</span></template>
           </ATableColumn>
           <ATableColumn title="状态" :width="100">
             <template #cell="{ record }"><CoreStatusBadge :status="record.status" /></template>
           </ATableColumn>
-          <ATableColumn title="系统" :width="140">
+          <ATableColumn title="系统" :width="160">
             <template #cell="{ record }">{{ record.os }} / {{ record.arch }}</template>
           </ATableColumn>
-          <ATableColumn title="能力">
+          <ATableColumn title="能力" :width="220">
             <template #cell="{ record }">
               <ATag v-for="cap in record.capabilities" :key="cap" size="small" style="margin-right: 4px">{{ cap }}</ATag>
             </template>
@@ -87,7 +87,7 @@ async function test(coreId: string): Promise<void> {
           <ATableColumn title="最近心跳" :width="110">
             <template #cell="{ record }">{{ formatRelative(record.lastSeenAt) }}</template>
           </ATableColumn>
-          <ATableColumn title="操作" :width="220">
+          <ATableColumn title="操作" :width="260" fixed="right">
             <template #cell="{ record }">
               <ASpace>
                 <AButton size="small" @click="router.push(`/cores/${record.id}`)">详情</AButton>

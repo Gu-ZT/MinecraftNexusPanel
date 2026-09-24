@@ -21,6 +21,8 @@ import type {
   Instance,
   InstanceRuntime,
   ManagedRuntime,
+  PanelSettings,
+  RegistryInfo,
   Schedule,
   ScheduleExecution,
   Task,
@@ -50,6 +52,8 @@ export interface MockState {
   extensionCatalog: ExtensionProject[];
   images: ImageInfo[];
   builds: ImageBuild[];
+  registries: RegistryInfo[];
+  settings: PanelSettings;
   cpuTopologies: CpuTopology[];
   cpuPolicies: Map<string, CpuPolicy>;
   schedules: Schedule[];
@@ -111,6 +115,10 @@ export function buildSeed(now = Date.now()): MockState {
       containerImage: null,
       containerPorts: [],
       containerEnv: {},
+      containerMounts: [],
+      mcdrSettings: { checkUpdate: true, autoReload: false, language: 'zh_cn' },
+      backupEnabled: true,
+      backupTargetDir: '/fs/backups/生存主服',
       supervisorMode: 'MCDR',
       launchCommand: 'java -Xms4G -Xmx4G -jar server.jar nogui',
       updateCommand: null,
@@ -131,6 +139,10 @@ export function buildSeed(now = Date.now()): MockState {
       containerImage: null,
       containerPorts: [],
       containerEnv: {},
+      containerMounts: [],
+      mcdrSettings: { checkUpdate: true, autoReload: false, language: 'zh_cn' },
+      backupEnabled: false,
+      backupTargetDir: null,
       supervisorMode: 'DIRECT',
       launchCommand: 'java -Xmx2G -jar server.jar nogui',
       updateCommand: null,
@@ -151,6 +163,10 @@ export function buildSeed(now = Date.now()): MockState {
       containerImage: null,
       containerPorts: [],
       containerEnv: {},
+      containerMounts: [],
+      mcdrSettings: { checkUpdate: true, autoReload: false, language: 'zh_cn' },
+      backupEnabled: false,
+      backupTargetDir: null,
       supervisorMode: 'DIRECT',
       launchCommand: 'java -Xmx1G -jar velocity.jar',
       updateCommand: null,
@@ -171,6 +187,10 @@ export function buildSeed(now = Date.now()): MockState {
       containerImage: null,
       containerPorts: [],
       containerEnv: {},
+      containerMounts: [],
+      mcdrSettings: { checkUpdate: true, autoReload: false, language: 'zh_cn' },
+      backupEnabled: false,
+      backupTargetDir: null,
       supervisorMode: 'MCDR',
       launchCommand: 'java -Xmx6G -jar fabric-server.jar nogui',
       updateCommand: null,
@@ -191,6 +211,10 @@ export function buildSeed(now = Date.now()): MockState {
       containerImage: null,
       containerPorts: [],
       containerEnv: {},
+      containerMounts: [],
+      mcdrSettings: { checkUpdate: true, autoReload: false, language: 'zh_cn' },
+      backupEnabled: false,
+      backupTargetDir: null,
       supervisorMode: 'DIRECT',
       launchCommand: 'java -Xmx2G -jar server.jar nogui',
       updateCommand: null,
@@ -420,18 +444,24 @@ export function buildSeed(now = Date.now()): MockState {
   ]);
 
   const extensions: ExtensionInstall[] = [
-    { id: 'ext-1', instanceId: 'inst-1', source: 'HANGAR', projectId: 'LuckPerms', name: 'LuckPerms', version: '5.4.141', sha256: '9f8e7d', fileName: 'LuckPerms-Bukkit-5.4.141.jar', installedAt: now - 20 * DAY, updateAvailable: null },
-    { id: 'ext-2', instanceId: 'inst-1', source: 'MODRINTH', projectId: 'chunky', name: 'Chunky', version: '1.4.28', sha256: '1a2b3c', fileName: 'Chunky-Bukkit-1.4.28.jar', installedAt: now - 20 * DAY, updateAvailable: '1.4.36' },
-    { id: 'ext-3', instanceId: 'inst-1', source: 'MODRINTH', projectId: 'spark', name: 'spark', version: '1.10.109', sha256: '4d5e6f', fileName: 'spark-1.10.109-bukkit.jar', installedAt: now - 20 * DAY, updateAvailable: null },
+    { id: 'ext-1', instanceId: 'inst-1', kind: 'PLUGIN', source: 'HANGAR', projectId: 'LuckPerms', name: 'LuckPerms', version: '5.4.141', sha256: '9f8e7d', fileName: 'LuckPerms-Bukkit-5.4.141.jar', installedAt: now - 20 * DAY, updateAvailable: null },
+    { id: 'ext-2', instanceId: 'inst-1', kind: 'PLUGIN', source: 'MODRINTH', projectId: 'chunky', name: 'Chunky', version: '1.4.28', sha256: '1a2b3c', fileName: 'Chunky-Bukkit-1.4.28.jar', installedAt: now - 20 * DAY, updateAvailable: '1.4.36' },
+    { id: 'ext-3', instanceId: 'inst-1', kind: 'PLUGIN', source: 'MODRINTH', projectId: 'spark', name: 'spark', version: '1.10.109', sha256: '4d5e6f', fileName: 'spark-1.10.109-bukkit.jar', installedAt: now - 20 * DAY, updateAvailable: null },
+    { id: 'ext-4', instanceId: 'inst-4', kind: 'MOD', source: 'MODRINTH', projectId: 'fabric-api', name: 'Fabric API', version: '0.115.0', sha256: '7a8b9c', fileName: 'fabric-api-0.115.0+1.20.1.jar', installedAt: now - 9 * DAY, updateAvailable: null },
+    { id: 'ext-5', instanceId: 'inst-4', kind: 'MOD', source: 'MODRINTH', projectId: 'lithium', name: 'Lithium', version: '0.11.2', sha256: '2c3d4e', fileName: 'lithium-fabric-mc1.20.1-0.11.2.jar', installedAt: now - 9 * DAY, updateAvailable: '0.11.3' },
   ];
 
   const extensionCatalog: ExtensionProject[] = [
-    { source: 'MODRINTH', projectId: 'chunky', name: 'Chunky', summary: '区块预生成工具，可控制生成速率与形状。', downloads: 4_200_000, updatedAt: now - 5 * DAY, url: 'https://modrinth.com/plugin/chunky' },
-    { source: 'MODRINTH', projectId: 'spark', name: 'spark', summary: '性能分析器：CPU、内存、Tick 报告。', downloads: 12_800_000, updatedAt: now - 12 * DAY, url: 'https://modrinth.com/plugin/spark' },
-    { source: 'HANGAR', projectId: 'LuckPerms', name: 'LuckPerms', summary: '权限管理插件，支持上下文与临时权限。', downloads: 38_000_000, updatedAt: now - 30 * DAY, url: 'https://hangar.papermc.io/Luck/LuckPerms' },
-    { source: 'MODRINTH', projectId: 'viaversion', name: 'ViaVersion', summary: '允许新版本客户端连接旧版本服务端。', downloads: 25_000_000, updatedAt: now - 8 * DAY, url: 'https://modrinth.com/plugin/viaversion' },
-    { source: 'MODRINTH', projectId: 'coreprotect', name: 'CoreProtect', summary: '方块记录与回滚，查熊必备。', downloads: 9_600_000, updatedAt: now - 15 * DAY, url: 'https://modrinth.com/plugin/coreprotect' },
-    { source: 'MODRINTH', projectId: 'squaremap', name: 'squaremap', summary: '轻量网页地图插件。', downloads: 1_100_000, updatedAt: now - 3 * DAY, url: 'https://modrinth.com/plugin/squaremap' },
+    { kind: 'PLUGIN', source: 'MODRINTH', projectId: 'chunky', name: 'Chunky', summary: '区块预生成工具，可控制生成速率与形状。', downloads: 4_200_000, updatedAt: now - 5 * DAY, url: 'https://modrinth.com/plugin/chunky' },
+    { kind: 'PLUGIN', source: 'MODRINTH', projectId: 'spark', name: 'spark', summary: '性能分析器：CPU、内存、Tick 报告。', downloads: 12_800_000, updatedAt: now - 12 * DAY, url: 'https://modrinth.com/plugin/spark' },
+    { kind: 'PLUGIN', source: 'HANGAR', projectId: 'LuckPerms', name: 'LuckPerms', summary: '权限管理插件，支持上下文与临时权限。', downloads: 38_000_000, updatedAt: now - 30 * DAY, url: 'https://hangar.papermc.io/Luck/LuckPerms' },
+    { kind: 'PLUGIN', source: 'MODRINTH', projectId: 'viaversion', name: 'ViaVersion', summary: '允许新版本客户端连接旧版本服务端。', downloads: 25_000_000, updatedAt: now - 8 * DAY, url: 'https://modrinth.com/plugin/viaversion' },
+    { kind: 'PLUGIN', source: 'MODRINTH', projectId: 'coreprotect', name: 'CoreProtect', summary: '方块记录与回滚，查熊必备。', downloads: 9_600_000, updatedAt: now - 15 * DAY, url: 'https://modrinth.com/plugin/coreprotect' },
+    { kind: 'PLUGIN', source: 'MODRINTH', projectId: 'squaremap', name: 'squaremap', summary: '轻量网页地图插件。', downloads: 1_100_000, updatedAt: now - 3 * DAY, url: 'https://modrinth.com/plugin/squaremap' },
+    { kind: 'MOD', source: 'MODRINTH', projectId: 'fabric-api', name: 'Fabric API', summary: 'Fabric 模组生态的核心 API 库。', downloads: 95_000_000, updatedAt: now - 6 * DAY, url: 'https://modrinth.com/mod/fabric-api' },
+    { kind: 'MOD', source: 'MODRINTH', projectId: 'lithium', name: 'Lithium', summary: '无损服务端性能优化模组。', downloads: 22_000_000, updatedAt: now - 20 * DAY, url: 'https://modrinth.com/mod/lithium' },
+    { kind: 'MOD', source: 'MODRINTH', projectId: 'carpet', name: 'Carpet', summary: '技术性生存辅助：刷怪塔调试、假人、规则开关。', downloads: 8_900_000, updatedAt: now - 11 * DAY, url: 'https://modrinth.com/mod/carpet' },
+    { kind: 'MOD', source: 'MODRINTH', projectId: 'ledger', name: 'Ledger', summary: '模组服务端的行为记录与查询。', downloads: 640_000, updatedAt: now - 40 * DAY, url: 'https://modrinth.com/mod/ledger' },
   ];
 
   const images: ImageInfo[] = [
@@ -600,6 +630,12 @@ export function buildSeed(now = Date.now()): MockState {
     extensionCatalog,
     images,
     builds,
+    registries: [
+      { id: 'reg-1', coreId: 'core-1', name: 'Docker Hub（官方）', url: 'https://registry-1.docker.io', priority: 1 },
+      { id: 'reg-2', coreId: 'core-1', name: '上海镜像加速站', url: 'https://mirror.sh.example.com', priority: 0 },
+      { id: 'reg-3', coreId: 'core-2', name: 'Docker Hub（官方）', url: 'https://registry-1.docker.io', priority: 0 },
+    ],
+    settings: { defaultInstanceRoot: '/opt/servers/', defaultBackupRoot: '/fs/backups/' },
     cpuTopologies,
     cpuPolicies,
     schedules,

@@ -63,9 +63,9 @@ const saveMutation = useMutation({
 <template>
   <div class="config-page">
     <div class="mcnp-card config-list">
-      <ATable :data="docs ?? []" :loading="isLoading" :pagination="false" row-key="id">
+      <ATable :data="docs ?? []" :loading="isLoading" :pagination="false" row-key="id" :scroll="{ x: 640 }">
         <template #columns>
-          <ATableColumn title="文件">
+          <ATableColumn title="文件" :width="260">
             <template #cell="{ record }"><span class="mono">{{ record.path }}</span></template>
           </ATableColumn>
           <ATableColumn title="格式" :width="110">
@@ -77,7 +77,7 @@ const saveMutation = useMutation({
           <ATableColumn title="更新" :width="110">
             <template #cell="{ record }">{{ formatRelative(record.updatedAt) }}</template>
           </ATableColumn>
-          <ATableColumn title="操作" :width="160">
+          <ATableColumn title="操作" :width="160" fixed="right">
             <template #cell="{ record }">
               <ASpace>
                 <AButton v-if="record.recognized" size="mini" @click="openDoc(record)">表单编辑</AButton>

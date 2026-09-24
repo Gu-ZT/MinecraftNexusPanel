@@ -26,7 +26,7 @@ const RESULT_META: Record<AuditResult, { label: string; color: string }> = {
 
 <template>
   <div>
-    <PageHeader title="审计日志" subtitle="不可变的安全与运维操作记录，敏感字段已脱敏" />
+    <PageHeader title="审计日志" subtitle="账户、节点与实例的关键操作记录" />
 
     <div class="mcnp-card">
       <div class="toolbar">
@@ -39,7 +39,7 @@ const RESULT_META: Record<AuditResult, { label: string; color: string }> = {
         </ASelect>
       </div>
 
-      <ATable :data="events ?? []" :loading="isLoading" :pagination="{ pageSize: 20 }" row-key="id">
+      <ATable :data="events ?? []" :loading="isLoading" :pagination="{ pageSize: 20 }" row-key="id" :scroll="{ x: 1040 }">
         <template #columns>
           <ATableColumn title="时间" :width="170">
             <template #cell="{ record }"><span class="mono">{{ formatTime(record.createdAt) }}</span></template>
@@ -48,7 +48,7 @@ const RESULT_META: Record<AuditResult, { label: string; color: string }> = {
           <ATableColumn title="动作" :width="170">
             <template #cell="{ record }"><span class="mono">{{ record.action }}</span></template>
           </ATableColumn>
-          <ATableColumn title="目标" data-index="target" />
+          <ATableColumn title="目标" data-index="target" cell-class="mcnp-td-wrap" />
           <ATableColumn title="结果" :width="90">
             <template #cell="{ record }">
               <ATag :color="RESULT_META[record.result as AuditResult].color" size="small">

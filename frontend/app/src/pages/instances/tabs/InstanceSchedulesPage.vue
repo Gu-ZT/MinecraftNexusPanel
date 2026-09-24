@@ -116,10 +116,10 @@ function triggerLabel(schedule: Schedule): string {
       </PermissionGate>
     </div>
 
-    <ATable :data="schedules ?? []" :loading="isLoading" :pagination="false" row-key="id">
+    <ATable :data="schedules ?? []" :loading="isLoading" :pagination="false" row-key="id" :scroll="{ x: 1120 }">
       <template #columns>
-        <ATableColumn title="名称" data-index="name" />
-        <ATableColumn title="触发条件">
+        <ATableColumn title="名称" data-index="name" :width="160" />
+        <ATableColumn title="触发条件" :width="200">
           <template #cell="{ record }"><span class="mono">{{ triggerLabel(record) }}</span></template>
         </ATableColumn>
         <ATableColumn title="动作" data-index="action" :width="160" />
@@ -138,7 +138,7 @@ function triggerLabel(schedule: Schedule): string {
         <ATableColumn title="下次执行" :width="160">
           <template #cell="{ record }">{{ formatTime(record.nextRunAt) }}</template>
         </ATableColumn>
-        <ATableColumn title="操作" :width="180">
+        <ATableColumn title="操作" :width="180" fixed="right">
           <template #cell="{ record }">
             <ASpace>
               <AButton size="mini" @click="historyOf = record.id">历史</AButton>

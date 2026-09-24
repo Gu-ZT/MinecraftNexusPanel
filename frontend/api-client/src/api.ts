@@ -25,7 +25,11 @@ import type {
   LoginResult,
   ManagedRuntime,
   ManagedRuntimeKind,
+  McdrSettings,
+  MountBinding,
+  PanelSettings,
   Permission,
+  RegistryInfo,
   Schedule,
   ScheduleExecution,
   ScheduleTrigger,
@@ -66,11 +70,15 @@ export interface InstanceSettingsPatch {
   serverType?: ServerType;
   expiresAt?: number | null;
   tags?: string[];
+  backupEnabled?: boolean;
+  backupTargetDir?: string | null;
   // instance.settings.launch
   launchCommand?: string;
   updateCommand?: string | null;
   javaRuntimeId?: string | null;
   supervisorMode?: 'DIRECT' | 'MCDR';
+  /** MCDR 包装器设置（部分字段更新）。 */
+  mcdrSettings?: Partial<McdrSettings>;
   // instance.settings.path
   workDir?: string;
   // instance.settings.container
@@ -78,6 +86,7 @@ export interface InstanceSettingsPatch {
   containerImage?: string | null;
   containerPorts?: string[];
   containerEnv?: Record<string, string>;
+  containerMounts?: MountBinding[];
 }
 
 export interface CreateCoreInput {
@@ -200,10 +209,14 @@ export interface McnpApi {
 
   readonly images: {
     list(coreId: string): Promise<ImageInfo[]>;
-    pull(coreId: string, reference: string): Promise<Accepted>;
+    /** 拉取镜像；registryId 为空时按仓库 priority 顺序查找。 */
+    pull(coreId: string, reference: string, registryId?: string): Promise<Accepted>;
     remove(coreId: string, imageId: string): Promise<Accepted>;
     builds(coreId: string): Promise<ImageBuild[]>;
     build(coreId: string, tag: string, dockerfile: string): Promise<Accepted & { buildId: string }>;
+    registries(coreId: string): Promise<RegistryInfo[]>;
+    addRegistry(coreId: string, input: { name: string; url: string }): Promise<RegistryInfo>;
+    removeRegistry(coreId: string, registryId: string): Promise<void>;
   };
 
   readonly schedules: {
@@ -233,5 +246,11 @@ export interface McnpApi {
 
   readonly audit: {
     list(filter?: AuditFilter): Promise<AuditEvent[]>;
+  };
+
+  /** Panel 级默认设置：读取不限权限（创建向导需要），修改要求 user.manage。 */
+  readonly panel: {
+    getSettings(): Promise<PanelSettings>;
+    updateSettings(patch: Partial<PanelSettings>): Promise<PanelSettings>;
   };
 }

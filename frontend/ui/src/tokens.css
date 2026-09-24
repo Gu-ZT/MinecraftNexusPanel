@@ -75,3 +75,19 @@
   outline: 2px solid var(--mcnp-color-primary);
   outline-offset: 2px;
 }
+
+/* 弹窗限高：正文超出时滚动，不撑满屏幕高度 */
+.arco-modal {
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.arco-modal .arco-modal-body {
+  overflow-y: auto;
+  max-height: calc(86vh - 108px);
+}
+
+.arco-drawer .arco-drawer-body {
+  overflow-y: auto;
+}

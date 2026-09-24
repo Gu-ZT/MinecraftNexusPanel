@@ -1,20 +1,21 @@
 <script setup lang="ts">
-/** 模组/插件：聚合搜索（Modrinth/Hangar 等来源）与已安装列表。 */
+/** 模组/插件：模组与插件分开展示，各自维护已安装列表与内容源搜索。 */
 
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
 import { Message, Modal } from '@arco-design/web-vue';
-import { ApiError, type ExtensionProject } from '@mcnp/api-client';
-import { PermissionGate, formatRelative } from '@mcnp/ui';
-import { useApi, usePlatform } from '@/composables';
+import { ApiError, type ExtensionKind, type ExtensionProject } from '@mcnp/api-client';
+import { useApi } from '@/composables';
+import ExtensionTables from './ExtensionTables.vue';
+import ExtensionSearch from './ExtensionSearch.vue';
 
 const api = useApi();
-const platform = usePlatform();
 const route = useRoute();
 const queryClient = useQueryClient();
 const instanceId = computed(() => route.params.id as string);
 
+const kind = ref<ExtensionKind>('PLUGIN');
 const query = ref('');
 
 const { data: installed, isLoading: loadingInstalled } = useQuery({
@@ -27,6 +28,10 @@ const { data: searchResults, isFetching: searching, refetch: runSearch } = useQu
   queryFn: () => api.extensions.search(instanceId.value, query.value),
   enabled: false,
 });
+
+/** 当前形态（模组/插件）下的已安装与搜索结果 */
+const installedOfKind = computed(() => (installed.value ?? []).filter((e) => e.kind === kind.value));
+const resultsOfKind = computed(() => (searchResults.value ?? []).filter((p) => p.kind === kind.value));
 
 const installMutation = useMutation({
   mutationFn: (project: ExtensionProject) => api.extensions.install(instanceId.value, project),
@@ -54,76 +59,76 @@ function removeInstall(install: { id: string; name: string }): void {
   });
 }
 
-const installedIds = computed(() => new Set((installed.value ?? []).map((e) => e.projectId)));
+/** 已安装判重：来源+项目 ID 联合（跨来源可能存在同 ID 项目）。 */
+const installedIds = computed(() => new Set((installed.value ?? []).map((e) => `${e.source}:${e.projectId}`)));
+
+function isInstalled(project: ExtensionProject): boolean {
+  return installedIds.value.has(`${project.source}:${project.projectId}`);
+}
+
+function switchKind(key: string | number): void {
+  kind.value = key as ExtensionKind;
+  query.value = '';
+}
 </script>
 
 <template>
-  <div class="ext-page">
-    <div class="mcnp-card">
-      <h3>已安装</h3>
-      <ATable :data="installed ?? []" :loading="loadingInstalled" :pagination="false" row-key="id">
-        <template #columns>
-          <ATableColumn title="名称" data-index="name" />
-          <ATableColumn title="来源" :width="110">
-            <template #cell="{ record }"><ATag size="small">{{ record.source }}</ATag></template>
-          </ATableColumn>
-          <ATableColumn title="版本" :width="120">
-            <template #cell="{ record }">
-              <span class="mono">{{ record.version }}</span>
-              <ATag v-if="record.updateAvailable" size="small" color="orange" style="margin-left: 4px">
-                可更新 {{ record.updateAvailable }}
-              </ATag>
-            </template>
-          </ATableColumn>
-          <ATableColumn title="文件名">
-            <template #cell="{ record }"><span class="mono">{{ record.fileName }}</span></template>
-          </ATableColumn>
-          <ATableColumn title="安装时间" :width="110">
-            <template #cell="{ record }">{{ formatRelative(record.installedAt) }}</template>
-          </ATableColumn>
-          <ATableColumn title="操作" :width="90">
-            <template #cell="{ record }">
-              <PermissionGate when="extension.manage">
-                <AButton size="mini" status="danger" type="text" @click="removeInstall(record)">删除</AButton>
-              </PermissionGate>
-            </template>
-          </ATableColumn>
-        </template>
-      </ATable>
-    </div>
+  <!-- 内容放入各 TabPane 内部，确保渲染在 arco-tabs-content 容器中 -->
+  <ATabs :active-key="kind" type="line" lazy-load @change="switchKind">
+    <ATabPane key="PLUGIN" title="插件">
+      <div v-if="kind === 'PLUGIN'" class="ext-page">
+        <div class="mcnp-card">
+          <h3>已安装插件</h3>
+          <ExtensionTables
+            :installed="installedOfKind"
+            :loading="loadingInstalled"
+            @remove="removeInstall"
+          />
+        </div>
 
-    <div class="mcnp-card">
-      <h3>搜索内容源</h3>
-      <div class="search-bar">
-        <AInputSearch v-model="query" placeholder="搜索 Modrinth / Hangar 项目" allow-clear @search="() => runSearch()" />
+        <div class="mcnp-card">
+          <h3>搜索插件内容源</h3>
+          <ExtensionSearch
+            v-model:query="query"
+            placeholder="搜索 Modrinth / Hangar 插件项目"
+            :results="resultsOfKind"
+            :searching="searching"
+            :install-pending="installMutation.isPending.value"
+            :is-installed="isInstalled"
+            @search="() => runSearch()"
+            @install="(p: ExtensionProject) => installMutation.mutate(p)"
+          />
+        </div>
       </div>
-      <ASpin :loading="searching" style="width: 100%">
-        <AList :data="searchResults ?? []" :bordered="false">
-          <AListItem v-for="project in searchResults ?? []" :key="`${project.source}:${project.projectId}`">
-            <AListItemMeta :title="project.name" :description="project.summary" />
-            <template #extra>
-              <ASpace>
-                <ATag size="small">{{ project.source }}</ATag>
-                <span class="text-secondary">{{ project.downloads.toLocaleString() }} 下载</span>
-                <AButton size="mini" type="text" @click="platform.openExternal(project.url)">来源页</AButton>
-                <PermissionGate when="extension.manage">
-                  <AButton
-                    size="mini"
-                    type="primary"
-                    :disabled="installedIds.has(project.projectId)"
-                    :loading="installMutation.isPending.value"
-                    @click="installMutation.mutate(project)"
-                  >
-                    {{ installedIds.has(project.projectId) ? '已安装' : '安装' }}
-                  </AButton>
-                </PermissionGate>
-              </ASpace>
-            </template>
-          </AListItem>
-        </AList>
-      </ASpin>
-    </div>
-  </div>
+    </ATabPane>
+
+    <ATabPane key="MOD" title="模组">
+      <div v-if="kind === 'MOD'" class="ext-page">
+        <div class="mcnp-card">
+          <h3>已安装模组</h3>
+          <ExtensionTables
+            :installed="installedOfKind"
+            :loading="loadingInstalled"
+            @remove="removeInstall"
+          />
+        </div>
+
+        <div class="mcnp-card">
+          <h3>搜索模组内容源</h3>
+          <ExtensionSearch
+            v-model:query="query"
+            placeholder="搜索 Modrinth 模组项目"
+            :results="resultsOfKind"
+            :searching="searching"
+            :install-pending="installMutation.isPending.value"
+            :is-installed="isInstalled"
+            @search="() => runSearch()"
+            @install="(p: ExtensionProject) => installMutation.mutate(p)"
+          />
+        </div>
+      </div>
+    </ATabPane>
+  </ATabs>
 </template>
 
 <style scoped>
@@ -136,10 +141,5 @@ const installedIds = computed(() => new Set((installed.value ?? []).map((e) => e
 h3 {
   margin: 0 0 var(--mcnp-space-3);
   font-size: 15px;
-}
-
-.search-bar {
-  margin-bottom: var(--mcnp-space-3);
-  max-width: 420px;
 }
 </style>

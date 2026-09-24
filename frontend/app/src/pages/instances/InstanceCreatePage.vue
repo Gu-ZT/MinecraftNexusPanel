@@ -1,12 +1,12 @@
 <script setup lang="ts">
 /** 一键搭建向导：模板 → 版本与环境 → 基本设置 → 确认（M2 链路原型）。 */
 
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useMutation, useQuery } from '@tanstack/vue-query';
 import { Message } from '@arco-design/web-vue';
 import { ApiError } from '@mcnp/api-client';
-import { PageHeader } from '@mcnp/ui';
+import { PageHeader, formatTime } from '@mcnp/ui';
 import { useApi } from '@/composables';
 
 const api = useApi();
@@ -22,13 +22,37 @@ const form = reactive({
   supervisorMode: 'DIRECT' as 'DIRECT' | 'MCDR',
   name: '',
   workDir: '',
-  expiresInDays: 0,
+  expiresAt: null as number | null,
 });
 
 const { data: cores } = useQuery({ queryKey: ['cores'], queryFn: () => api.cores.list() });
 const { data: templates } = useQuery({ queryKey: ['templates'], queryFn: () => api.templates.list() });
+const { data: panelSettings } = useQuery({ queryKey: ['panel-settings'], queryFn: () => api.panel.getSettings() });
+
+// 默认工作目录：{默认实例根目录}{实例名称}/；用户手动修改后不再自动覆盖
+const workDirTouched = ref(false);
+const autoWorkDir = computed(() => {
+  const root = panelSettings.value?.defaultInstanceRoot ?? '';
+  const name = form.name.trim();
+  if (!root || !name) return '';
+  return `${root.replace(/\/+$/, '')}/${name}/`;
+});
+watch(autoWorkDir, (dir) => {
+  if (!workDirTouched.value && dir) form.workDir = dir;
+});
+function onWorkDirInput(): void {
+  workDirTouched.value = true;
+}
 
 const template = computed(() => templates.value?.find((t) => t.id === form.templateId) ?? null);
+
+// ADatePicker 不接受 null，用代理在 null ↔ undefined 间转换
+const expiresAtModel = computed({
+  get: () => form.expiresAt ?? undefined,
+  set: (v) => {
+    form.expiresAt = typeof v === 'number' ? v : null;
+  },
+});
 
 // 选定节点后加载其受管 Java 运行时
 const { data: runtimes } = useQuery({
@@ -69,7 +93,7 @@ const createMutation = useMutation({
       javaRuntimeId: form.javaRuntimeId || null,
       workDir: form.workDir,
       supervisorMode: form.supervisorMode,
-      expiresAt: form.expiresInDays > 0 ? Date.now() + form.expiresInDays * 86_400_000 : null,
+      expiresAt: form.expiresAt,
     });
   },
   onSuccess: ({ instanceId }) => {
@@ -82,7 +106,7 @@ const createMutation = useMutation({
 
 <template>
   <div>
-    <PageHeader title="一键搭建" subtitle="由安装模板完成服务端下载、校验与默认配置（可审计异步任务）" />
+    <PageHeader title="一键搭建" subtitle="选择模板，几步之内创建好一台服务器" />
 
     <div class="mcnp-card wizard">
       <ASteps :current="step + 1" style="margin-bottom: 24px">
@@ -137,9 +161,11 @@ const createMutation = useMutation({
       <!-- 步骤 3：基本设置 -->
       <AForm v-else-if="step === 2" :model="form" layout="vertical" class="wizard-form">
         <AFormItem label="实例名称" required><AInput v-model="form.name" /></AFormItem>
-        <AFormItem label="工作目录" required><AInput v-model="form.workDir" placeholder="/opt/mc/servers/my-server" /></AFormItem>
-        <AFormItem label="到期时间" extra="0 表示永不到期（社区版可留空）">
-          <AInputNumber v-model="form.expiresInDays" :min="0" placeholder="天数" /> 天后到期
+        <AFormItem label="工作目录" required :extra="autoWorkDir && !workDirTouched ? `已按默认实例根目录推导：${autoWorkDir}` : undefined">
+          <AInput v-model="form.workDir" placeholder="/opt/mc/servers/my-server" @input="onWorkDirInput" />
+        </AFormItem>
+        <AFormItem label="到期时间" extra="留空表示永不到期">
+          <ADatePicker v-model="expiresAtModel" show-time value-format="timestamp" allow-clear style="width: 280px" />
         </AFormItem>
       </AForm>
 
@@ -152,6 +178,7 @@ const createMutation = useMutation({
           <ADescriptionsItem label="实例名称">{{ form.name }}</ADescriptionsItem>
           <ADescriptionsItem label="工作目录"><span class="mono">{{ form.workDir }}</span></ADescriptionsItem>
           <ADescriptionsItem label="进程包装">{{ form.supervisorMode }}</ADescriptionsItem>
+          <ADescriptionsItem label="到期时间">{{ form.expiresAt ? formatTime(form.expiresAt) : '永不到期' }}</ADescriptionsItem>
         </ADescriptions>
       </div>
 

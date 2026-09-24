@@ -109,10 +109,11 @@ async function kill(): Promise<void> {
       </template>
     </PageHeader>
 
-    <ATabs :active-key="activeTab" type="card-gutter" @change="(key: string | number) => switchTab(String(key))">
-      <ATabPane v-for="tab in visibleTabs" :key="tab.key" :title="tab.label" />
+    <ATabs :active-key="activeTab" type="card-gutter" lazy-load class="instance-detail-tabs" @change="(key: string | number) => switchTab(String(key))">
+      <!-- 内容放入各 TabPane 内部，确保渲染在 arco-tabs-content 容器中 -->
+      <ATabPane v-for="tab in visibleTabs" :key="tab.key" :title="tab.label">
+        <RouterView v-if="activeTab === tab.key" :key="route.fullPath" />
+      </ATabPane>
     </ATabs>
-
-    <RouterView :key="route.fullPath" />
   </div>
 </template>

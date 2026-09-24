@@ -90,7 +90,7 @@ function scopeLabel(group: Group): string {
 
 <template>
   <div>
-    <PageHeader title="用户组" subtitle="权限点 + 实例范围；没有显式授予即拒绝">
+    <PageHeader title="用户组" subtitle="定义权限组合与可见实例范围，批量授予组内成员">
       <template #extra>
         <PermissionGate when="user.manage">
           <AButton type="primary" @click="openEditor()">新建用户组</AButton>
@@ -99,22 +99,22 @@ function scopeLabel(group: Group): string {
     </PageHeader>
 
     <div class="mcnp-card">
-      <ATable :data="groups ?? []" :loading="isLoading" :pagination="false" row-key="id">
+      <ATable :data="groups ?? []" :loading="isLoading" :pagination="false" row-key="id" :scroll="{ x: 840 }">
         <template #columns>
-          <ATableColumn title="名称">
+          <ATableColumn title="名称" :width="140">
             <template #cell="{ record }">
               {{ record.name }}
               <ATag v-if="record.builtIn" size="small" color="arcoblue" style="margin-left: 4px">内置</ATag>
             </template>
           </ATableColumn>
-          <ATableColumn title="描述" data-index="description" />
+          <ATableColumn title="描述" data-index="description" :width="260" ellipsis tooltip />
           <ATableColumn title="权限点数" :width="90">
             <template #cell="{ record }">{{ record.permissions.length }}</template>
           </ATableColumn>
           <ATableColumn title="实例范围" :width="180">
             <template #cell="{ record }">{{ scopeLabel(record) }}</template>
           </ATableColumn>
-          <ATableColumn title="操作" :width="140">
+          <ATableColumn title="操作" :width="180" fixed="right">
             <template #cell="{ record }">
               <PermissionGate when="user.manage">
                 <ASpace>

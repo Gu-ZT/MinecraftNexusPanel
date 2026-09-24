@@ -1,11 +1,11 @@
 <script setup lang="ts">
-/** 个人设置：修改密码与会话/设备管理。 */
+/** 设置：个人安全（密码/会话）与 Panel 默认路径（实例位置/备份位置）。 */
 
-import { reactive, ref } from 'vue';
-import { useQuery, useQueryClient } from '@tanstack/vue-query';
+import { reactive, ref, watch } from 'vue';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
 import { Message } from '@arco-design/web-vue';
 import { ApiError } from '@mcnp/api-client';
-import { PageHeader, formatRelative } from '@mcnp/ui';
+import { PageHeader, PermissionGate, formatRelative } from '@mcnp/ui';
 import { useApi } from '@/composables';
 import { useAuthStore } from '@/stores/auth';
 
@@ -51,13 +51,61 @@ const PLATFORM_LABEL: Record<string, string> = {
   'tauri-mobile': '移动端',
   unknown: '未知',
 };
+
+// ---- Panel 默认路径 ----
+const { data: panelSettings } = useQuery({ queryKey: ['panel-settings'], queryFn: () => api.panel.getSettings() });
+
+const defaults = reactive({ defaultInstanceRoot: '', defaultBackupRoot: '' });
+watch(
+  panelSettings,
+  (settings) => {
+    if (!settings) return;
+    defaults.defaultInstanceRoot = settings.defaultInstanceRoot;
+    defaults.defaultBackupRoot = settings.defaultBackupRoot;
+  },
+  { immediate: true },
+);
+
+const defaultsMutation = useMutation({
+  mutationFn: () =>
+    api.panel.updateSettings({
+      defaultInstanceRoot: defaults.defaultInstanceRoot.trim(),
+      defaultBackupRoot: defaults.defaultBackupRoot.trim(),
+    }),
+  onSuccess: () => {
+    Message.success('默认路径已保存');
+    void queryClient.invalidateQueries({ queryKey: ['panel-settings'] });
+  },
+  onError: (err) => Message.error(err instanceof ApiError ? err.message : '保存失败'),
+});
 </script>
 
 <template>
   <div>
-    <PageHeader title="个人设置" :subtitle="auth.user ? `当前账户：${auth.user.displayName}（${auth.user.username}）` : ''" />
+    <PageHeader title="设置" :subtitle="auth.user ? `当前账户：${auth.user.displayName}（${auth.user.username}）` : ''" />
 
     <div class="settings-grid">
+      <div class="mcnp-card">
+        <h3>默认路径</h3>
+        <AForm :model="defaults" layout="vertical" style="max-width: 420px">
+          <AFormItem
+            label="默认实例位置"
+            extra="新建实例时自动填充工作目录：例如默认 /opt/servers/、实例名 fabric-1 时推导为 /opt/servers/fabric-1/"
+          >
+            <AInput v-model="defaults.defaultInstanceRoot" class="mono" placeholder="/opt/servers/" :disabled="!auth.has('user.manage')" />
+          </AFormItem>
+          <AFormItem
+            label="默认备份位置"
+            extra="启用备份时自动映射：例如默认 /fs/backups/、实例名 fabric-1 时，工作目录下 ./backups/ 映射为 /fs/backups/fabric-1/"
+          >
+            <AInput v-model="defaults.defaultBackupRoot" class="mono" placeholder="/fs/backups/" :disabled="!auth.has('user.manage')" />
+          </AFormItem>
+          <PermissionGate when="user.manage">
+            <AButton type="primary" :loading="defaultsMutation.isPending.value" @click="defaultsMutation.mutate()">保存</AButton>
+          </PermissionGate>
+        </AForm>
+      </div>
+
       <div class="mcnp-card">
         <h3>修改密码</h3>
         <AForm :model="pwd" layout="vertical" style="max-width: 360px">

@@ -45,7 +45,7 @@ const STATE_OPTIONS: { value: InstanceState | ''; label: string }[] = [
 
 <template>
   <div>
-    <PageHeader title="实例" subtitle="每台实例归属于且仅归属于一个 Core">
+    <PageHeader title="实例" subtitle="创建与管理各节点上的服务器实例">
       <template #extra>
         <PermissionGate when="instance.create">
           <AButton type="primary" @click="router.push('/instances/new')">一键搭建</AButton>
@@ -61,9 +61,9 @@ const STATE_OPTIONS: { value: InstanceState | ''; label: string }[] = [
         </ASelect>
       </div>
 
-      <ATable :data="instances ?? []" :loading="isLoading" :pagination="false" row-key="id">
+      <ATable :data="instances ?? []" :loading="isLoading" :pagination="false" row-key="id" :scroll="{ x: 960 }">
         <template #columns>
-          <ATableColumn title="名称" data-index="name" />
+          <ATableColumn title="名称" data-index="name" :width="160" />
           <ATableColumn title="节点" :width="150">
             <template #cell="{ record }">{{ coreName(record.coreId) }}</template>
           </ATableColumn>
@@ -73,7 +73,7 @@ const STATE_OPTIONS: { value: InstanceState | ''; label: string }[] = [
           <ATableColumn title="状态" :width="100">
             <template #cell="{ record }"><InstanceStateTag :state="record.state" /></template>
           </ATableColumn>
-          <ATableColumn title="标签">
+          <ATableColumn title="标签" :width="200">
             <template #cell="{ record }">
               <ATag v-for="tag in record.tags" :key="tag" size="small" style="margin-right: 4px">{{ tag }}</ATag>
             </template>
@@ -81,7 +81,7 @@ const STATE_OPTIONS: { value: InstanceState | ''; label: string }[] = [
           <ATableColumn title="到期时间" :width="110">
             <template #cell="{ record }">{{ formatRelative(record.expiresAt) }}</template>
           </ATableColumn>
-          <ATableColumn title="操作" :width="90">
+          <ATableColumn title="操作" :width="90" fixed="right">
             <template #cell="{ record }">
               <AButton size="small" @click="router.push(`/instances/${record.id}/console`)">打开</AButton>
             </template>

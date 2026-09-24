@@ -47,6 +47,22 @@ export type RuntimeMode = 'HOST' | 'CONTAINER';
 export type SupervisorMode = 'DIRECT' | 'MCDR';
 export type ServerType = 'VANILLA' | 'PAPER' | 'VELOCITY' | 'FABRIC' | 'CUSTOM';
 
+/** 容器路径映射：宿主机路径 ↔ 容器内路径。 */
+export interface MountBinding {
+  hostPath: string;
+  containerPath: string;
+}
+
+/** MCDR 包装器设置（supervisorMode=MCDR 时有效，独立于启动命令编辑）。 */
+export interface McdrSettings {
+  /** 启动时检查 MCDR 与插件更新。 */
+  checkUpdate: boolean;
+  /** 配置文件变更后自动重载插件。 */
+  autoReload: boolean;
+  /** MCDR 语言包，如 zh_cn / en_us。 */
+  language: string;
+}
+
 /** 一个 Minecraft 服务端实例，归属于且仅归属于一个 Core。 */
 export interface Instance {
   id: string;
@@ -64,6 +80,12 @@ export interface Instance {
   /** 容器端口映射，如 ["25565:25565"]。 */
   containerPorts: string[];
   containerEnv: Record<string, string>;
+  /** 容器路径映射（宿主机 ↔ 容器）。 */
+  containerMounts: MountBinding[];
+  mcdrSettings: McdrSettings;
+  /** 是否启用自动备份及备份产物落盘目录。 */
+  backupEnabled: boolean;
+  backupTargetDir: string | null;
   launchCommand: string;
   updateCommand: string | null;
   expiresAt: number | null;
@@ -166,7 +188,11 @@ export interface FileEntry {
 
 export type ExtensionSource = 'MODRINTH' | 'HANGAR' | 'SPIGET' | 'CUSTOM';
 
+/** 扩展形态：模组与插件分开展示与管理。 */
+export type ExtensionKind = 'MOD' | 'PLUGIN';
+
 export interface ExtensionProject {
+  kind: ExtensionKind;
   source: ExtensionSource;
   projectId: string;
   name: string;
@@ -180,6 +206,7 @@ export interface ExtensionProject {
 export interface ExtensionInstall {
   id: string;
   instanceId: string;
+  kind: ExtensionKind;
   source: ExtensionSource;
   projectId: string;
   name: string;
@@ -204,6 +231,16 @@ export interface ImageInfo {
 }
 
 export type ImageBuildStatus = 'RUNNING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
+
+/** 镜像仓库：拉取时可指定目标仓库，不指定则按 priority 顺序查找。 */
+export interface RegistryInfo {
+  id: string;
+  coreId: string;
+  name: string;
+  url: string;
+  /** 查找顺序，越小越优先。 */
+  priority: number;
+}
 
 export interface ImageBuild {
   id: string;
@@ -398,6 +435,18 @@ export interface LoginResult {
   /** 聚合用户所在全部用户组后的权限点集合（服务端计算）。 */
   permissions: Permission[];
   token: SessionToken;
+}
+
+// ---------------------------------------------------------------------------
+// Panel 设置
+// ---------------------------------------------------------------------------
+
+/** Panel 级默认设置：新建实例/启用备份时用于推导默认路径。 */
+export interface PanelSettings {
+  /** 默认实例根目录，如 /opt/servers/；新建实例工作目录推导为 {root}{name}/。 */
+  defaultInstanceRoot: string;
+  /** 默认备份根目录，如 /fs/backups/；启用备份时推导为 {root}{name}/。 */
+  defaultBackupRoot: string;
 }
 
 // ---------------------------------------------------------------------------

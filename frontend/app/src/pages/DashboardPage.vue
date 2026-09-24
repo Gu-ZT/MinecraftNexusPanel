@@ -4,20 +4,27 @@
 import { computed, onBeforeUnmount, reactive } from 'vue';
 import { useQuery } from '@tanstack/vue-query';
 import { useRouter } from 'vue-router';
-import { CoreStatusBadge, InstanceStateTag, MetricSparkline, PageHeader, formatPercent } from '@mcnp/ui';
+import { CoreStatusBadge, InstanceStateTag, MetricSparkline, PageHeader, formatPercent, type MetricPoint } from '@mcnp/ui';
 import { useApi, useRealtime } from '@/composables';
 import { useAuthStore } from '@/stores/auth';
+import { useCoreStore } from '@/stores/core';
 
 const api = useApi();
 const realtime = useRealtime();
 const router = useRouter();
 const auth = useAuthStore();
+const coreStore = useCoreStore();
 
 const { data: cores } = useQuery({
   queryKey: ['cores'],
   queryFn: () => api.cores.list(),
   enabled: computed(() => auth.has('core.read')),
 });
+
+/** 选中具体节点时只展示该节点状态；「全部节点」展示全部。 */
+const visibleCores = computed(() =>
+  (cores.value ?? []).filter((c) => coreStore.selectedCoreId === null || c.id === coreStore.selectedCoreId),
+);
 
 const { data: instances } = useQuery({
   queryKey: ['instances', 'all'],
@@ -33,12 +40,12 @@ const { data: tasks } = useQuery({
 const running = computed(() => (instances.value ?? []).filter((i) => i.state === 'RUNNING'));
 const recentTasks = computed(() => (tasks.value ?? []).slice(0, 5));
 
-// 节点实时指标：core-status 事件写入本地序列
-const cpuSeries = reactive<Record<string, number[]>>({});
+// 节点实时指标：core-status 事件写入带时间戳的点序列（时间窗曲线，缺失补 0）
+const cpuSeries = reactive<Record<string, MetricPoint[]>>({});
 const off = realtime.subscribe({ kind: 'core-status' }, (event) => {
   const series = cpuSeries[event.coreId] ?? [];
-  series.push(event.cpuUsage);
-  if (series.length > 40) series.shift();
+  series.push({ at: Date.now(), value: event.cpuUsage });
+  if (series.length > 90) series.shift();
   cpuSeries[event.coreId] = series;
 });
 onBeforeUnmount(off);
@@ -71,38 +78,44 @@ function coreName(coreId: string): string {
       </div>
     </div>
 
-    <div class="dash-grid">
-      <div class="mcnp-card">
-        <h3>节点状态</h3>
-        <ATable
-          :data="cores ?? []"
-          :pagination="false"
-          row-key="id"
-          @row-click="(row) => router.push(`/cores/${row.id}`)"
-        >
-          <template #columns>
-            <ATableColumn title="名称" data-index="name" />
-            <ATableColumn title="地址" data-index="address">
-              <template #cell="{ record }"><span class="mono">{{ record.address }}</span></template>
-            </ATableColumn>
-            <ATableColumn title="状态">
-              <template #cell="{ record }"><CoreStatusBadge :status="record.status" /></template>
-            </ATableColumn>
-            <ATableColumn title="CPU">
-              <template #cell="{ record }">
-                <div class="metric-cell">
-                  <span>{{ formatPercent(record.cpuUsage) }}</span>
-                  <MetricSparkline :data="cpuSeries[record.id] ?? []" :height="32" />
-                </div>
-              </template>
-            </ATableColumn>
-            <ATableColumn title="实例" :width="90">
-              <template #cell="{ record }">{{ record.runningCount }} / {{ record.instanceCount }}</template>
-            </ATableColumn>
-          </template>
-        </ATable>
-      </div>
+    <!-- 节点状态：整页宽度长卡片，列超出时横向滚动 -->
+    <div class="mcnp-card node-card">
+      <h3>节点状态{{ coreStore.selectedCoreId ? `（${visibleCores[0]?.name ?? '当前节点'}）` : '' }}</h3>
+      <ATable
+        :data="visibleCores"
+        :pagination="false"
+        row-key="id"
+        :scroll="{ x: 860 }"
+        @row-click="(row) => router.push(`/cores/${row.id}`)"
+      >
+        <template #columns>
+          <ATableColumn title="名称" data-index="name" :width="160" />
+          <ATableColumn title="地址" :width="190">
+            <template #cell="{ record }"><span class="mono">{{ record.address }}</span></template>
+          </ATableColumn>
+          <ATableColumn title="状态">
+            <template #cell="{ record }"><CoreStatusBadge :status="record.status" /></template>
+          </ATableColumn>
+          <ATableColumn title="CPU" :width="220">
+            <template #cell="{ record }">
+              <div class="metric-cell">
+                <span>{{ formatPercent(record.cpuUsage) }}</span>
+                <!-- core-status 推送周期 3s，桶宽取 4s 避免补 0 造成假锯齿 -->
+                <MetricSparkline :points="cpuSeries[record.id] ?? []" :window-ms="60_000" :bucket-ms="4_000" :height="32" />
+              </div>
+            </template>
+          </ATableColumn>
+          <ATableColumn title="内存" :width="100">
+            <template #cell="{ record }">{{ formatPercent(record.memoryUsage) }}</template>
+          </ATableColumn>
+          <ATableColumn title="实例" :width="90" fixed="right">
+            <template #cell="{ record }">{{ record.runningCount }} / {{ record.instanceCount }}</template>
+          </ATableColumn>
+        </template>
+      </ATable>
+    </div>
 
+    <div class="dash-grid">
       <div class="mcnp-card">
         <h3>运行中的实例</h3>
         <AEmpty v-if="running.length === 0" description="暂无运行中的实例" />
@@ -154,6 +167,11 @@ function coreName(coreId: string): string {
 .stat-label {
   color: var(--mcnp-text-secondary);
   font-size: 13px;
+}
+
+.node-card {
+  margin-bottom: var(--mcnp-space-4);
+  width: 100%;
 }
 
 .dash-grid {

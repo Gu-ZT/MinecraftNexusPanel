@@ -5,7 +5,7 @@
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "dev": "pnpm --filter @mcnp/app dev",
-    "build": "pnpm -r --filter './frontend/*' build",
+    "build": "pnpm typecheck && pnpm --filter @mcnp/app build",
     "typecheck": "pnpm -r --filter './frontend/*' typecheck",
     "lint": "pnpm -r --filter './frontend/*' lint"
   },

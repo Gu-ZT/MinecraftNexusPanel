@@ -24,3 +24,36 @@ body {
   border-radius: var(--mcnp-radius-m);
   padding: var(--mcnp-space-4);
 }
+
+/* ------------------------------------------------------------------
+ * 表格：单元格不折行，超出列宽以省略号截断（列宽由 Arco col 元素决定，
+ * 不可对 td 设 max-width，否则整列被压成 0 宽、表格看似为空）；
+ * 各列显式宽度贴合内容，scroll.x 等于总列宽，横向滚动时操作列
+ * fixed="right" 由 Arco 原生布局正确冻结。
+ * 长文本列（简介/详情类）使用 .mcnp-td-wrap 恢复折行。
+ * ----------------------------------------------------------------- */
+.arco-table-th,
+.arco-table-td {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.arco-table-td.mcnp-td-wrap {
+  white-space: normal;
+  min-width: 240px;
+  word-break: break-all;
+}
+
+/* 实例详情页：tabs 内容区留边，避免卡片与边框紧贴；
+ * content-item 自带 width:100%，必须 border-box 否则 padding 会把内容顶出右侧；
+ * Arco tabs-content 自带 16px 顶部 padding，统一归零后由 content-item 控制间距 */
+.instance-detail-tabs > .arco-tabs-content,
+.instance-detail-tabs .arco-tabs-content .arco-tabs-content {
+  padding-top: 0;
+}
+
+.instance-detail-tabs > .arco-tabs-content .arco-tabs-content-item {
+  box-sizing: border-box;
+  padding: var(--mcnp-space-2) var(--mcnp-space-1) var(--mcnp-space-3);
+}

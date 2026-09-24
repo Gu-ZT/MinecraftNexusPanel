@@ -49,7 +49,7 @@ async function cancel(taskId: string): Promise<void> {
 
 <template>
   <div>
-    <PageHeader title="任务中心" subtitle="耗时操作返回 202 与 taskId，进度经实时通道推送" />
+    <PageHeader title="任务中心" subtitle="查看异步任务的执行进度与结果" />
     <h3>进行中</h3>
     <div class="task-grid">
       <TaskProgressCard v-for="task in grouped.active" :key="task.id" :task="task" @cancel="cancel" />

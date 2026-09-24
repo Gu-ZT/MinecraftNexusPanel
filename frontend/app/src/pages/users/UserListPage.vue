@@ -87,7 +87,7 @@ const isSelf = computed(() => (id: string) => auth.user?.id === id);
 
 <template>
   <div>
-    <PageHeader title="用户" subtitle="用户通过用户组获得权限与实例可见范围">
+    <PageHeader title="用户" subtitle="管理面板账户及其所属用户组">
       <template #extra>
         <PermissionGate when="user.manage">
           <AButton type="primary" @click="createVisible = true">新建用户</AButton>
@@ -96,11 +96,11 @@ const isSelf = computed(() => (id: string) => auth.user?.id === id);
     </PageHeader>
 
     <div class="mcnp-card">
-      <ATable :data="users ?? []" :loading="isLoading" :pagination="false" row-key="id">
+      <ATable :data="users ?? []" :loading="isLoading" :pagination="false" row-key="id" :scroll="{ x: 960 }">
         <template #columns>
-          <ATableColumn title="用户名" data-index="username" />
-          <ATableColumn title="显示名" data-index="displayName" />
-          <ATableColumn title="用户组">
+          <ATableColumn title="用户名" data-index="username" :width="120" />
+          <ATableColumn title="显示名" data-index="displayName" :width="140" />
+          <ATableColumn title="用户组" :width="200">
             <template #cell="{ record }">{{ groupNames(record.groupIds) }}</template>
           </ATableColumn>
           <ATableColumn title="状态" :width="90">
@@ -111,7 +111,7 @@ const isSelf = computed(() => (id: string) => auth.user?.id === id);
           <ATableColumn title="最近登录" :width="110">
             <template #cell="{ record }">{{ formatRelative(record.lastLoginAt) }}</template>
           </ATableColumn>
-          <ATableColumn title="操作" :width="240">
+          <ATableColumn title="操作" :width="270" fixed="right">
             <template #cell="{ record }">
               <PermissionGate when="user.manage">
                 <ASpace>

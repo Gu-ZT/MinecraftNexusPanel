@@ -30,6 +30,7 @@ import type {
   LoginResult,
   ManagedRuntime,
   Permission,
+  RegistryInfo,
   Schedule,
   User,
 } from '../domain';
@@ -304,6 +305,10 @@ export class MockApi implements McnpApi {
         containerImage: null,
         containerPorts: [],
         containerEnv: {},
+        containerMounts: [],
+        mcdrSettings: { checkUpdate: true, autoReload: false, language: 'zh_cn' },
+        backupEnabled: false,
+        backupTargetDir: null,
         launchCommand: 'java -Xmx2G -jar server.jar nogui',
         updateCommand: null,
         expiresAt: input.expiresAt,
@@ -454,15 +459,19 @@ export class MockApi implements McnpApi {
         ['serverType', 'instance.settings.basic'],
         ['expiresAt', 'instance.settings.basic'],
         ['tags', 'instance.settings.basic'],
+        ['backupEnabled', 'instance.settings.basic'],
+        ['backupTargetDir', 'instance.settings.basic'],
         ['launchCommand', 'instance.settings.launch'],
         ['updateCommand', 'instance.settings.launch'],
         ['javaRuntimeId', 'instance.settings.launch'],
         ['supervisorMode', 'instance.settings.launch'],
+        ['mcdrSettings', 'instance.settings.launch'],
         ['workDir', 'instance.settings.path'],
         ['runtimeMode', 'instance.settings.container'],
         ['containerImage', 'instance.settings.container'],
         ['containerPorts', 'instance.settings.container'],
         ['containerEnv', 'instance.settings.container'],
+        ['containerMounts', 'instance.settings.container'],
       ];
       for (const [field, permission] of permissionByField) {
         if (patch[field] !== undefined) this.store.requirePermission(permission);
@@ -474,15 +483,19 @@ export class MockApi implements McnpApi {
         serverType: patch.serverType ?? instance.serverType,
         expiresAt: patch.expiresAt === undefined ? instance.expiresAt : patch.expiresAt,
         tags: patch.tags ?? instance.tags,
+        backupEnabled: patch.backupEnabled ?? instance.backupEnabled,
+        backupTargetDir: patch.backupTargetDir === undefined ? instance.backupTargetDir : patch.backupTargetDir,
         launchCommand: patch.launchCommand ?? instance.launchCommand,
         updateCommand: patch.updateCommand === undefined ? instance.updateCommand : patch.updateCommand,
         javaRuntimeId: patch.javaRuntimeId === undefined ? instance.javaRuntimeId : patch.javaRuntimeId,
         supervisorMode: patch.supervisorMode ?? instance.supervisorMode,
+        mcdrSettings: patch.mcdrSettings ? { ...instance.mcdrSettings, ...patch.mcdrSettings } : instance.mcdrSettings,
         workDir: patch.workDir ?? instance.workDir,
         runtimeMode: patch.runtimeMode ?? instance.runtimeMode,
         containerImage: patch.containerImage === undefined ? instance.containerImage : patch.containerImage,
         containerPorts: patch.containerPorts ?? instance.containerPorts,
         containerEnv: patch.containerEnv ?? instance.containerEnv,
+        containerMounts: patch.containerMounts ?? instance.containerMounts,
       });
       this.recordAudit('instance.settings', `${instanceId} (${instance.name})`, 'SUCCESS', Object.keys(patch).join(', '));
       return instance;
@@ -774,6 +787,7 @@ export class MockApi implements McnpApi {
           const install: ExtensionInstall = {
             id: this.store.nextId('ext'),
             instanceId,
+            kind: project.kind,
             source: project.source,
             projectId: project.projectId,
             name: project.name,
@@ -822,12 +836,15 @@ export class MockApi implements McnpApi {
       return this.store.state.images.filter((i) => i.coreId === coreId);
     },
 
-    pull: async (coreId, reference) => {
+    pull: async (coreId, reference, registryId) => {
       this.store.requirePermission('image.manage');
       await latency();
+      const registry = registryId ? this.store.state.registries.find((r) => r.id === registryId && r.coreId === coreId) : undefined;
+      if (registryId && !registry) throw new ApiError(404, 'REGISTRY_NOT_FOUND', '镜像仓库不存在');
+      const via = registry ? registry.name : '按仓库顺序自动查找';
       const task = this.store.startTask({
         kind: 'IMAGE_PULL',
-        title: `拉取镜像 ${reference}`,
+        title: `拉取镜像 ${reference}（${via}）`,
         coreId,
         durationMs: 6_000,
         onDone: () => {
@@ -841,7 +858,7 @@ export class MockApi implements McnpApi {
           this.store.state.images.push(image);
         },
       });
-      this.recordAudit('image.pull', reference, 'SUCCESS');
+      this.recordAudit('image.pull', reference, 'SUCCESS', `仓库：${via}`);
       return { taskId: task.id };
     },
 
@@ -902,6 +919,39 @@ export class MockApi implements McnpApi {
       });
       this.recordAudit('image.build', tag, 'SUCCESS');
       return { taskId: task.id, buildId: build.id };
+    },
+
+    registries: async (coreId) => {
+      this.store.requirePermission('image.read');
+      await latency();
+      return this.store.state.registries
+        .filter((r) => r.coreId === coreId)
+        .sort((a, b) => a.priority - b.priority);
+    },
+
+    addRegistry: async (coreId, input) => {
+      this.store.requirePermission('image.manage');
+      await latency();
+      const siblings = this.store.state.registries.filter((r) => r.coreId === coreId);
+      const registry: RegistryInfo = {
+        id: this.store.nextId('reg'),
+        coreId,
+        name: input.name,
+        url: input.url,
+        priority: siblings.length === 0 ? 0 : Math.max(...siblings.map((r) => r.priority)) + 1,
+      };
+      this.store.state.registries.push(registry);
+      this.recordAudit('image.registry.add', `${input.name} (${input.url})`, 'SUCCESS');
+      return registry;
+    },
+
+    removeRegistry: async (coreId, registryId) => {
+      this.store.requirePermission('image.manage');
+      await latency();
+      const registry = this.store.state.registries.find((r) => r.id === registryId && r.coreId === coreId);
+      if (!registry) throw new ApiError(404, 'REGISTRY_NOT_FOUND', '镜像仓库不存在');
+      this.store.state.registries = this.store.state.registries.filter((r) => r.id !== registryId);
+      this.recordAudit('image.registry.remove', `${registry.name} (${registry.url})`, 'SUCCESS');
     },
   };
 
@@ -1101,6 +1151,26 @@ export class MockApi implements McnpApi {
           return true;
         })
         .slice(0, filter?.limit ?? 100);
+    },
+  };
+
+  // -------------------------------------------------------------------------
+  // panel 设置
+  // -------------------------------------------------------------------------
+
+  readonly panel: McnpApi['panel'] = {
+    getSettings: async () => {
+      this.store.currentUser();
+      await latency();
+      return { ...this.store.state.settings };
+    },
+
+    updateSettings: async (patch) => {
+      this.store.requirePermission('user.manage');
+      await latency();
+      Object.assign(this.store.state.settings, patch);
+      this.recordAudit('panel.settings', 'panel', 'SUCCESS', Object.keys(patch).join(', '));
+      return { ...this.store.state.settings };
     },
   };
 }

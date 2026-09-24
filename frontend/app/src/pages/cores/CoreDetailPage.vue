@@ -71,19 +71,19 @@ const coreLabel = computed(() => core.value?.name ?? coreId.value);
 
       <div class="mcnp-card detail-grid__full">
         <h3>该节点上的实例</h3>
-        <ATable :data="instances ?? []" :pagination="false" row-key="id">
+        <ATable :data="instances ?? []" :pagination="false" row-key="id" :scroll="{ x: 760 }">
           <template #columns>
-            <ATableColumn title="名称" data-index="name" />
+            <ATableColumn title="名称" data-index="name" :width="160" />
             <ATableColumn title="类型" :width="140">
               <template #cell="{ record }">{{ record.serverType }} {{ record.version }}</template>
             </ATableColumn>
             <ATableColumn title="状态" :width="100">
               <template #cell="{ record }"><InstanceStateTag :state="record.state" /></template>
             </ATableColumn>
-            <ATableColumn title="工作目录">
+            <ATableColumn title="工作目录" :width="260">
               <template #cell="{ record }"><span class="mono">{{ record.workDir }}</span></template>
             </ATableColumn>
-            <ATableColumn title="操作" :width="90">
+            <ATableColumn title="操作" :width="90" fixed="right">
               <template #cell="{ record }">
                 <AButton size="small" @click="router.push(`/instances/${record.id}/console`)">打开</AButton>
               </template>

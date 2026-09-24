@@ -66,7 +66,7 @@ function removeRuntime(runtime: { id: string; kind: ManagedRuntimeKind; version:
 
 <template>
   <div>
-    <PageHeader title="环境管理" subtitle="受管工具链安装到独立目录，不修改系统 PATH">
+    <PageHeader title="环境管理" subtitle="集中管理各节点的 Java、Node.js 与 Python 运行时">
       <template #extra>
         <PermissionGate when="environment.manage">
           <AButton type="primary" :disabled="!activeCoreId" @click="installVisible = true">安装运行时</AButton>
@@ -86,15 +86,15 @@ function removeRuntime(runtime: { id: string; kind: ManagedRuntimeKind; version:
           <AOption v-for="core in cores ?? []" :key="core.id" :value="core.id">{{ core.name }}</AOption>
         </ASelect>
       </div>
-      <ATable :data="runtimes ?? []" :loading="isLoading" :pagination="false" row-key="id">
+      <ATable :data="runtimes ?? []" :loading="isLoading" :pagination="false" row-key="id" :scroll="{ x: 1000 }">
         <template #columns>
           <ATableColumn title="类型" :width="110">
             <template #cell="{ record }"><ATag size="small">{{ KIND_LABEL[record.kind as ManagedRuntimeKind] }}</ATag></template>
           </ATableColumn>
-          <ATableColumn title="版本">
+          <ATableColumn title="版本" :width="130">
             <template #cell="{ record }"><span class="mono">{{ record.version }}</span></template>
           </ATableColumn>
-          <ATableColumn title="安装路径">
+          <ATableColumn title="安装路径" :width="320">
             <template #cell="{ record }"><span class="mono">{{ record.path }}</span></template>
           </ATableColumn>
           <ATableColumn title="SHA-256" :width="120">
@@ -109,7 +109,7 @@ function removeRuntime(runtime: { id: string; kind: ManagedRuntimeKind; version:
           <ATableColumn title="安装时间" :width="110">
             <template #cell="{ record }">{{ formatRelative(record.installedAt) }}</template>
           </ATableColumn>
-          <ATableColumn title="操作" :width="90">
+          <ATableColumn title="操作" :width="90" fixed="right">
             <template #cell="{ record }">
               <PermissionGate when="environment.manage">
                 <AButton size="mini" status="danger" type="text" @click="removeRuntime(record)">删除</AButton>

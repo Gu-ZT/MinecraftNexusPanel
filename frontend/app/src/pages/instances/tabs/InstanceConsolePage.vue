@@ -6,7 +6,7 @@ import { useRoute } from 'vue-router';
 import { useQuery } from '@tanstack/vue-query';
 import { Message } from '@arco-design/web-vue';
 import { ApiError } from '@mcnp/api-client';
-import { LogTerminal, MetricSparkline, formatBytes, formatPercent } from '@mcnp/ui';
+import { LogTerminal, MetricSparkline, formatBytes, formatPercent, type MetricPoint } from '@mcnp/ui';
 import { useApi, useRealtime } from '@/composables';
 import { useAuthStore } from '@/stores/auth';
 
@@ -31,11 +31,11 @@ const offConsole = realtime.subscribe({ kind: 'console', instanceId: instanceId.
 });
 onBeforeUnmount(offConsole);
 
-// 实时指标序列
-const metrics = reactive({ cpu: [] as number[], memoryBytes: 0, playerCount: null as number | null });
+// 实时指标序列（带时间戳，时间窗曲线缺失补 0）
+const metrics = reactive({ cpu: [] as MetricPoint[], memoryBytes: 0, playerCount: null as number | null });
 const offMetrics = realtime.subscribe({ kind: 'metrics', instanceId: instanceId.value }, (event) => {
-  metrics.cpu.push(event.cpuUsage);
-  if (metrics.cpu.length > 60) metrics.cpu.shift();
+  metrics.cpu.push({ at: Date.now(), value: event.cpuUsage });
+  if (metrics.cpu.length > 90) metrics.cpu.shift();
   metrics.memoryBytes = event.memoryBytes;
   metrics.playerCount = event.playerCount;
 });
@@ -65,7 +65,8 @@ async function send(): Promise<void> {
     <div class="console-metrics">
       <div class="mcnp-card metric">
         <div class="metric__label">CPU</div>
-        <MetricSparkline :data="metrics.cpu" :height="48" />
+        <!-- metrics 推送周期 2s，桶宽取 3s 覆盖时钟抖动，避免偶发空桶补 0 -->
+        <MetricSparkline :points="metrics.cpu" :window-ms="60_000" :bucket-ms="3_000" :height="48" />
       </div>
       <div class="mcnp-card metric">
         <div class="metric__label">内存</div>
@@ -77,7 +78,7 @@ async function send(): Promise<void> {
       </div>
       <div class="mcnp-card metric">
         <div class="metric__label">CPU 占用</div>
-        <div class="metric__value">{{ metrics.cpu.length > 0 ? formatPercent(metrics.cpu[metrics.cpu.length - 1] ?? 0) : '—' }}</div>
+        <div class="metric__value">{{ metrics.cpu.length > 0 ? formatPercent(metrics.cpu[metrics.cpu.length - 1]?.value ?? 0) : '—' }}</div>
       </div>
     </div>
 

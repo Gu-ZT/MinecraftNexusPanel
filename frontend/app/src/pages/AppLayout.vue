@@ -1,10 +1,23 @@
 <script setup lang="ts">
-/** 主界面外壳：侧边导航、Core 切换器、任务指示与用户菜单。 */
+/** 主界面外壳：可折叠侧边导航（折叠时仅显示图标）、Core 切换器、任务指示与用户菜单。 */
 
-import { computed } from 'vue';
+import { computed, ref, type Component } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useQuery, useQueryClient } from '@tanstack/vue-query';
 import { Message } from '@arco-design/web-vue';
+import {
+  IconCloud,
+  IconDesktop,
+  IconFolder,
+  IconHome,
+  IconMenuFold,
+  IconMenuUnfold,
+  IconSafe,
+  IconThunderbolt,
+  IconTool,
+  IconUser,
+  IconUserGroup,
+} from '@arco-design/web-vue/es/icon';
 import type { Permission } from '@mcnp/api-client';
 import { useApi, usePlatform } from '@/composables';
 import { useAuthStore } from '@/stores/auth';
@@ -13,19 +26,20 @@ import { useCoreStore } from '@/stores/core';
 interface NavItem {
   key: string;
   label: string;
+  icon: Component;
   permission?: Permission[];
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { key: '/', label: '总览' },
-  { key: '/cores', label: 'Core 节点', permission: ['core.read'] },
-  { key: '/instances', label: '实例', permission: ['instance.read'] },
-  { key: '/environments', label: '环境管理', permission: ['environment.read'] },
-  { key: '/images', label: '镜像管理', permission: ['image.read'] },
-  { key: '/tasks', label: '任务中心' },
-  { key: '/users', label: '用户', permission: ['user.read'] },
-  { key: '/users/groups', label: '用户组', permission: ['user.read'] },
-  { key: '/audit', label: '审计日志', permission: ['audit.read'] },
+  { key: '/', label: '总览', icon: IconHome },
+  { key: '/cores', label: 'Core 节点', icon: IconCloud, permission: ['core.read'] },
+  { key: '/instances', label: '实例', icon: IconDesktop, permission: ['instance.read'] },
+  { key: '/environments', label: '环境管理', icon: IconTool, permission: ['environment.read'] },
+  { key: '/images', label: '镜像管理', icon: IconFolder, permission: ['image.read'] },
+  { key: '/tasks', label: '任务中心', icon: IconThunderbolt },
+  { key: '/users', label: '用户', icon: IconUser, permission: ['user.read'] },
+  { key: '/users/groups', label: '用户组', icon: IconUserGroup, permission: ['user.read'] },
+  { key: '/audit', label: '审计日志', icon: IconSafe, permission: ['audit.read'] },
 ];
 
 const api = useApi();
@@ -34,6 +48,8 @@ const router = useRouter();
 const auth = useAuthStore();
 const coreStore = useCoreStore();
 const queryClient = useQueryClient();
+
+const collapsed = ref(false);
 
 const visibleNav = computed(() => NAV_ITEMS.filter((item) => !item.permission || auth.hasAll(item.permission)));
 
@@ -86,14 +102,21 @@ async function onUserAction(key: string): Promise<void> {
 
 <template>
   <ALayout class="app-shell">
-    <ALayoutSider :width="232" class="app-shell__sider">
-      <div class="app-shell__brand">
+    <ALayoutSider :width="collapsed ? 48 : 232" class="app-shell__sider">
+      <div class="app-shell__brand" :class="{ 'app-shell__brand--collapsed': collapsed }">
         <span class="app-shell__logo">⬡</span>
-        <span class="app-shell__name">MCNP</span>
+        <span v-if="!collapsed" class="app-shell__name">MCNP</span>
       </div>
-      <AMenu :selected-keys="[selectedMenuKey]" @menu-item-click="onMenuClick">
-        <AMenuItem v-for="item in visibleNav" :key="item.key">{{ item.label }}</AMenuItem>
+      <AMenu :selected-keys="[selectedMenuKey]" :collapsed="collapsed" @menu-item-click="onMenuClick">
+        <AMenuItem v-for="item in visibleNav" :key="item.key">
+          <template #icon><component :is="item.icon" /></template>
+          {{ item.label }}
+        </AMenuItem>
       </AMenu>
+      <div class="app-shell__collapse" @click="collapsed = !collapsed">
+        <IconMenuUnfold v-if="collapsed" />
+        <IconMenuFold v-else />
+      </div>
     </ALayoutSider>
 
     <ALayout>
@@ -139,8 +162,10 @@ async function onUserAction(key: string): Promise<void> {
 }
 
 .app-shell__sider {
+  position: relative;
   background: var(--mcnp-bg-panel);
   border-right: 1px solid rgb(255 255 255 / 6%);
+  transition: width 0.15s;
 }
 
 .app-shell__brand {
@@ -153,8 +178,36 @@ async function onUserAction(key: string): Promise<void> {
   font-weight: 600;
 }
 
+.app-shell__brand--collapsed {
+  justify-content: center;
+  padding: 0;
+}
+
 .app-shell__logo {
   color: var(--mcnp-color-primary);
+}
+
+.app-shell__sider :deep(.arco-menu) {
+  /* 为底部折叠按钮留出空间 */
+  padding-bottom: 40px;
+}
+
+.app-shell__collapse {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  color: var(--mcnp-text-secondary);
+  cursor: pointer;
+  border-top: 1px solid rgb(255 255 255 / 6%);
+}
+
+.app-shell__collapse:hover {
+  color: var(--mcnp-text-primary);
 }
 
 .app-shell__header {

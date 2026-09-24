@@ -12,4 +12,7 @@ export { default as LogTerminal } from './components/LogTerminal.vue';
 export { default as TaskProgressCard } from './components/TaskProgressCard.vue';
 export { default as PermissionGate } from './components/PermissionGate.vue';
 export { default as MetricSparkline } from './components/MetricSparkline.vue';
+export type { MetricPoint } from './components/MetricSparkline.vue';
+export { default as PairTable } from './components/PairTable.vue';
+export type { PairColumn, PairRow } from './components/PairTable.vue';
 export { default as DangerConfirmButton } from './components/DangerConfirmButton.vue';

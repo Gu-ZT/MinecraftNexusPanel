@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 镜像管理：镜像列表、拉取/删除、构建入口与构建历史。 */
+/** 镜像管理：镜像列表、拉取/删除、构建入口、构建历史与镜像仓库管理。 */
 
 import { computed, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
@@ -30,17 +30,26 @@ const { data: builds } = useQuery({
   enabled: computed(() => activeCoreId.value !== ''),
 });
 
+const { data: registries } = useQuery({
+  queryKey: computed(() => ['image-registries', activeCoreId.value]),
+  queryFn: () => api.images.registries(activeCoreId.value),
+  enabled: computed(() => activeCoreId.value !== ''),
+});
+
 const pullVisible = ref(false);
-const pullRef = ref('');
+const pullForm = reactive({ reference: '', registryId: '' });
 const buildVisible = ref(false);
 const buildForm = reactive({ tag: 'mcnp/custom:latest', dockerfile: 'FROM eclipse-temurin:21-jre\nWORKDIR /data\nCOPY server.jar /data/server.jar\nENTRYPOINT ["java","-jar","server.jar"]' });
+const registryVisible = ref(false);
+const registryForm = reactive({ name: '', url: '' });
 
 const pullMutation = useMutation({
-  mutationFn: () => api.images.pull(activeCoreId.value, pullRef.value),
+  mutationFn: () => api.images.pull(activeCoreId.value, pullForm.reference, pullForm.registryId || undefined),
   onSuccess: () => {
     Message.success('拉取任务已提交');
     pullVisible.value = false;
-    pullRef.value = '';
+    pullForm.reference = '';
+    pullForm.registryId = '';
     void queryClient.invalidateQueries({ queryKey: ['images'] });
   },
   onError: (err) => Message.error(err instanceof ApiError ? err.message : '拉取失败'),
@@ -54,6 +63,18 @@ const buildMutation = useMutation({
     void router.push(`/images/builds/${buildId}`);
   },
   onError: (err) => Message.error(err instanceof ApiError ? err.message : '构建失败'),
+});
+
+const addRegistryMutation = useMutation({
+  mutationFn: () => api.images.addRegistry(activeCoreId.value, { name: registryForm.name, url: registryForm.url }),
+  onSuccess: () => {
+    Message.success('仓库已添加');
+    registryVisible.value = false;
+    registryForm.name = '';
+    registryForm.url = '';
+    void queryClient.invalidateQueries({ queryKey: ['image-registries', activeCoreId.value] });
+  },
+  onError: (err) => Message.error(err instanceof ApiError ? err.message : '添加失败'),
 });
 
 function removeImage(image: { id: string; repoTags: string[] }): void {
@@ -72,11 +93,28 @@ function removeImage(image: { id: string; repoTags: string[] }): void {
     },
   });
 }
+
+function removeRegistry(registry: { id: string; name: string }): void {
+  Modal.warning({
+    title: '删除仓库',
+    content: `确认删除仓库 ${registry.name}？`,
+    okButtonProps: { status: 'danger' },
+    onOk: async () => {
+      try {
+        await api.images.removeRegistry(activeCoreId.value, registry.id);
+        Message.success('仓库已删除');
+        void queryClient.invalidateQueries({ queryKey: ['image-registries', activeCoreId.value] });
+      } catch (err) {
+        Message.error(err instanceof ApiError ? err.message : '删除失败');
+      }
+    },
+  });
+}
 </script>
 
 <template>
   <div>
-    <PageHeader title="镜像管理" subtitle="Core 经 Docker Engine API 管理镜像；默认禁止特权容器与越界挂载">
+    <PageHeader title="镜像管理" subtitle="拉取、构建与管理各节点的容器镜像">
       <template #extra>
         <PermissionGate when="image.manage">
           <ASpace>
@@ -91,9 +129,9 @@ function removeImage(image: { id: string; repoTags: string[] }): void {
 
     <div class="mcnp-card" style="margin-bottom: 16px">
       <h3>镜像</h3>
-      <ATable :data="images ?? []" :loading="isLoading" :pagination="false" row-key="id">
+      <ATable :data="images ?? []" :loading="isLoading" :pagination="false" row-key="id" :scroll="{ x: 800 }">
         <template #columns>
-          <ATableColumn title="标签">
+          <ATableColumn title="标签" :width="320">
             <template #cell="{ record }">
               <ATag v-for="tag in record.repoTags" :key="tag" size="small" class="mono" style="margin-right: 4px">{{ tag }}</ATag>
             </template>
@@ -104,7 +142,7 @@ function removeImage(image: { id: string; repoTags: string[] }): void {
           <ATableColumn title="创建时间" :width="120">
             <template #cell="{ record }">{{ formatRelative(record.createdAt) }}</template>
           </ATableColumn>
-          <ATableColumn title="操作" :width="90">
+          <ATableColumn title="操作" :width="90" fixed="right">
             <template #cell="{ record }">
               <PermissionGate when="image.manage">
                 <AButton size="mini" status="danger" type="text" @click="removeImage(record)">删除</AButton>
@@ -115,11 +153,38 @@ function removeImage(image: { id: string; repoTags: string[] }): void {
       </ATable>
     </div>
 
+    <div class="mcnp-card" style="margin-bottom: 16px">
+      <div class="card-head">
+        <h3>镜像仓库</h3>
+        <PermissionGate when="image.manage">
+          <AButton size="small" @click="registryVisible = true">添加仓库</AButton>
+        </PermissionGate>
+      </div>
+      <ATable :data="registries ?? []" :pagination="false" row-key="id" :scroll="{ x: 720 }">
+        <template #columns>
+          <ATableColumn title="查找顺序" :width="90">
+            <template #cell="{ rowIndex }">{{ rowIndex + 1 }}</template>
+          </ATableColumn>
+          <ATableColumn title="名称" data-index="name" :width="200" />
+          <ATableColumn title="地址" :width="320">
+            <template #cell="{ record }"><span class="mono">{{ record.url }}</span></template>
+          </ATableColumn>
+          <ATableColumn title="操作" :width="80" fixed="right">
+            <template #cell="{ record }">
+              <PermissionGate when="image.manage">
+                <AButton size="mini" status="danger" type="text" @click="removeRegistry(record)">删除</AButton>
+              </PermissionGate>
+            </template>
+          </ATableColumn>
+        </template>
+      </ATable>
+    </div>
+
     <div class="mcnp-card">
       <h3>构建历史</h3>
-      <ATable :data="builds ?? []" :pagination="false" row-key="id">
+      <ATable :data="builds ?? []" :pagination="false" row-key="id" :scroll="{ x: 720 }">
         <template #columns>
-          <ATableColumn title="目标标签">
+          <ATableColumn title="目标标签" :width="320">
             <template #cell="{ record }"><span class="mono">{{ record.tag }}</span></template>
           </ATableColumn>
           <ATableColumn title="状态" :width="100">
@@ -132,7 +197,7 @@ function removeImage(image: { id: string; repoTags: string[] }): void {
           <ATableColumn title="开始时间" :width="170">
             <template #cell="{ record }">{{ formatTime(record.startedAt) }}</template>
           </ATableColumn>
-          <ATableColumn title="操作" :width="110">
+          <ATableColumn title="操作" :width="110" fixed="right">
             <template #cell="{ record }">
               <AButton size="mini" @click="router.push(`/images/builds/${record.id}`)">构建日志</AButton>
             </template>
@@ -142,7 +207,31 @@ function removeImage(image: { id: string; repoTags: string[] }): void {
     </div>
 
     <AModal v-model:visible="pullVisible" title="拉取镜像" :ok-loading="pullMutation.isPending.value" @ok="pullMutation.mutate()">
-      <AInput v-model="pullRef" class="mono" placeholder="itzg/minecraft-server:latest" />
+      <AForm :model="pullForm" layout="vertical">
+        <AFormItem label="镜像引用" required>
+          <AInput v-model="pullForm.reference" class="mono" placeholder="itzg/minecraft-server:latest" />
+        </AFormItem>
+        <AFormItem label="目标仓库">
+          <ASelect v-model="pullForm.registryId" allow-clear placeholder="自动（按上表顺序尝试）">
+            <AOption v-for="(reg, idx) in registries ?? []" :key="reg.id" :value="reg.id">
+              {{ idx + 1 }}. {{ reg.name }}（{{ reg.url }}）
+            </AOption>
+          </ASelect>
+        </AFormItem>
+      </AForm>
+    </AModal>
+
+    <AModal
+      v-model:visible="registryVisible"
+      title="添加镜像仓库"
+      :ok-loading="addRegistryMutation.isPending.value"
+      :ok-button-props="{ disabled: !registryForm.name.trim() || !registryForm.url.trim() }"
+      @ok="addRegistryMutation.mutate()"
+    >
+      <AForm :model="registryForm" layout="vertical">
+        <AFormItem label="名称" required><AInput v-model="registryForm.name" placeholder="Docker Hub（官方）" /></AFormItem>
+        <AFormItem label="地址" required><AInput v-model="registryForm.url" class="mono" placeholder="https://registry-1.docker.io" /></AFormItem>
+      </AForm>
     </AModal>
 
     <AModal v-model:visible="buildVisible" title="构建镜像" width="640px" :ok-loading="buildMutation.isPending.value" @ok="buildMutation.mutate()">
@@ -158,5 +247,16 @@ function removeImage(image: { id: string; repoTags: string[] }): void {
 h3 {
   margin: 0 0 var(--mcnp-space-3);
   font-size: 15px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--mcnp-space-3);
+}
+
+.card-head h3 {
+  margin: 0;
 }
 </style>
