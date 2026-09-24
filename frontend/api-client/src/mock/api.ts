@@ -162,7 +162,8 @@ export class MockApi implements McnpApi {
       user,
       permissions: this.store.permissionsOf(user),
       token: {
-        accessToken: `mock-at-${sessionId}`,
+        // 令牌内嵌用户 ID，Mock 重启后凭它恢复会话（见 MockStore.restoreSessionByAccessToken）
+        accessToken: `mock-at-${sessionId}.${user.id}`,
         refreshToken: `mock-rt-${sessionId}`,
         expiresAt: Date.now() + 2 * 3_600_000,
         deviceId: sessionId,

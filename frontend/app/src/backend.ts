@@ -10,3 +10,10 @@ import { createBrowserPlatform } from '@mcnp/platform';
 
 export const backend = createMockBackend();
 export const platform = createBrowserPlatform();
+
+// 启动时凭本地令牌快照恢复 Mock 会话（整页刷新后免重新登录）；
+// 真实客户端由 Cookie/Authorization 头自动完成，不需要此步。TODO(M1)
+{
+  const snapshot = platform.authStorage.read();
+  if (snapshot) backend.store.restoreSessionByAccessToken(snapshot.accessToken);
+}

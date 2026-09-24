@@ -45,6 +45,20 @@ export class MockStore {
   /** 当前登录用户 ID；null 表示未登录。 */
   currentUserId: string | null = null;
 
+  /**
+   * 凭访问令牌恢复会话（Mock 专用）。
+   * 内存 Mock 在页面整载后丢失 currentUserId；令牌内嵌的用户 ID 用于重建登录态，
+   * 模拟真实后端凭 Cookie/Token 鉴权的行为。TODO(M1): 真实客户端落地后删除。
+   */
+  restoreSessionByAccessToken(token: string): boolean {
+    const userId = token.split('.')[1];
+    if (!userId) return false;
+    const user = this.state.users.find((u) => u.id === userId);
+    if (!user || user.disabled) return false;
+    this.currentUserId = user.id;
+    return true;
+  }
+
   private seq = 1000;
   private runningTasks = new Map<string, RunningTask>();
   private engineTimer: ReturnType<typeof setInterval> | null = null;
